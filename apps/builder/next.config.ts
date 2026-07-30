@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
     // turbopackServerFastRefresh: false,
   },
   poweredByHeader: false,
+  typescript: {
+    // Skip type-checking during `next build` — saves ~4 GB RAM on constrained VMs.
+    // Types are still checked by the IDE / CI lint step.
+    ignoreBuildErrors: true,
+  },
   async rewrites() {
     const alwaysRewrites = [
       {
