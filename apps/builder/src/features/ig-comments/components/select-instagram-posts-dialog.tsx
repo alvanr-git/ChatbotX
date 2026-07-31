@@ -10,6 +10,13 @@ import {
   DialogTitle,
 } from "@chatbotx.io/ui/components/ui/dialog"
 import { Input } from "@chatbotx.io/ui/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@chatbotx.io/ui/components/ui/select"
 import { Skeleton } from "@chatbotx.io/ui/components/ui/skeleton"
 import {
   Tabs,
@@ -22,10 +29,14 @@ import { CheckIcon, X } from "lucide-react"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
-import type { FacebookPost } from "../provider/fb-comment-posts-store"
-import { useFbCommentPostsStore } from "../provider/fb-comment-posts-store-context"
+import {
+  type InstagramPost,
+  splitInstagramMediaPosts,
+} from "../provider/ig-comment-posts-store"
+import { useIgCommentPostsStore } from "../provider/ig-comment-posts-store-context"
 
 const SKELETON_KEYS = ["sk-1", "sk-2", "sk-3", "sk-4"]
+const ALL_PAGES_VALUE = "all"
 
 function PostIdTagInput({
   value,
@@ -65,13 +76,13 @@ function PostIdTagInput({
     <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-input bg-transparent px-2 py-1.5 outline-none transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
       {value.map((id) => (
         <Badge
-          className="flex items-center gap-1 pr-1"
+          className="flex items-center gap-1 pe-1"
           key={id}
           variant="secondary"
         >
           <span className="max-w-50 truncate font-mono text-xs">{id}</span>
           <button
-            className="ml-1 rounded-full p-0.5 transition-colors hover:bg-destructive/20"
+            className="ms-1 rounded-full p-0.5 transition-colors hover:bg-destructive/20"
             onClick={() => removeTag(id)}
             type="button"
           >
@@ -96,14 +107,14 @@ function PostCard({
   selected,
   onToggle,
 }: {
-  post: FacebookPost
+  post: InstagramPost
   selected: boolean
   onToggle: () => void
 }) {
   return (
     <button
       className={cn(
-        "relative w-full cursor-pointer rounded-md border p-2 text-left transition-colors",
+        "relative w-full cursor-pointer rounded-md border p-2 text-start transition-colors",
         selected
           ? "border-primary bg-primary/5"
           : "border-border hover:bg-muted",
@@ -112,7 +123,7 @@ function PostCard({
       type="button"
     >
       {selected && (
-        <span className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <span className="absolute end-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <CheckIcon className="h-3 w-3" />
         </span>
       )}
@@ -142,7 +153,7 @@ function PostGrid({
   loading,
   emptyText,
 }: {
-  posts: FacebookPost[]
+  posts: InstagramPost[]
   selectedIds: string[]
   onToggle: (id: string) => void
   loading: boolean
@@ -180,7 +191,7 @@ function PostGrid({
   )
 }
 
-export function SelectPostsDialog({
+export function SelectInstagramPostsDialog({
   open,
   onOpenChange,
   value,
@@ -193,18 +204,24 @@ export function SelectPostsDialog({
 }) {
   const t = useTranslations()
 
-  const loading = useFbCommentPostsStore((s) => s.loading)
-  const publishedPosts = useFbCommentPostsStore((s) => s.publishedPosts)
-  const adsPosts = useFbCommentPostsStore((s) => s.adsPosts)
-  const reelsPosts = useFbCommentPostsStore((s) => s.reelsPosts)
+  const loading = useIgCommentPostsStore((s) => s.loading)
+  const posts = useIgCommentPostsStore((s) => s.posts)
+  const pages = useIgCommentPostsStore((s) => s.pages)
 
   const [selectedIds, setSelectedIds] = useState<string[]>(value)
+  const [selectedPageId, setSelectedPageId] = useState<string>(ALL_PAGES_VALUE)
 
   useEffect(() => {
     if (open) {
       setSelectedIds(value)
     }
   }, [open, value])
+
+  const pagePosts =
+    selectedPageId === ALL_PAGES_VALUE
+      ? posts
+      : posts.filter((post) => post.accountId === selectedPageId)
+  const instagramMedia = splitInstagramMediaPosts(pagePosts)
 
   const toggleId = (id: string) => {
     setSelectedIds((prev) =>
@@ -222,52 +239,60 @@ export function SelectPostsDialog({
       <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {t("facebookCommentAutomation.selectPosts")}
+            {t("instagramCommentAutomation.selectPosts")}
           </DialogTitle>
         </DialogHeader>
+
+        {pages.length > 0 && (
+          <Select
+            onValueChange={(val) => setSelectedPageId(val as string)}
+            value={selectedPageId}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_PAGES_VALUE}>
+                {t("instagramCommentAutomation.selectPageAll")}
+              </SelectItem>
+              {pages.map((page) => (
+                <SelectItem key={page.id} value={page.id}>
+                  {page.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <Tabs defaultValue="published">
           <TabsList className="w-full">
             <TabsTrigger className="flex-1" value="published">
-              {t("facebookCommentAutomation.postType.published")}
-            </TabsTrigger>
-            <TabsTrigger className="flex-1" value="ads">
-              {t("facebookCommentAutomation.postType.ads")}
+              {t("instagramCommentAutomation.postType.published")}
             </TabsTrigger>
             <TabsTrigger className="flex-1" value="reels">
-              {t("facebookCommentAutomation.postType.reels")}
+              {t("instagramCommentAutomation.postType.reels")}
             </TabsTrigger>
             <TabsTrigger className="flex-1" value="postId">
-              {t("facebookCommentAutomation.postIdTab")}
+              {t("instagramCommentAutomation.postIdTab")}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent className="mt-3" value="published">
             <PostGrid
-              emptyText={t("facebookCommentAutomation.noPostsFound")}
+              emptyText={t("instagramCommentAutomation.noPostsFound")}
               loading={loading}
               onToggle={toggleId}
-              posts={publishedPosts}
-              selectedIds={selectedIds}
-            />
-          </TabsContent>
-
-          <TabsContent className="mt-3" value="ads">
-            <PostGrid
-              emptyText={t("facebookCommentAutomation.noPostsFound")}
-              loading={loading}
-              onToggle={toggleId}
-              posts={adsPosts}
+              posts={instagramMedia.published}
               selectedIds={selectedIds}
             />
           </TabsContent>
 
           <TabsContent className="mt-3" value="reels">
             <PostGrid
-              emptyText={t("facebookCommentAutomation.noPostsFound")}
+              emptyText={t("instagramCommentAutomation.noPostsFound")}
               loading={loading}
               onToggle={toggleId}
-              posts={reelsPosts}
+              posts={instagramMedia.reels}
               selectedIds={selectedIds}
             />
           </TabsContent>
@@ -275,7 +300,7 @@ export function SelectPostsDialog({
           <TabsContent className="mt-3" value="postId">
             <PostIdTagInput
               onChange={setSelectedIds}
-              placeholder={t("facebookCommentAutomation.postIdPlaceholder")}
+              placeholder={t("instagramCommentAutomation.postIdPlaceholder")}
               value={selectedIds}
             />
           </TabsContent>

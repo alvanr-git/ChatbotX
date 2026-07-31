@@ -15,43 +15,49 @@ import { Trash } from "lucide-react"
 import { useTranslations } from "next-intl"
 import type { ComponentPropsWithoutRef } from "react"
 import { toast } from "sonner"
-import { deleteFbCommentAction } from "../actions/delete-fb-comment.action"
-import type { FBCommentResource } from "../schema/resource"
+import type {
+  CommentAutomationRow,
+  CommentAutomationTranslationNamespace,
+} from "./types"
 
-type BulkDeleteFbCommentsDialogProps = ComponentPropsWithoutRef<
-  typeof Dialog
-> & {
-  fbComments: FBCommentResource[]
+type BulkDeleteCommentAutomationsDialogProps<
+  TItem extends Pick<CommentAutomationRow, "id" | "workspaceId">,
+> = ComponentPropsWithoutRef<typeof Dialog> & {
+  items: TItem[]
+  translationNamespace: CommentAutomationTranslationNamespace
+  deleteAction: (workspaceId: string, id: string) => Promise<unknown>
   showTrigger?: boolean
   onSuccess?: () => void
   onOpenChange: (val: boolean) => void
 }
 
-export function BulkDeleteFbCommentsDialog({
-  fbComments,
+export function BulkDeleteCommentAutomationsDialog<
+  TItem extends Pick<CommentAutomationRow, "id" | "workspaceId">,
+>({
+  items,
+  translationNamespace,
+  deleteAction,
   showTrigger = true,
   onSuccess,
   onOpenChange,
   ...props
-}: BulkDeleteFbCommentsDialogProps) {
+}: BulkDeleteCommentAutomationsDialogProps<TItem>) {
   const t = useTranslations()
 
   const handleBulkDelete = async () => {
     try {
       await Promise.all(
-        fbComments.map((item) =>
-          deleteFbCommentAction(item.workspaceId, item.id),
-        ),
+        items.map((item) => deleteAction(item.workspaceId, item.id)),
       )
       toast.success(
         t("messages.deletedSuccess", {
-          feature: t("facebookCommentAutomation.title"),
+          feature: t(`${translationNamespace}.title`),
         }),
       )
       onOpenChange(false)
       onSuccess?.()
     } catch (error) {
-      console.error("Error deleting FB Comment Automations:", error)
+      console.error("Error deleting comment automations:", error)
       toast.error(t("messages.unknownError"))
     }
   }
@@ -59,36 +65,40 @@ export function BulkDeleteFbCommentsDialog({
   return (
     <Dialog onOpenChange={onOpenChange} {...props}>
       {showTrigger ? (
-        <DialogTrigger asChild>
-          <Button size="sm" variant="outline">
-            <Trash aria-hidden="true" className="mr-2 size-4" />
-            {t("actions.delete")} ({fbComments.length})
-          </Button>
-        </DialogTrigger>
+        <DialogTrigger
+          render={
+            <Button size="sm" variant="outline">
+              <Trash aria-hidden="true" className="me-2 size-4" />
+              {t("actions.delete")} ({items.length})
+            </Button>
+          }
+        />
       ) : null}
       <DialogContent className="max-h-screen max-w-lg overflow-y-scroll">
         <DialogHeader>
           <DialogTitle>
             {t("messages.deleteFeature", {
-              feature: t("facebookCommentAutomation.title"),
+              feature: t(`${translationNamespace}.title`),
             })}
           </DialogTitle>
           <DialogDescription className="whitespace-pre-wrap text-sm/6">
             {t("dialog.deleteConfirmation", {
-              feature: t("facebookCommentAutomation.title"),
+              feature: t(`${translationNamespace}.title`),
             })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:space-x-0">
-          <DialogClose asChild>
-            <Button
-              onClick={() => onOpenChange(false)}
-              size="sm"
-              variant="ghost"
-            >
-              {t("actions.cancel")}
-            </Button>
-          </DialogClose>
+          <DialogClose
+            render={
+              <Button
+                onClick={() => onOpenChange(false)}
+                size="sm"
+                variant="ghost"
+              >
+                {t("actions.cancel")}
+              </Button>
+            }
+          />
           <Button
             aria-label="Delete selected rows"
             onClick={handleBulkDelete}
