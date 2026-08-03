@@ -118,6 +118,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
       )
       redirect(redirectUri)
     }
+    return <InstagramLoginSelect workspaceId={workspaceId} />
   }
 
   if (selectedChannel === "instagram-direct" && instagram) {
