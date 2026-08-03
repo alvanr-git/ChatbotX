@@ -143,7 +143,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
   if (messenger) {
     configuredChannels.push("messenger")
   }
-  if (instagram) {
+  if (instagram || instagramFacebook) {
     configuredChannels.push("instagram")
   }
   if (zalo) {
