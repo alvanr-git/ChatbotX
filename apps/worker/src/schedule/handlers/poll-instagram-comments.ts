@@ -77,26 +77,25 @@ export const pollInstagramComments = async (): Promise<void> => {
             )
 
             await integrationQueue.add(
-              IntegrationJobAction.processCommentAutomation,
+              IntegrationJobAction.incomingComment,
               {
-                type: IntegrationJobAction.processCommentAutomation,
+                type: IntegrationJobAction.incomingComment,
                 data: {
-                  integrationId: integration.id,
-                  payload: {
-                    channelType: "instagramFacebook",
+                  integrationType: "instagramFacebook",
+                  integrationIdentifier: integration.igId,
+                  commentData: {
                     commentId: comment.id,
-                    commentText: comment.text,
-                    commentCreatedTime,
                     postId: media.id,
-                    senderId: comment.from?.id ?? comment.id,
-                    senderName: comment.from?.username ?? "instagram_user",
-                    isParentComment: !comment.parent_id,
                     parentId: comment.parent_id,
+                    fromId: comment.from?.id ?? comment.id,
+                    fromName: comment.from?.username ?? "instagram_user",
+                    message: comment.text,
+                    createdTime: commentCreatedTime,
                   },
                 },
               },
               {
-                jobId: `comment-auto-${comment.id}`,
+                jobId: `comment-incoming-${comment.id}`,
               },
             )
           }
