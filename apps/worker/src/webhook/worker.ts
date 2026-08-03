@@ -32,7 +32,7 @@ const worker = new Worker(
   {
     connection: getRedisConnection(),
     ...defaultWorkerOptions,
-    concurrency: env.WEBHOOK_WORKER_CONCURRENCY,
+    concurrency: env.WEBHOOK_WORKER_CONCURRENCY || 50,
   },
 )
 

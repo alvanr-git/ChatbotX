@@ -259,7 +259,7 @@ async function startIntegrationWorker() {
       ...defaultWorkerOptions,
       // Override the shared default (5). I/O-bound webhook handling tolerates
       // more parallelism; env-tunable via INTEGRATION_WORKER_CONCURRENCY.
-      concurrency: env.INTEGRATION_WORKER_CONCURRENCY,
+      concurrency: env.INTEGRATION_WORKER_CONCURRENCY || 10,
       // Coexist historical sync chunks are bounded to ~4 min via self-continuation
       // (see coexist-messenger-sync / coexist-whatsapp-flush). Lock sized as:
       // 4 min active + 4 min Graph 5xx retry tail + 2 min bulk INSERT tail.
