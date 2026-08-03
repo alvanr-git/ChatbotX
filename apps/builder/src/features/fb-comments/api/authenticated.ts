@@ -8,6 +8,7 @@ import {
 import type { MessengerAuthValue } from "@chatbotx.io/integration-messenger/schema"
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import z from "zod"
+import { listInstagramFacebookMedia } from "@/features/ig-comments/queries/instagram-media"
 import { withWorkspaceIdSchema } from "@/features/workspaces/schema/resource"
 import { collectSettled } from "@/lib/collect-settled"
 import { workspaceAuthorizedMidddleware } from "@/middlewares/auth"
@@ -116,14 +117,46 @@ export const fbCommentsPrivateAPI = {
         input.workspaceId,
       )
 
+      if (integrations.length === 0) {
+        const { posts: igPosts, pages: igPages } =
+          await listInstagramFacebookMedia(input.workspaceId)
+        const published = igPosts
+          .filter(
+            (p) =>
+              p.media_product_type?.toUpperCase() !== "REELS" &&
+              p.media_product_type?.toUpperCase() !== "CLIPS" &&
+              p.media_type?.toUpperCase() !== "VIDEO",
+          )
+          .map((p) => ({
+            id: p.id,
+            message: p.message,
+            full_picture: p.full_picture,
+            created_time: p.created_time,
+            permalink_url: p.permalink_url,
+            pageId: p.accountId,
+          }))
+        const reels = igPosts
+          .filter(
+            (p) =>
+              p.media_product_type?.toUpperCase() === "REELS" ||
+              p.media_product_type?.toUpperCase() === "CLIPS" ||
+              p.media_type?.toUpperCase() === "VIDEO",
+          )
+          .map((p) => ({
+            id: p.id,
+            message: p.message,
+            full_picture: p.full_picture,
+            created_time: p.created_time,
+            permalink_url: p.permalink_url,
+            pageId: p.accountId,
+          }))
+        return { published, ads: [], reels, pages: igPages }
+      }
+
       const pages = integrations.map((integration) => ({
         id: integration.pageId,
         name: integration.name,
       }))
-
-      if (integrations.length === 0) {
-        return { published: [], ads: [], reels: [], pages }
-      }
 
       const fetchByType = (type: "published" | "ads" | "reels") =>
         collectSettled(
