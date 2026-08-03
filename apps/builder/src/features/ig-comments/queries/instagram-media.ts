@@ -17,6 +17,7 @@ export type InstagramAutomationMedia = {
   created_time: string
   permalink_url?: string
   media_product_type?: string
+  media_type?: string
   accountId: string
 }
 
@@ -33,6 +34,7 @@ type InstagramMediaListItem = {
   timestamp: string
   permalink?: string
   media_product_type?: string
+  media_type?: string
 }
 
 async function collectInstagramMedia(
@@ -60,6 +62,7 @@ async function collectInstagramMedia(
         created_time: item.timestamp,
         permalink_url: item.permalink,
         media_product_type: item.media_product_type,
+        media_type: item.media_type,
         accountId: integration.igId,
       }))
     },

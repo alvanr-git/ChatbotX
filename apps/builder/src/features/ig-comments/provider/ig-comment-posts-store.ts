@@ -9,6 +9,7 @@ export type InstagramPost = {
   created_time: string
   permalink_url?: string
   media_product_type?: string
+  media_type?: string
   accountId: string
 }
 
@@ -19,10 +20,16 @@ export type InstagramAccount = {
 
 export const splitInstagramMediaPosts = (posts: InstagramPost[]) => ({
   published: posts.filter(
-    (post) => post.media_product_type?.toUpperCase() !== "REELS",
+    (post) =>
+      post.media_product_type?.toUpperCase() !== "REELS" &&
+      post.media_product_type?.toUpperCase() !== "CLIPS" &&
+      post.media_type?.toUpperCase() !== "VIDEO",
   ),
   reels: posts.filter(
-    (post) => post.media_product_type?.toUpperCase() === "REELS",
+    (post) =>
+      post.media_product_type?.toUpperCase() === "REELS" ||
+      post.media_product_type?.toUpperCase() === "CLIPS" ||
+      post.media_type?.toUpperCase() === "VIDEO",
   ),
 })
 
