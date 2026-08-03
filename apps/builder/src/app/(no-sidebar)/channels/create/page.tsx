@@ -100,8 +100,24 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     redirect(redirectUri)
   }
 
-  if (selectedChannel === "instagram" && instagram) {
-    return <InstagramLoginSelect workspaceId={workspaceId} />
+  if (selectedChannel === "instagram") {
+    if (instagram && instagramFacebook) {
+      return <InstagramLoginSelect workspaceId={workspaceId} />
+    }
+    if (instagramFacebook) {
+      const redirectUri = await generateInstagramFacebookRedirectUri(
+        instagramFacebook.publicConfig,
+        workspaceId,
+      )
+      redirect(redirectUri)
+    }
+    if (instagram) {
+      const redirectUri = await generateInstagramRedirectUri(
+        instagram.publicConfig,
+        workspaceId,
+      )
+      redirect(redirectUri)
+    }
   }
 
   if (selectedChannel === "instagram-direct" && instagram) {
