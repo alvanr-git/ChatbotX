@@ -17,16 +17,14 @@ class FbCommentAutomationService extends BaseService {
       props.channelType === "instagram" ||
       props.channelType === "instagramFacebook"
     return db.query.fbCommentAutomationModel.findMany({
-      where: and(
-        eq(fbCommentAutomationModel.workspaceId, props.workspaceId),
-        eq(fbCommentAutomationModel.isActive, true),
-        isInstagram
-          ? inArray(fbCommentAutomationModel.type, [
-              "instagram",
-              "instagramFacebook",
-            ])
-          : eq(fbCommentAutomationModel.type, props.channelType),
-      ),
+      where: (fields, { and, eq, inArray }) =>
+        and(
+          eq(fields.workspaceId, props.workspaceId),
+          eq(fields.isActive, true),
+          isInstagram
+            ? inArray(fields.type, ["instagram", "instagramFacebook"])
+            : eq(fields.type, props.channelType),
+        ),
     })
   }
 
