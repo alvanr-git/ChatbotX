@@ -78,6 +78,17 @@ export async function listInstagramLoginMedia(workspaceId: string) {
     workspaceId,
     "instagram",
   )
+  if (integrations.length === 0) {
+    const fbIntegrations = await findInstagramIntegrationsByWorkspaceId(
+      workspaceId,
+      "facebook",
+    )
+    return collectInstagramMedia(fbIntegrations, (integration) =>
+      listInstagramFacebookMediaApi({
+        auth: integration.auth as InstagramFacebookAuthValue,
+      }),
+    )
+  }
   return collectInstagramMedia(integrations, (integration) =>
     listInstagramLoginMediaApi({
       auth: integration.auth as InstagramAuthValue,
@@ -90,6 +101,17 @@ export async function listInstagramFacebookMedia(workspaceId: string) {
     workspaceId,
     "facebook",
   )
+  if (integrations.length === 0) {
+    const directIntegrations = await findInstagramIntegrationsByWorkspaceId(
+      workspaceId,
+      "instagram",
+    )
+    return collectInstagramMedia(directIntegrations, (integration) =>
+      listInstagramLoginMediaApi({
+        auth: integration.auth as InstagramAuthValue,
+      }),
+    )
+  }
   return collectInstagramMedia(integrations, (integration) =>
     listInstagramFacebookMediaApi({
       auth: integration.auth as InstagramFacebookAuthValue,
