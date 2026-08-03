@@ -57,28 +57,28 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
 
   const [whatsapp, messenger, instagram, instagramFacebook, zalo, tiktok] =
     await Promise.all([
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "whatsapp",
       }),
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "messenger",
       }),
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "instagram",
       }),
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "instagramFacebook",
       }),
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "zalo",
       }),
-      platformCredentialService.resolveForOwner({
-        ownerId: platformOwnerId,
+      platformCredentialService.resolvePublicForUser({
+        userId: platformOwnerId,
         type: "tiktok",
       }),
     ])

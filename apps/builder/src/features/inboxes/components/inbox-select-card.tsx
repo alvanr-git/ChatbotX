@@ -61,7 +61,11 @@ function InboxSelectCard({ configuredChannels }: InboxSelectCardProps) {
                 <InboxIcon channel={channel} size="large" />
               </div>
               <Button
-                disabled={false}
+                disabled={
+                  channel !== "webchat" &&
+                  channel !== "telegram" &&
+                  !configuredChannels.includes(channel)
+                }
                 onClick={() => handleInboxSelect(channel)}
                 type="button"
                 variant="secondary"
