@@ -30,12 +30,13 @@ export type FbCommentPostsState = {
 
 export type FbCommentPostsActions = {
   initialize: () => Promise<void>
+  fetchPosts: () => Promise<void>
 }
 
 export type FbCommentPostsStore = FbCommentPostsState & FbCommentPostsActions
 
 export const createFbCommentPostsStore = (
-  props: Partial<FbCommentPostsState>,
+  props: Partial<FbCommentPostsState> & { workspaceId: string },
 ) =>
   createStore<FbCommentPostsStore>((set, get) => ({
     loading: false,
@@ -58,6 +59,30 @@ export const createFbCommentPostsStore = (
       set({ loading: true, error: null })
       try {
         const { workspaceId } = get()
+        const { published, ads, reels, pages } =
+          await client.fbCommentsAPI.facebookPostsAPI({ workspaceId })
+        set({
+          publishedPosts: published,
+          adsPosts: ads,
+          reelsPosts: reels,
+          pages,
+        })
+      } catch (error: unknown) {
+        set({
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch Facebook posts",
+        })
+      } finally {
+        set({ loading: false, initialized: true })
+      }
+    },
+
+    fetchPosts: async () => {
+      const { workspaceId } = get()
+      set({ loading: true, error: null })
+      try {
         const { published, ads, reels, pages } =
           await client.fbCommentsAPI.facebookPostsAPI({ workspaceId })
         set({

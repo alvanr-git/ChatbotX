@@ -206,6 +206,7 @@ export function SelectFacebookPostsDialog({
   const adsPosts = useFbCommentPostsStore((s) => s.adsPosts)
   const reelsPosts = useFbCommentPostsStore((s) => s.reelsPosts)
   const pages = useFbCommentPostsStore((s) => s.pages)
+  const fetchPosts = useFbCommentPostsStore((s) => s.fetchPosts)
 
   const [selectedIds, setSelectedIds] = useState<string[]>(value)
   const [selectedPageId, setSelectedPageId] = useState<string>(ALL_PAGES_VALUE)
@@ -213,8 +214,9 @@ export function SelectFacebookPostsDialog({
   useEffect(() => {
     if (open) {
       setSelectedIds(value)
+      fetchPosts()
     }
-  }, [open, value])
+  }, [open, value, fetchPosts])
 
   const filterByPage = (posts: FacebookPost[]) =>
     selectedPageId === ALL_PAGES_VALUE
