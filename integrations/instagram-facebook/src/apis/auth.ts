@@ -7,8 +7,6 @@ const FACEBOOK_OAUTH_BASE = "https://www.facebook.com"
 
 const INSTAGRAM_SCOPES = [
   "instagram_basic",
-  "instagram_manage_comments",
-  "instagram_manage_engagement",
   "instagram_manage_messages",
   "pages_manage_metadata",
   "pages_show_list",
