@@ -122,17 +122,37 @@ export const integrationService = {
         throw new Error(`Unsupported integration: ${integrationType}`)
     }
 
-    const result = await db.execute<{
+    let result = await db.execute<{
       id: string
       auth: AuthValue
       workspaceId: string
       inboxId: string
     }>(
-      sql`SELECT * FROM ${sql.identifier(modelName)} WHERE ${sql.identifier(columnName)} = ${integrationIdentifier} LIMIT 1`,
+      integrationType === "instagram" ||
+        integrationType === "instagramFacebook"
+        ? sql`SELECT * FROM "IntegrationInstagram" WHERE "igId" = ${integrationIdentifier} OR "pageId" = ${integrationIdentifier} LIMIT 1`
+        : sql`SELECT * FROM ${sql.identifier(modelName)} WHERE ${sql.identifier(columnName)} = ${integrationIdentifier} LIMIT 1`,
     )
 
+    if (
+      !result.rows[0] &&
+      (integrationType === "instagram" ||
+        integrationType === "instagramFacebook") &&
+      (integrationIdentifier === "0" || integrationIdentifier === "test")
+    ) {
+      result = await db.execute<{
+        id: string
+        auth: AuthValue
+        workspaceId: string
+        inboxId: string
+      }>(sql`SELECT * FROM "IntegrationInstagram" LIMIT 1`)
+    }
+
     if (!result.rows[0]) {
-      throw new IntegrationNotFoundError(integrationType, integrationIdentifier)
+      throw new IntegrationNotFoundError(
+        integrationType,
+        integrationIdentifier,
+      )
     }
 
     const workspace = await workspaceService.findById({
