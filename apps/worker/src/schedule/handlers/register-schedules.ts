@@ -138,7 +138,7 @@ export const registerSchedules = async () => {
 
   await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.syncUserQuota,
-    { every: env.QUOTA_SYNC_INTERVAL_SECONDS * 1000 },
+    { every: (env.QUOTA_SYNC_INTERVAL_SECONDS || 60) * 1000 },
     {
       name: ScheduleJobData.syncUserQuota,
       data: { type: ScheduleJobData.syncUserQuota, data: {} },
@@ -147,7 +147,7 @@ export const registerSchedules = async () => {
 
   await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.reconcileTenants,
-    { every: env.QUOTA_SYNC_INTERVAL_SECONDS * 1000 },
+    { every: (env.QUOTA_SYNC_INTERVAL_SECONDS || 60) * 1000 },
     {
       name: ScheduleJobData.reconcileTenants,
       data: { type: ScheduleJobData.reconcileTenants, data: {} },
