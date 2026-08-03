@@ -1,4 +1,4 @@
-import { and, db, eq, ne, sql } from "@chatbotx.io/database/client"
+import { and, db, eq, inArray, ne, sql } from "@chatbotx.io/database/client"
 import {
   contactInboxModel,
   fbCommentAutomationModel,
@@ -13,12 +13,20 @@ class FbCommentAutomationService extends BaseService {
     workspaceId: string
     channelType: "messenger" | "instagram" | "instagramFacebook"
   }) {
+    const isInstagram =
+      props.channelType === "instagram" ||
+      props.channelType === "instagramFacebook"
     return db.query.fbCommentAutomationModel.findMany({
-      where: {
-        workspaceId: props.workspaceId,
-        isActive: true,
-        type: props.channelType,
-      },
+      where: and(
+        eq(fbCommentAutomationModel.workspaceId, props.workspaceId),
+        eq(fbCommentAutomationModel.isActive, true),
+        isInstagram
+          ? inArray(fbCommentAutomationModel.type, [
+              "instagram",
+              "instagramFacebook",
+            ])
+          : eq(fbCommentAutomationModel.type, props.channelType),
+      ),
     })
   }
 
