@@ -111,7 +111,7 @@ export const registerSchedules = async () => {
   await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.pollInstagramComments,
     {
-      pattern: "* * * * *",
+      every: 30000,
     },
     {
       name: ScheduleJobData.pollInstagramComments,
