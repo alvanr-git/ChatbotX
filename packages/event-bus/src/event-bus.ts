@@ -150,6 +150,22 @@ export class BaseEventBus<
   private lastClaimAt = Number.NEGATIVE_INFINITY
   private readonly lastProcessingErrors = new Map<string, string>()
 
+  private async ensureConsumerGroup(): Promise<void> {
+    try {
+      await this.redis.xgroup(
+        "CREATE",
+        this.config.streamKey,
+        this.config.consumerGroup,
+        "$",
+        "MKSTREAM",
+      )
+    } catch (err: unknown) {
+      if (err instanceof Error && !err.message.includes("BUSYGROUP")) {
+        logger.error({ err }, "[EventBus] ensureConsumerGroup failed")
+      }
+    }
+  }
+
   async startConsuming(
     consumerName: string,
     listeners: Partial<Record<keyof TEventMap, TListener[]>>,
@@ -157,6 +173,7 @@ export class BaseEventBus<
     this.running = true
     this.currentConsumerName = consumerName
     this.blockingRedis = this.redis.duplicate()
+    await this.ensureConsumerGroup()
 
     try {
       while (this.running) {
