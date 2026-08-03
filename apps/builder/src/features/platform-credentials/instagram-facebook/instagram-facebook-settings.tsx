@@ -208,7 +208,7 @@ export function EditInstagramFacebookSettingsForm({
           mode: "onChange",
           defaultValues: {
             clientId: publicConfig?.clientId ?? "",
-            version: publicConfig?.version ?? "v25.0",
+            version: publicConfig?.version ?? "v26.0",
             verifyToken: publicConfig?.verifyToken ?? "",
             clientSecret: "",
           } satisfies InstagramFacebookCredentialUpdate,
