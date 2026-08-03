@@ -33,7 +33,7 @@ import { scanCoexistRuns } from "./handlers/scan-coexist-runs"
 import { scanSmartDelay } from "./handlers/scan-smart-delay"
 import { syncUserQuota } from "./handlers/sync-user-quota"
 import { teardownExpiredTrial } from "./handlers/teardown-expired-trial"
-import { unsubscribeExpiredTrials } from "./handlers/unsubscribe-expired-trials"
+import { pollInstagramComments } from "./handlers/poll-instagram-comments"
 
 async function startScheduleWorker() {
   try {
@@ -92,6 +92,10 @@ async function startScheduleWorker() {
 
         case ScheduleJobData.cleanupWebhookExecutions:
           await cleanupWebhookExecutions()
+          return
+
+        case ScheduleJobData.pollInstagramComments:
+          await pollInstagramComments()
           return
 
         case ScheduleJobData.scanSmartDelay:

@@ -109,6 +109,20 @@ export const registerSchedules = async () => {
   )
 
   await scheduleQueue.upsertJobScheduler(
+    ScheduleJobData.pollInstagramComments,
+    {
+      pattern: "* * * * *",
+    },
+    {
+      name: ScheduleJobData.pollInstagramComments,
+      data: {
+        type: ScheduleJobData.pollInstagramComments,
+        data: {},
+      },
+    },
+  )
+
+  await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.scanSmartDelay,
     {
       pattern: "*/5 * * * *",
