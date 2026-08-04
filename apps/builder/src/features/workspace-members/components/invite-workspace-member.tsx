@@ -10,7 +10,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@chatbotx.io/ui/components/ui/dialog"
-import { Form } from "@chatbotx.io/ui/components/ui/form"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@chatbotx.io/ui/components/ui/form"
+import { Input } from "@chatbotx.io/ui/components/ui/input"
 import { Label } from "@chatbotx.io/ui/components/ui/label"
 import {
   Tooltip,
@@ -190,6 +198,24 @@ export function AddWorkspaceMemberForm({
   return (
     <Form {...form}>
       <form className="flex-1 space-y-6" onSubmit={handleSubmitWithAction}>
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("fields.email.label")}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t("fields.email.placeholder")}
+                  type="email"
+                  {...field}
+                  value={field.value ?? ""}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <Label>{t("fields.permissions.label")}</Label>
         <div className="flex flex-col gap-4">
           <SwitchField

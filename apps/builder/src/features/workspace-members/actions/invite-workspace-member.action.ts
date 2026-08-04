@@ -57,11 +57,12 @@ export const inviteWorkspaceMemberAction = workspaceActionClient
       .insert(invitationModel)
       .values({
         id: createId(),
+        email: parsedInput.email ? parsedInput.email.toLowerCase().trim() : null,
         code: SymbolicSnowflakeIDs.generate(),
         permissions: isCommunity()
           ? getSuperAdminPermissions()
           : normalizeContactsPermissions(parsedInput.permissions),
-        expiresAt: addDays(new Date(), 1),
+        expiresAt: addDays(new Date(), 7),
         workspaceId,
         invitedBy: ctx.user.id,
       })

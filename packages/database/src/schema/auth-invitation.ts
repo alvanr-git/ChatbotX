@@ -18,6 +18,7 @@ export const invitationModel = pgTable(
   "Invitation",
   {
     ...sharedColumns,
+    email: text("email"),
     code: text().notNull(),
     permissions: jsonb().$type<WorkspaceMemberPermissions>().notNull(),
     expiresAt: timestamp(timestampConfig).notNull(),

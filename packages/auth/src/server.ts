@@ -1,5 +1,6 @@
 import {
   customDomainService,
+  invitationService,
   platformCredentialService,
   resolveTenantSettingsByDomain,
 } from "@chatbotx.io/business"
@@ -305,14 +306,25 @@ function buildSocialProviders(
  * plan provisioning is strictly best-effort.
  */
 function buildDatabaseHooks(onUserCreated: AuthConfig["onUserCreated"]) {
-  if (!onUserCreated) {
-    return
-  }
-
   return {
     user: {
       create: {
+        before: async (user: Record<string, unknown>) => {
+          const email = typeof user.email === "string" ? user.email : ""
+          if (email) {
+            const isAllowed = await invitationService.isEmailAllowed(email)
+            if (!isAllowed) {
+              throw new APIError(400, {
+                message:
+                  "Signup is by invitation only. Please contact your workspace administrator for an invite link.",
+              })
+            }
+          }
+        },
         after: async (user: Record<string, unknown>) => {
+          if (!onUserCreated) {
+            return
+          }
           try {
             await onUserCreated({
               id: String(user.id),

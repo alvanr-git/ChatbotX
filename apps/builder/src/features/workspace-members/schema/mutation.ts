@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 export const inviteWorkspaceMemberRequest = z.object({
+  email: z.string().email().optional(),
   permissions: z
     .object({
       superAdmin: z.boolean(),
