@@ -11,6 +11,7 @@ import { Button } from "@chatbotx.io/ui/components/ui/button"
 import { Form } from "@chatbotx.io/ui/components/ui/form"
 import { Skeleton } from "@chatbotx.io/ui/components/ui/skeleton"
 import { SearchIcon, UserPlusIcon } from "lucide-react"
+import { cn } from "@chatbotx.io/ui/lib/utils"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
@@ -94,6 +95,7 @@ export default function ConversationList({
       botCategory: conversationBotCategories.enum.all,
       channel: channelTypes.enum.omnichannel,
       assignedId: assignerFilterTypes.enum.all,
+      source: undefined,
       tags: [],
       contactFilter: {
         operator: "and",
@@ -113,6 +115,50 @@ export default function ConversationList({
   return (
     <Form {...form}>
       <form className="flex h-full flex-col">
+        <div className="mb-3 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
+          <button
+            type="button"
+            className={cn(
+              "rounded-md py-1.5 text-xs font-semibold transition-all",
+              !filters.source
+                ? "bg-white text-zinc-950 shadow-sm dark:bg-zinc-700 dark:text-white"
+                : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+            )}
+            onClick={() => {
+              form.setValue("source", undefined)
+            }}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-md py-1.5 text-xs font-semibold transition-all",
+              filters.source === "inboundMessage"
+                ? "bg-white text-zinc-950 shadow-sm dark:bg-zinc-700 dark:text-white"
+                : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+            )}
+            onClick={() => {
+              form.setValue("source", "inboundMessage")
+            }}
+          >
+            DMs
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-md py-1.5 text-xs font-semibold transition-all",
+              filters.source === "comments"
+                ? "bg-white text-zinc-950 shadow-sm dark:bg-zinc-700 dark:text-white"
+                : "text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+            )}
+            onClick={() => {
+              form.setValue("source", "comments")
+            }}
+          >
+            Comments
+          </button>
+        </div>
         <div className="mb-2 flex items-center gap-1">
           <SelectField
             name="botCategory"

@@ -26,6 +26,7 @@ export type ConversationFilters = {
   channel?: ChannelType
   status?: ConversationStatus[]
   keyword?: string
+  source?: string
   tags?: ("noAdminReply" | "unread" | "followUp" | "archived" | "blocked")[]
   contactFilter?: ContactFilterRequest["contactFilter"]
 }

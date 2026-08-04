@@ -178,24 +178,17 @@ export default function ConversationItem({
             <span className="truncate text-start font-medium dark:text-gray-200">
               {conversation.contact?.fullName}
             </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span>
-                    {isComment ? (
-                      <MessageCircleMoreIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <MailIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    )}
-                  </span>
-                }
-              />
-              <TooltipContent align="center" side="top">
-                {isComment
-                  ? t("fields.comment.label")
-                  : t("fields.directMessage.label")}
-              </TooltipContent>
-            </Tooltip>
+            {isComment ? (
+              <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                <MessageCircleMoreIcon className="size-3" />
+                Comment
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
+                <MailIcon className="size-3" />
+                DM
+              </span>
+            )}
           </div>
           <div
             className={cn(
