@@ -15,17 +15,12 @@ x-service-common: &service-common
 
 x-worker-common: &worker-common
   <<: *service-common
-  build:
-    context: .
-    dockerfile: apps/worker/docker/Dockerfile
+  image: ghcr.io/alvanr-git/chatbotx/chatbotx-worker:latest
 
 services:
   builder:
     <<: *service-common
-    # image: chatbotx-builder:latest
-    build:
-      context: .
-      dockerfile: apps/builder/docker/Dockerfile
+    image: ghcr.io/alvanr-git/chatbotx/chatbotx-builder:latest
     ports:
       - "3123:3000"
     depends_on:
@@ -57,8 +52,6 @@ services:
 
   realtime:
     <<: *service-common
-    build:
-      context: .
-      dockerfile: apps/realtime/docker/Dockerfile
+    image: ghcr.io/alvanr-git/chatbotx/chatbotx-realtime:latest
     ports:
       - "1999:1999"
