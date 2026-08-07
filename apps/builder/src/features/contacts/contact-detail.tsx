@@ -220,6 +220,18 @@ export const ContactDetail = ({
             type: "shortText",
             readOnly: true,
           },
+          ...(activeContactInbox && 'username' in activeContactInbox && activeContactInbox.username
+            ? [
+                {
+                  key: "username",
+                  icon: AtSignIcon,
+                  label: "Username",
+                  value: `@${activeContactInbox.username}`,
+                  type: "shortText" as const,
+                  readOnly: true,
+                },
+              ]
+            : []),
           {
             key: "language",
             icon: LanguagesIcon,

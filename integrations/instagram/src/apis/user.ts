@@ -26,6 +26,7 @@ export const getUserProfile = ({
     const result: IncomingContact = {
       sourceId: psid,
       firstName: response.name,
+      username: response.username,
     }
 
     if (response.profile_pic) {

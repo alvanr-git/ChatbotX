@@ -27,6 +27,7 @@ export const getUserProfile = ({
       sourceId: String(psid),
       firstName: chat.first_name,
       lastName: chat.last_name,
+      username: chat.username,
     }
 
     if (chat.username) {

@@ -587,6 +587,7 @@ export const receiveComment = async (
     sourceId: commentData.fromId,
     sourceConversationId: commentData.postId,
     firstName: commentData.fromName,
+    username: commentData.fromName !== "instagram_user" ? commentData.fromName : undefined,
   }
 
   const detected = await detectContactAndConversation({
@@ -812,6 +813,15 @@ export const detectContactAndConversation = async (props: {
       contactId: existingContactInbox.contactId,
       sourceId: conversationSourceId,
     })
+
+    if (incomingContact.username && existingContactInbox.username !== incomingContact.username) {
+      await db
+        .update(contactInboxModel)
+        .set({ username: incomingContact.username })
+        .where(eq(contactInboxModel.id, existingContactInbox.id))
+      existingContactInbox.username = incomingContact.username
+    }
+
     return {
       contactInbox: existingContactInbox,
       contact: existingContactInbox.contact,
@@ -914,6 +924,7 @@ export const detectContactAndConversation = async (props: {
           sourceId: incomingContact.sourceId,
           channel: inbox.channel,
           language: finalizedProfile.language,
+          username: incomingContact.username,
         })
         .returning()
         .then((rows) => rows[0])

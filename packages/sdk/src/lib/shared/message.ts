@@ -14,6 +14,7 @@ export type IncomingContact = {
   locale?: string
   language?: string
   timezone?: string
+  username?: string
 }
 
 export type OutgoingContact = {
