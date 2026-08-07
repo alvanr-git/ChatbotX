@@ -207,6 +207,29 @@ The default Docker Compose stack includes:
 - MailHog SMTP on `1025` and UI on `8025`
 - Adminer on `8080`
 
+## 🚀 Custom Upgrades
+
+This repository includes several customizations and architectural upgrades tailored to our custom deployment workflow:
+
+### 1. Username/Handle Capture & Display
+* Captures the commenter's or sender's platform-specific handle/username (e.g. `@username`) for Instagram and Telegram.
+* Automatically syncs and updates the username in the `ContactInbox` table.
+* Displays the username details directly inside the Live Chat Inbox contact details sidebar with an `@` prefix.
+
+### 2. Segmented Inbox Tabs & Badges
+* Added a Segmented Controller to the Inbox to filter conversation threads by **All**, **DMs**, and **Comments**.
+* Integrated visual badges (`✉️ DM` in Sky Blue and `💬 Comment` in Amber Gold) to easily identify thread sources.
+
+### 3. Allowed Emails Registration Filter
+* Restricts signup/registration flow to a whitelist database table (`AllowedInvitationEmails`), making the platform invite-only for specific workspace testing.
+
+### 4. Cloud Build & Deploy Pipeline (CI/CD)
+* Migrated Docker builds from the host VM to a free **GitHub Actions** CI/CD pipeline using **GitHub Container Registry (GHCR)**.
+* Prevents CPU locks and compiler deadlocks on the GCP VM. Updates are pulled and spun up in seconds using:
+  ```bash
+  sudo docker compose -f docker-compose.dev.yml pull && sudo docker compose -f docker-compose.dev.yml up -d
+  ```
+
 ## Support
 
 If ChatbotX helps you avoid expensive chatbot automation tools, please give us a ⭐ on GitHub.
