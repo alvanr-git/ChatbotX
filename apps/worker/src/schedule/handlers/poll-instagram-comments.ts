@@ -56,7 +56,7 @@ export const pollInstagramComments = async (): Promise<void> => {
         const mediaItems = mediaData.data ?? []
 
         for (const media of mediaItems) {
-          const commentsUrl = `https://graph.facebook.com/${version}/${media.id}/comments?fields=id,text,timestamp,from,parent_id&limit=25&access_token=${accessToken}`
+          const commentsUrl = `https://graph.facebook.com/${version}/${media.id}/comments?fields=id,text,timestamp,from{id,username},parent_id&limit=25&access_token=${accessToken}`
           const commentsRes = await fetch(commentsUrl)
           if (!commentsRes.ok) continue
           const commentsData = (await commentsRes.json()) as CommentsResponse
