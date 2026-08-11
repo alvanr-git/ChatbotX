@@ -79,7 +79,7 @@ export async function listInstagramLoginMedia(workspaceId: string) {
     "instagram",
   )
   if (integrations.length === 0) {
-    const fbIntegrations = await findInstagramIntegrationsByWorkspaceId(
+    const fbIntegrations = await instagramIntegrationService.findByWorkspaceId(
       workspaceId,
       "facebook",
     )
@@ -102,7 +102,7 @@ export async function listInstagramFacebookMedia(workspaceId: string) {
     "facebook",
   )
   if (integrations.length === 0) {
-    const directIntegrations = await findInstagramIntegrationsByWorkspaceId(
+    const directIntegrations = await instagramIntegrationService.findByWorkspaceId(
       workspaceId,
       "instagram",
     )

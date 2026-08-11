@@ -24,7 +24,7 @@ const markerPair = (name) => ({
 const extractMarkedSection = (content, name) => {
   const { begin, end } = markerPair(name)
   const pattern = new RegExp(
-    `${escapeRegExp(begin)}\\n([\\s\\S]*?)\\n${escapeRegExp(end)}`,
+    `${escapeRegExp(begin)}\\r?\\n([\\s\\S]*?)\\r?\\n${escapeRegExp(end)}`,
     "g",
   )
   const matches = [...content.matchAll(pattern)]
@@ -41,7 +41,7 @@ const extractMarkedSection = (content, name) => {
 const replaceMarkedSection = (content, name, replacement) => {
   const { begin, end } = markerPair(name)
   const pattern = new RegExp(
-    `${escapeRegExp(begin)}\\n[\\s\\S]*?\\n${escapeRegExp(end)}`,
+    `${escapeRegExp(begin)}\\r?\\n[\\s\\S]*?\\r?\\n${escapeRegExp(end)}`,
     "g",
   )
   const matches = content.match(pattern)

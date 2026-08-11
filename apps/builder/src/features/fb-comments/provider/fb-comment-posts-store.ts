@@ -43,7 +43,6 @@ export const createFbCommentPostsStore = (
     error: null,
     initialized: false,
 
-    workspaceId: "",
     publishedPosts: [],
     adsPosts: [],
     reelsPosts: [],

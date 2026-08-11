@@ -16,16 +16,18 @@ class FbCommentAutomationService extends BaseService {
     const isInstagram =
       props.channelType === "instagram" ||
       props.channelType === "instagramFacebook"
-    return db.query.fbCommentAutomationModel.findMany({
-      where: (fields, { and, eq, inArray }) =>
+    return db
+      .select()
+      .from(fbCommentAutomationModel)
+      .where(
         and(
-          eq(fields.workspaceId, props.workspaceId),
-          eq(fields.isActive, true),
+          eq(fbCommentAutomationModel.workspaceId, props.workspaceId),
+          eq(fbCommentAutomationModel.isActive, true),
           isInstagram
-            ? inArray(fields.type, ["instagram", "instagramFacebook"])
-            : eq(fields.type, props.channelType),
+            ? inArray(fbCommentAutomationModel.type, ["instagram", "instagramFacebook"])
+            : eq(fbCommentAutomationModel.type, props.channelType),
         ),
-    })
+      )
   }
 
   isWithinSchedule(
