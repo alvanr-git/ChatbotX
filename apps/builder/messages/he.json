@@ -21,6 +21,8 @@
     "assign": "הקצאה",
     "assignConversation": "הקצאת שיחה",
     "back": "חזרה",
+    "billing": "חיוב",
+    "redeem": "מימוש קוד",
     "blockContact": "חסימת איש קשר",
     "unblockContact": "ביטול חסימת איש קשר",
     "undo": "ביטול",
@@ -156,7 +158,8 @@
     "assignConversation": "הקצאת שיחה",
     "assignedToMe": "הוקצה לי",
     "assignedTo": "הוקצה אל {name}",
-    "unAssigned": "לא הוקצה"
+    "unAssigned": "לא הוקצה",
+    "user": "משתמש"
   },
   "aiAgent": {
     "defaultAgent": "סוכן ברירת מחדל",
@@ -823,6 +826,9 @@
     "noWorkspaces": "אין לכם עדיין סביבות עבודה.",
     "owner": "בעלים"
   },
+  "editProfile": {
+    "title": "עריכת פרופיל"
+  },
   "channels": {
     "title": "ערוצים",
     "duplicated": {
@@ -843,6 +849,16 @@
         "cancelled": "החיבור מחדש בוטל. נסו שוב והעניקו את ההרשאות המבוקשות.",
         "failed": "החיבור מחדש נכשל. נסו שוב."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "דחוף",
+      "description": "הערוצים הבאים לא הצליחו לרענן את אסימון הגישה שלהם באופן אוטומטי. התחבר מחדש כדי להמשיך לשלוח ולקבל הודעות.",
+      "cta": "חיבור מחדש"
+    },
+    "refreshAllTokens": {
+      "button": "רענון כל ההרשאות",
+      "resultSuccess": "רוענן {refreshed} ערוצים.",
+      "resultWithFailures": "רוענן {refreshed} ערוצים, {failed} נכשלו."
     }
   },
   "workspace": {
@@ -911,6 +927,7 @@
     "changeHideState": "שינוי מצב הסתרה",
     "commentHidden": "תגובה זו הוסתרה",
     "messageDeleted": "ההודעה נמחקה.",
+    "repliedToStory": "הגיב לסטורי שלך",
     "sentAttachments": "נשלחו {count, plural, one {קובץ מצורף אחד} other {# קבצים מצורפים}}",
     "deleteComment": "מחיקת תגובה",
     "deleteCommentConfirmation": "האם למחוק תגובה זו? גם התשובות שלה יימחקו, הן מתיבת הדואר הנכנס והן מ-Facebook. לא ניתן לבטל פעולה זו.",
@@ -1090,6 +1107,7 @@
     "title": "לסנכרן אנשי קשר קיימים והיסטוריית צ'אט?",
     "descriptionWhatsapp": "כאשר האפשרות מופעלת, אנשי קשר ועד 6 חודשים של היסטוריית צ'אט ייובאו ממספר WhatsApp זה.",
     "descriptionMessenger": "כאשר האפשרות מופעלת, אנשי קשר קיימים ב-Messenger ועד 3 חודשים של היסטוריית שיחות ייובאו מדף זה.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "הפעלת סנכרון",
     "decline": "ללא סנכרון",
     "billingNote": "עיבוד דפים גדולים עשוי להימשך מספר שעות.",
@@ -1192,6 +1210,9 @@
   "auth": {
     "orContinueWith": "או המשך באמצעות",
     "continueWithFacebook": "המשך באמצעות Facebook",
+    "continueWithGoogle": "המשך באמצעות Google",
+    "continueWithEmail": "המשך באמצעות אימייל",
+    "continueWithMagicLink": "המשך באמצעות קישור קסם",
     "dontHaveAnAccount": "אין לכם חשבון?",
     "alreadyHaveAnAccount": "כבר יש לכם חשבון?",
     "signUp": "הרשמה",
@@ -1604,7 +1625,20 @@
   },
   "auditLogs": { "title": "יומני ביקורת" },
   "customFields": { "title": "שדות מותאמים אישית" },
-  "keywords": { "title": "מילות מפתח" },
+  "keywords": {
+    "title": "מילות מפתח",
+    "tabs": {
+      "contact": "איש קשר",
+      "page": "עמוד"
+    },
+    "descriptions": {
+      "contactTitle": "מילות מפתח של איש קשר",
+      "contact": "השב באופן אוטומטי כאשר איש קשר שולח הודעה המכילה מילת מפתח לסביבת העבודה שלך.",
+      "pageTitle": "מילות מפתח של עמוד",
+      "page": "השב באופן אוטומטי כאשר אתה שולח הודעה המכילה מילת מפתח לאיש קשר."
+    },
+    "pageWarning": "תוכן הודעה המכיל מילת מפתח לעמוד עלול לגרום לשליחת הודעות ללקוח בלופ אינסופי. השבת את מילת המפתח לעמוד באופן מיידי אם נתקלת במקרה זה!"
+  },
   "triggers": { "title": "גורמים מפעילים" },
   "users": { "title": "משתמשים" },
   "sequences": {
@@ -2120,9 +2154,10 @@
     }
   },
   "platformChannels": {
-    "title": "ערוצים מותרים",
-    "description": "בחרו אילו סוגי ערוצים יוכלו סביבות העבודה בדייר זה ליצור.",
-    "hint": "השאירו את כל הערוצים לא מסומנים כדי לאפשר את כולם."
+    "title": "ערוצים מוסתרים",
+    "description": "סמנו ערוץ כדי למנוע מסביבות העבודה בדייר זה ליצור אותו.",
+    "hint": "השאירו את כל הערוצים לא מסומנים כדי לאפשר את כולם.",
+    "hiddenByPlatform": "הוסתר על ידי מנהל הפלטפורמה — לא ניתן להפעיל מחדש ערוץ זה."
   },
   "platformEmailTemplates": {
     "title": "תבניות דוא\"ל",
@@ -2169,6 +2204,7 @@
     "portalUsers": "חשבונות משנה",
     "portalWorkspaces": "סביבות עבודה",
     "portalPlans": "תוכניות",
+    "portalTopUpPacks": "חבילות טעינה",
     "portalUsage": "שימוש",
     "portalCustomDomain": "דומיין מותאם אישית",
     "portalPaymentProcessor": "מעבד תשלומים",
@@ -3898,6 +3934,7 @@
     "title": "חיוב",
     "plan": {
       "label": "תוכנית: {plan}",
+      "currentLabel": "התוכנית הנוכחית",
       "free": "חינם"
     },
     "usage": {

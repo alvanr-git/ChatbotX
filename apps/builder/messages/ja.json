@@ -21,6 +21,8 @@
     "assign": "割り当て",
     "assignConversation": "会話を割り当て",
     "back": "戻る",
+    "billing": "請求",
+    "redeem": "コード引き換え",
     "blockContact": "連絡先をブロック",
     "unblockContact": "連絡先のブロックを解除",
     "undo": "元に戻す",
@@ -156,7 +158,8 @@
     "assignConversation": "会話を割り当て",
     "assignedToMe": "自分に割り当て済み",
     "assignedTo": "{name}に割り当て済み",
-    "unAssigned": "未割り当て"
+    "unAssigned": "未割り当て",
+    "user": "ユーザー"
   },
   "aiAgent": {
     "defaultAgent": "デフォルトエージェント",
@@ -286,6 +289,7 @@
     "title": "請求",
     "plan": {
       "label": "プラン：{plan}",
+      "currentLabel": "現在のプラン",
       "free": "無料"
     },
     "usage": {
@@ -2510,6 +2514,16 @@
         "cancelled": "再接続がキャンセルされました。もう一度試し、要求された権限を許可してください。",
         "failed": "再接続に失敗しました。もう一度お試しください。"
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "緊急",
+      "description": "以下のチャンネルはアクセストークンの自動更新に失敗しました。メッセージの送受信を続けるには再接続してください。",
+      "cta": "再接続"
+    },
+    "refreshAllTokens": {
+      "button": "すべての権限を更新",
+      "resultSuccess": "{refreshed} 件のチャネルを更新しました。",
+      "resultWithFailures": "{refreshed} 件のチャネルを更新しました。{failed} 件は失敗しました。"
     }
   },
   "workspace": {
@@ -2584,6 +2598,7 @@
     "changeHideState": "非表示状態を変更",
     "commentHidden": "このコメントは非表示になりました",
     "messageDeleted": "メッセージは削除されました。",
+    "repliedToStory": "あなたのストーリーに返信しました",
     "sentAttachments": "{count, plural, one {添付ファイル1件を送信} other {添付ファイル#件を送信}}",
     "deleteComment": "コメントを削除",
     "deleteCommentConfirmation": "このコメントを削除してもよろしいですか？返信も受信トレイとFacebookの両方から削除されます。この操作は元に戻せません。",
@@ -2679,6 +2694,7 @@
     "title": "既存の連絡先とチャット履歴を同期しますか？",
     "descriptionWhatsapp": "有効にすると、このWhatsApp番号から連絡先と最大6か月分のチャット履歴がインポートされます。",
     "descriptionMessenger": "有効にすると、このページから既存のMessenger連絡先と最大3か月分の会話履歴がインポートされます。",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "同期を有効化",
     "decline": "同期しない",
     "billingNote": "規模の大きいページでは、完了までに数時間かかる場合があります。",
@@ -2878,6 +2894,9 @@
   "auth": {
     "orContinueWith": "または次の方法で続行",
     "continueWithFacebook": "Facebookで続行",
+    "continueWithGoogle": "Googleで続行",
+    "continueWithEmail": "メールで続行",
+    "continueWithMagicLink": "マジックリンクで続行",
     "dontHaveAnAccount": "アカウントをお持ちでないですか？",
     "alreadyHaveAnAccount": "すでにアカウントをお持ちですか？",
     "signUp": "新規登録",
@@ -3359,7 +3378,18 @@
     "title": "カスタムフィールド"
   },
   "keywords": {
-    "title": "キーワード"
+    "title": "キーワード",
+    "tabs": {
+      "contact": "連絡先",
+      "page": "ページ"
+    },
+    "descriptions": {
+      "contactTitle": "連絡先キーワード",
+      "contact": "連絡先があなたのワークスペースにキーワードを含むメッセージを送信したときに自動的に返信します。",
+      "pageTitle": "ページキーワード",
+      "page": "あなたが連絡先にキーワードを含むメッセージを送信したときに自動的に返信します。"
+    },
+    "pageWarning": "ページキーワードを含むメッセージの内容が、無限ループで顧客にメッセージを送信する原因となる可能性があります。この状況が発生した場合は、直ちにページキーワードを無効にしてください!"
   },
   "triggers": {
     "title": "トリガー"
@@ -3843,6 +3873,9 @@
     "noWorkspaces": "ワークスペースはまだありません。",
     "owner": "所有者"
   },
+  "editProfile": {
+    "title": "プロフィールを編集"
+  },
   "ecommerce": {
     "title": "Eコマース",
     "description": "Eコマースストアを作成・管理します。"
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "許可するチャネル",
-    "description": "このテナントのワークスペースが作成できるチャネルの種類を選択します。",
-    "hint": "すべてのチャネルを許可するには、どのチャネルにもチェックを入れないでください。"
+    "title": "非表示のチャネル",
+    "description": "チェックを入れると、このテナントのワークスペースはそのチャネルを作成できなくなります。",
+    "hint": "すべてのチャネルを許可するには、どのチャネルにもチェックを入れないでください。",
+    "hiddenByPlatform": "プラットフォーム管理者によって非表示にされています。このチャネルを再度有効にすることはできません。"
   },
   "platformEmailTemplates": {
     "title": "メールテンプレート",
@@ -3953,6 +3987,7 @@
     "portalUsers": "サブアカウント",
     "portalWorkspaces": "ワークスペース",
     "portalPlans": "プラン",
+    "portalTopUpPacks": "追加チャージパック",
     "portalUsage": "使用状況",
     "portalCustomDomain": "カスタムドメイン",
     "portalPaymentProcessor": "決済サービス",

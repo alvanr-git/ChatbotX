@@ -239,6 +239,22 @@ export type AuthCreatedUser = {
   isAnonymous?: boolean
 }
 
+/**
+ * A patch an `upgradeOAuthAccount` hook may apply to an OAuth `Account` row
+ * before better-auth persists it (e.g. swapping a short-lived token for a
+ * long-lived one).
+ */
+export type AuthOAuthAccountPatch = {
+  accessToken?: string | null
+  accessTokenExpiresAt?: Date | null
+}
+
+/** The subset of an `Account` row an `upgradeOAuthAccount` hook can inspect. */
+export type AuthOAuthAccount = {
+  providerId: string
+  accessToken: string | null
+}
+
 export type AuthConfig = {
   /**
    * The per-provider OAuth apps this instance signs in with. A provider is
@@ -247,6 +263,23 @@ export type AuthConfig = {
   socialCredentials?: Partial<
     Record<SocialProvider, SocialAuthCredential | null>
   >
+  /**
+   * Extra scopes requested at authorize time for a provider, REPLACING (not
+   * appending to) better-auth's own default scope list — packages/auth has no
+   * opinion on what the scopes mean; the caller (builder) supplies them.
+   */
+  socialScopes?: Partial<Record<SocialProvider, string[]>>
+  /**
+   * Called from `account.create.before` / `account.update.before`, right
+   * before better-auth persists an OAuth account row — on every social
+   * sign-in, not just the first. Return a patch to upgrade the row before it's
+   * written (e.g. Facebook short-lived → long-lived token exchange).
+   * Best-effort: errors are caught and the original data is persisted
+   * unmodified. Omit to disable.
+   */
+  upgradeOAuthAccount?: (
+    account: AuthOAuthAccount,
+  ) => Promise<AuthOAuthAccountPatch | undefined>
   /**
    * Called once after a new `User` row is created, on every sign-up path
    * (email/password, social, magic link). The builder wires this to provision
@@ -264,6 +297,7 @@ export type AuthConfig = {
  */
 function buildSocialProviders(
   socialCredentials: AuthConfig["socialCredentials"],
+  socialScopes: AuthConfig["socialScopes"],
 ) {
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD || !socialCredentials) {
     return
@@ -272,13 +306,19 @@ function buildSocialProviders(
   const providers: Partial<
     Record<
       SocialProvider,
-      { enabled: true; redirectURI: string } & SocialAuthCredential
+      {
+        enabled: true
+        redirectURI: string
+        scope?: string[]
+        disableDefaultScope?: boolean
+      } & SocialAuthCredential
     >
   > = {}
   const brokerOrigin = new URL(getBrokerUrl()).origin
   for (const provider of SOCIAL_PROVIDERS) {
     const credential = socialCredentials[provider]
     if (credential?.clientId && credential.clientSecret) {
+      const scope = socialScopes?.[provider]
       providers[provider] = {
         enabled: true,
         clientId: credential.clientId,
@@ -291,6 +331,10 @@ function buildSocialProviders(
           `/api/auth/callback/${provider}`,
           brokerOrigin,
         ).toString(),
+        // Replace (not append to) better-auth's own default scope list when the
+        // caller supplies one, so the caller-provided scopes are the single
+        // source of truth regardless of the provider's internal defaults.
+        ...(scope && { scope, disableDefaultScope: true }),
       }
     }
   }
@@ -299,32 +343,35 @@ function buildSocialProviders(
 }
 
 /**
- * Build the `databaseHooks` that fire `config.onUserCreated` after a new user
- * row is written. Returns `undefined` when no callback is configured so
- * better-auth keeps its default behavior. The callback is awaited inside a
- * try/catch — a throwing after-hook would otherwise abort sign-up, and default
- * plan provisioning is strictly best-effort.
+ * Build the `databaseHooks` block: `user.create.after` fires
+ * `config.onUserCreated`; `account.create.before` / `account.update.before`
+ * fire `config.upgradeOAuthAccount` right before an OAuth account row is
+ * persisted (e.g. Facebook short-lived → long-lived token exchange, run on
+ * every social sign-in — a returning user hits `update`, not `create`).
+ * Returns `undefined` when neither is configured so better-auth keeps its
+ * default behavior. Both hooks are best-effort: a throwing hook never blocks
+ * sign-up/sign-in, and on failure the original data is persisted unmodified.
  */
-function buildDatabaseHooks(onUserCreated: AuthConfig["onUserCreated"]) {
-  return {
-    user: {
-      create: {
-        before: async (user: Record<string, unknown>) => {
-          const email = typeof user.email === "string" ? user.email : ""
-          if (email) {
-            const isAllowed = await invitationService.isEmailAllowed(email)
-            if (!isAllowed) {
-              throw new APIError(400, {
-                message:
-                  "Signup is by invitation only. Please contact your workspace administrator for an invite link.",
-              })
-            }
+function buildDatabaseHooks({
+  onUserCreated,
+  upgradeOAuthAccount,
+}: Pick<AuthConfig, "onUserCreated" | "upgradeOAuthAccount">) {
+  const userHooks = {
+    create: {
+      before: async (user: Record<string, unknown>) => {
+        const email = typeof user.email === "string" ? user.email : ""
+        if (email) {
+          const isAllowed = await invitationService.isEmailAllowed(email)
+          if (!isAllowed) {
+            throw new APIError(400, {
+              message:
+                "Signup is by invitation only. Please contact your workspace administrator for an invite link.",
+            })
           }
-        },
+        }
+      },
+      ...(onUserCreated && {
         after: async (user: Record<string, unknown>) => {
-          if (!onUserCreated) {
-            return
-          }
           try {
             await onUserCreated({
               id: String(user.id),
@@ -337,20 +384,57 @@ function buildDatabaseHooks(onUserCreated: AuthConfig["onUserCreated"]) {
                   : undefined,
             })
           } catch {
-            // Best-effort: provisioning must never block sign-up. The callback
-            // is responsible for logging its own failures.
+            // Best-effort: provisioning must never block sign-up. The
+            // callback is responsible for logging its own failures.
           }
         },
-      },
+      }),
     },
+  }
+
+  const upgradeAccountBeforeHook = upgradeOAuthAccount
+    ? async (account: Record<string, unknown>) => {
+        try {
+          const patch = await upgradeOAuthAccount({
+            providerId: String(account.providerId),
+            accessToken:
+              typeof account.accessToken === "string"
+                ? account.accessToken
+                : null,
+          })
+          if (!patch) {
+            return
+          }
+          return { data: { ...account, ...patch } }
+        } catch {
+          // Best-effort: a failed token upgrade must never block sign-in —
+          // the original (short-lived) token is persisted instead.
+        }
+      }
+    : undefined
+
+  return {
+    user: userHooks,
+    ...(upgradeAccountBeforeHook && {
+      account: {
+        create: { before: upgradeAccountBeforeHook },
+        update: { before: upgradeAccountBeforeHook },
+      },
+    }),
   }
 }
 
 export function createAuth(config: AuthConfig) {
-  const socialProviders = buildSocialProviders(config.socialCredentials)
+  const socialProviders = buildSocialProviders(
+    config.socialCredentials,
+    config.socialScopes,
+  )
 
   return betterAuth({
-    databaseHooks: buildDatabaseHooks(config.onUserCreated),
+    databaseHooks: buildDatabaseHooks({
+      onUserCreated: config.onUserCreated,
+      upgradeOAuthAccount: config.upgradeOAuthAccount,
+    }),
     database: createTenantScopedAdapter(
       drizzleAdapter(db, {
         provider: "pg",
@@ -393,6 +477,22 @@ export function createAuth(config: AuthConfig) {
       // better-auth's `parseGenericState`) plus the origin allowlist in
       // `oauth-referer.ts`, so the cookie check is safe to skip here.
       skipStateCookieCheck: true,
+      accountLinking: {
+        enabled: true,
+        // Trust our own social providers' email claims. Google's id token
+        // always carries an accurate `email_verified`, but Facebook's Graph
+        // API never returns one at all — better-auth's link-account guard
+        // then falls back to treating the email as unverified and refuses to
+        // link, so ANY existing account (password, magic link, or the other
+        // social provider) sharing that email hits "account not linked" on
+        // every Facebook sign-in. Both providers gate signup on owning the
+        // mailbox, so trusting them here is safe; `requireLocalEmailVerified`
+        // (default true, left untouched below) still requires the *local*
+        // side of the match to be a verified account before linking, which is
+        // what keeps this from being an account-takeover vector via an
+        // unverified placeholder signup.
+        trustedProviders: [...SOCIAL_PROVIDERS],
+      },
       additionalFields: {
         tenantId: {
           type: "string",

@@ -21,6 +21,8 @@
     "assign": "Attribuer",
     "assignConversation": "Attribuer la conversation",
     "back": "Retour",
+    "billing": "Facturation",
+    "redeem": "Utiliser un code",
     "blockContact": "Bloquer le contact",
     "unblockContact": "Débloquer le contact",
     "undo": "Annuler",
@@ -156,7 +158,8 @@
     "assignConversation": "Attribuer la conversation",
     "assignedToMe": "Attribuée à moi",
     "assignedTo": "Attribuée à {name}",
-    "unAssigned": "Non attribuée"
+    "unAssigned": "Non attribuée",
+    "user": "Utilisateur"
   },
   "aiAgent": {
     "defaultAgent": "Agent par défaut",
@@ -286,6 +289,7 @@
     "title": "Facturation",
     "plan": {
       "label": "Forfait : {plan}",
+      "currentLabel": "Forfait actuel",
       "free": "Gratuit"
     },
     "usage": {
@@ -1900,6 +1904,9 @@
     "noWorkspaces": "Vous n’avez pas encore d’espace de travail.",
     "owner": "Propriétaire"
   },
+  "editProfile": {
+    "title": "Modifier le profil"
+  },
   "channels": {
     "title": "Canaux",
     "duplicated": {
@@ -1920,6 +1927,16 @@
         "cancelled": "La reconnexion a été annulée. Réessayez et accordez les autorisations demandées.",
         "failed": "Échec de la reconnexion. Veuillez réessayer."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgent",
+      "description": "Les canaux suivants n'ont pas pu actualiser automatiquement leur jeton d'accès. Reconnectez-les pour continuer à envoyer et recevoir des messages.",
+      "cta": "Reconnecter"
+    },
+    "refreshAllTokens": {
+      "button": "Actualiser toutes les autorisations",
+      "resultSuccess": "{refreshed} canal/canaux actualisé(s).",
+      "resultWithFailures": "{refreshed} canal/canaux actualisé(s), {failed} en échec."
     }
   },
   "workspace": {
@@ -1988,6 +2005,7 @@
     "changeHideState": "Modifier l’état masqué",
     "commentHidden": "Ce commentaire a été masqué",
     "messageDeleted": "Le message a été supprimé.",
+    "repliedToStory": "A répondu à votre story",
     "sentAttachments": "{count, plural, one {1 pièce jointe envoyée} other {# pièces jointes envoyées}}",
     "deleteComment": "Supprimer le commentaire",
     "deleteCommentConfirmation": "Voulez-vous vraiment supprimer ce commentaire ? Ses réponses seront également supprimées de votre boîte de réception et de Facebook. Cette action est irréversible.",
@@ -2083,6 +2101,7 @@
     "title": "Synchroniser les contacts existants et l’historique des discussions ?",
     "descriptionWhatsapp": "Si cette option est activée, les contacts et jusqu’à 6 mois d’historique seront importés depuis ce numéro WhatsApp.",
     "descriptionMessenger": "Si cette option est activée, les contacts Messenger existants et jusqu’à 3 mois d’historique seront importés depuis cette Page.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Activer la synchronisation",
     "decline": "Ne pas synchroniser",
     "billingNote": "La synchronisation des grandes pages peut prendre plusieurs heures.",
@@ -2278,6 +2297,9 @@
   "auth": {
     "orContinueWith": "Ou continuer avec",
     "continueWithFacebook": "Continuer avec Facebook",
+    "continueWithGoogle": "Continuer avec Google",
+    "continueWithEmail": "Continuer avec l'e-mail",
+    "continueWithMagicLink": "Continuer avec le lien magique",
     "dontHaveAnAccount": "Vous n’avez pas de compte ?",
     "alreadyHaveAnAccount": "Vous avez déjà un compte ?",
     "signUp": "S’inscrire",
@@ -2698,7 +2720,20 @@
   },
   "auditLogs": { "title": "Journaux d’audit" },
   "customFields": { "title": "Champs personnalisés" },
-  "keywords": { "title": "Mots-clés" },
+  "keywords": {
+    "title": "Mots-clés",
+    "tabs": {
+      "contact": "Contact",
+      "page": "Page"
+    },
+    "descriptions": {
+      "contactTitle": "Mots-clés de contact",
+      "contact": "Répond automatiquement lorsqu'un contact envoie un message contenant un mot-clé à votre workspace.",
+      "pageTitle": "Mots-clés de page",
+      "page": "Répond automatiquement lorsque vous envoyez un message contenant un mot-clé à un contact."
+    },
+    "pageWarning": "Un message contenant un mot-clé de Page peut entraîner l'envoi de messages au contact en boucle infinie. Désactivez immédiatement le mot-clé de Page si cela se produit !"
+  },
   "triggers": { "title": "Déclencheurs" },
   "users": { "title": "Utilisateurs" },
   "sequences": {
@@ -3214,9 +3249,10 @@
     }
   },
   "platformChannels": {
-    "title": "Canaux autorisés",
-    "description": "Choisissez les types de canaux que les espaces de travail de ce locataire peuvent créer.",
-    "hint": "Ne cochez aucun canal pour tous les autoriser."
+    "title": "Canaux masqués",
+    "description": "Cochez un canal pour empêcher les espaces de travail de ce locataire de le créer.",
+    "hint": "Ne cochez aucun canal pour tous les autoriser.",
+    "hiddenByPlatform": "Masqué par l'administrateur de la plateforme — vous ne pouvez pas réactiver ce canal."
   },
   "platformEmailTemplates": {
     "title": "Modèles d’e-mail",
@@ -3263,6 +3299,7 @@
     "portalUsers": "Sous-comptes",
     "portalWorkspaces": "Espaces de travail",
     "portalPlans": "Forfaits",
+    "portalTopUpPacks": "Packs de recharge",
     "portalUsage": "Utilisation",
     "portalCustomDomain": "Domaine personnalisé",
     "portalPaymentProcessor": "Processeur de paiement",

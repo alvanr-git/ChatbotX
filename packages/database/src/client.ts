@@ -50,6 +50,11 @@ export type Transaction = Parameters<
 export type { PgTable } from "drizzle-orm/pg-core"
 export type DatabaseClient = typeof db | Transaction
 
+// Side-effect-free hypertable helpers (kept out of this module so they can be
+// imported without booting the connection pool). Re-exported here so callers
+// keep using the single `@chatbotx.io/database/client` entrypoint.
+export { liftDecompressionLimit } from "./timescale"
+
 export const countWithRelationsFilter = <TTable extends PgTable>(props: {
   client?: DatabaseClient
   table: TTable
@@ -210,4 +215,60 @@ export const isUniqueViolationError = (
   const cause = error.cause as { constraint?: unknown }
 
   return cause.constraint === constraint
+}
+
+export type DatabaseErrorDescription = {
+  code?: string
+  constraint?: string
+  detail?: string
+  message?: string
+  table?: string
+}
+
+export function describeDatabaseError(
+  error: unknown,
+): DatabaseErrorDescription {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && current; depth++) {
+    if (typeof current !== "object") {
+      break
+    }
+
+    const candidate = current as {
+      cause?: unknown
+      code?: unknown
+      constraint?: unknown
+      constraint_name?: unknown
+      detail?: unknown
+      message?: unknown
+      table?: unknown
+    }
+
+    if (typeof candidate.code === "string") {
+      return {
+        code: candidate.code,
+        constraint: firstStringField(
+          candidate.constraint,
+          candidate.constraint_name,
+        ),
+        detail: stringField(candidate.detail),
+        message: stringField(candidate.message),
+        table: stringField(candidate.table),
+      }
+    }
+
+    current = candidate.cause
+  }
+
+  return {
+    message: error instanceof Error ? error.message : String(error),
+  }
+}
+
+function firstStringField(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string")
+}
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
 }

@@ -22,6 +22,8 @@
     "assign": "Gán",
     "assignConversation": "Gán cuộc trò chuyện",
     "back": "Quay lại",
+    "billing": "Thanh toán",
+    "redeem": "Đổi mã",
     "blockContact": "Chặn liên hệ",
     "unblockContact": "Bỏ chặn liên hệ",
     "undo": "Hoàn tác",
@@ -41,6 +43,7 @@
     "disableBot": "Tắt bot",
     "disconnect": "Ngắt kết nối",
     "download": "Tải xuống",
+    "downloadTemplate": "Tải mẫu",
     "edit": "Chỉnh sửa",
     "editFeature": "Chỉnh sửa {feature}",
     "enableBot": "Bật bot",
@@ -156,7 +159,8 @@
     "assignConversation": "Gán cuộc trò chuyện",
     "assignedToMe": "Đã gán cho tôi",
     "assignedTo": "Đã gán cho {name}",
-    "unAssigned": "Chưa gán"
+    "unAssigned": "Chưa gán",
+    "user": "Người dùng"
   },
   "aiAgent": {
     "defaultAgent": "Agent mặc định",
@@ -286,6 +290,7 @@
     "title": "Thanh toán",
     "plan": {
       "label": "Gói: {plan}",
+      "currentLabel": "Gói hiện tại",
       "free": "Miễn phí"
     },
     "usage": {
@@ -613,6 +618,16 @@
         "cancelled": "Kết nối lại đã bị huỷ. Vui lòng thử lại và cấp các quyền được yêu cầu.",
         "failed": "Kết nối lại thất bại. Vui lòng thử lại."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Khẩn cấp",
+      "description": "Các channel dưới đây đã tự động làm mới access token bị lỗi. Vui lòng kết nối lại để tiếp tục gửi và nhận tin nhắn.",
+      "cta": "Kết nối lại"
+    },
+    "refreshAllTokens": {
+      "button": "Làm mới tất cả quyền",
+      "resultSuccess": "Đã làm mới {refreshed} channel.",
+      "resultWithFailures": "Đã làm mới {refreshed} channel, {failed} bị lỗi."
     }
   },
   "workspace": {
@@ -2572,6 +2587,9 @@
     "noWorkspaces": "Bạn chưa có không gian làm việc nào.",
     "owner": "Chủ sở hữu"
   },
+  "editProfile": {
+    "title": "Chỉnh sửa hồ sơ"
+  },
   "messages": {
     "moveFeature": "Di chuyển {feature}",
     "poweredBy": "Được cung cấp bởi {name}",
@@ -2602,6 +2620,7 @@
     "changeHideState": "Thay đổi trạng thái ẩn",
     "commentHidden": "Bình luận này đã bị ẩn",
     "messageDeleted": "Tin nhắn này đã bị xoá.",
+    "repliedToStory": "Đã trả lời story của bạn",
     "sentAttachments": "Đã gửi {count, plural, one {1 tệp đính kèm} other {# tệp đính kèm}}",
     "deleteComment": "Xóa bình luận",
     "deleteCommentConfirmation": "Bạn có chắc muốn xóa bình luận này? Các bình luận trả lời cũng sẽ bị xóa, cả trong hộp thư và trên Facebook. Hành động này không thể hoàn tác.",
@@ -2699,6 +2718,7 @@
     "title": "Đồng bộ liên hệ và lịch sử chat hiện có?",
     "descriptionWhatsapp": "Khi bật, hệ thống sẽ nhập liên hệ và tối đa 6 tháng lịch sử chat từ số WhatsApp này.",
     "descriptionMessenger": "Khi bật, hệ thống sẽ nhập liên hệ Messenger hiện có và tối đa 3 tháng lịch sử hội thoại từ Page này.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Bật đồng bộ",
     "decline": "Không đồng bộ",
     "billingNote": "Page lớn có thể mất vài giờ để hoàn tất.",
@@ -2898,6 +2918,9 @@
   "auth": {
     "orContinueWith": "Hoặc tiếp tục với",
     "continueWithFacebook": "Tiếp tục với Facebook",
+    "continueWithGoogle": "Tiếp tục với Google",
+    "continueWithEmail": "Tiếp tục với Email",
+    "continueWithMagicLink": "Tiếp tục với Magic Link",
     "dontHaveAnAccount": "Chưa có tài khoản?",
     "alreadyHaveAnAccount": "Đã có tài khoản?",
     "signUp": "Đăng ký",
@@ -3075,6 +3098,7 @@
         "quickReplyPayloadPlaceholder": "Nhập payload (tùy chọn)",
         "flowToken": "Flow Token",
         "flowTokenPlaceholder": "Nhập flow token",
+        "flowNotSynced": "Đồng bộ luồng WhatsApp để ánh xạ các trường đã gửi.",
         "catalogProductId": "ID sản phẩm",
         "catalogProductIdPlaceholder": "Nhập ID sản phẩm",
         "carouselCard": "Thẻ {index}",
@@ -3360,7 +3384,18 @@
     }
   },
   "keywords": {
-    "title": "Từ khóa"
+    "title": "Từ khóa",
+    "tabs": {
+      "contact": "Liên hệ",
+      "page": "Trang"
+    },
+    "descriptions": {
+      "contactTitle": "Từ khoá Liên hệ",
+      "contact": "Tự động phản hồi khi khách hàng gửi tin nhắn chứa từ khoá đến workspace của bạn.",
+      "pageTitle": "Từ khoá Trang",
+      "page": "Tự động phản hồi khi bạn gửi tin nhắn chứa từ khoá đến khách hàng."
+    },
+    "pageWarning": "Nội dung tin nhắn chứa từ khoá cho trang có thể dẫn đến gửi tin nhắn cho khách lặp vô hạn. Hãy huỷ kích hoạt từ khoá cho trang ngay lập tức nếu bạn gặp phải trường hợp này!"
   },
   "triggers": {
     "title": "Kích hoạt"
@@ -3911,9 +3946,10 @@
     }
   },
   "platformChannels": {
-    "title": "Kênh được phép",
-    "description": "Chọn các loại kênh mà workspace trong tenant này có thể tạo.",
-    "hint": "Bỏ chọn tất cả kênh để cho phép mọi kênh."
+    "title": "Kênh bị ẩn",
+    "description": "Chọn kênh để chặn các workspace trong tenant này tạo kênh đó.",
+    "hint": "Bỏ chọn tất cả kênh để cho phép mọi kênh.",
+    "hiddenByPlatform": "Đã bị platform admin ẩn — bạn không thể tự bật lại kênh này."
   },
   "platformEmailTemplates": {
     "title": "Email Templates",
@@ -3963,6 +3999,7 @@
     "portalUsers": "Tài khoản con",
     "portalWorkspaces": "Workspace",
     "portalPlans": "Gói dịch vụ",
+    "portalTopUpPacks": "Gói nạp thêm",
     "portalUsage": "Mức sử dụng",
     "portalCustomDomain": "Tên miền tùy chỉnh",
     "portalPaymentProcessor": "Cổng thanh toán",

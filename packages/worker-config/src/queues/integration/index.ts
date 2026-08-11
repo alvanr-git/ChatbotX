@@ -2,7 +2,10 @@ import type {
   ContactInboxModel,
   ConversationModel,
 } from "@chatbotx.io/database/types"
-import type { MetadataPayload } from "@chatbotx.io/flow-config"
+import type {
+  FlowActionTargetType,
+  MetadataPayload,
+} from "@chatbotx.io/flow-config"
 import type { CommentAnchor, OutgoingMessage } from "@chatbotx.io/sdk"
 import { Queue } from "bullmq"
 import {
@@ -38,6 +41,7 @@ export const IntegrationJobAction = {
   coexistWhatsappBuffer: "coexistWhatsappBuffer",
   coexistWhatsappFlush: "coexistWhatsappFlush",
   coexistMessengerSync: "coexistMessengerSync",
+  coexistInstagramSync: "coexistInstagramSync",
   coexistAttachmentDownload: "coexistAttachmentDownload",
   updateContactAvatar: "updateContactAvatar",
   channelLabelChange: "channelLabelChange",
@@ -45,6 +49,7 @@ export const IntegrationJobAction = {
   commentAIReply: "commentAIReply",
   processLeadgen: "processLeadgen",
   processStoryReplyAutomation: "processStoryReplyAutomation",
+  captureTemplateFlowResponse: "captureTemplateFlowResponse",
 } as const
 
 export type IntegrationJobReceiveMessage = {
@@ -122,6 +127,15 @@ export type IntegrationJobRunFlowNode = {
     flowVersionId?: string
     nodeId?: string
     startFromStepId?: string
+    /**
+     * Set when this job resumes a button/quickReply's own multi-step chain
+     * (one step per job) rather than a node's. Without it, resolving by
+     * `nodeId` alone lands on the containing node's details instead of the
+     * button/quickReply's, and `startFromStepId` never matches — see
+     * `runFlowNode`.
+     */
+    targetType?: FlowActionTargetType
+    targetId?: string
     nodeVisits?: NodeVisits
     trackingContext?: BotResponseTrackingContext
     metadata?: MetadataPayload
@@ -298,6 +312,16 @@ export type IntegrationJobCoexistMessengerSync = {
   }
 }
 
+/** Pulls historical native Instagram conversations/messages via the Graph API. */
+export type IntegrationJobCoexistInstagramSync = {
+  type: typeof IntegrationJobAction.coexistInstagramSync
+  data: {
+    runId: string
+    integrationId: string
+    workspaceId: string
+  }
+}
+
 /**
  * Downloads a Coexist attachment's bytes from the channel API (Facebook URL
  * for Messenger; WhatsApp media-id for WhatsApp — both encoded into
@@ -314,7 +338,7 @@ export type IntegrationJobCoexistAttachmentDownload = {
   data: {
     attachmentId: string
     workspaceId: string
-    channel: "messenger" | "whatsapp"
+    channel: "messenger" | "whatsapp" | "instagram"
     integrationId: string
   }
 }
@@ -383,6 +407,18 @@ export type IntegrationJobProcessStoryReplyAutomation = {
   }
 }
 
+export type IntegrationJobCaptureTemplateFlowResponse = {
+  type: typeof IntegrationJobAction.captureTemplateFlowResponse
+  data: {
+    workspaceId: string
+    conversationId: string | ConversationModel
+    contactInboxId: string | ContactInboxModel
+    messageId: string
+    templateFlowToken: string
+    flowResponse: Record<string, unknown>
+  }
+}
+
 /**
  * Facebook Lead Ads: a page leadgen webhook. Carries only ids — the handler
  * resolves the page's Messenger inbox + token, fetches the lead's answers, then
@@ -419,6 +455,7 @@ export type IntegrationJobData =
   | IntegrationJobCoexistWhatsappBuffer
   | IntegrationJobCoexistWhatsappFlush
   | IntegrationJobCoexistMessengerSync
+  | IntegrationJobCoexistInstagramSync
   | IntegrationJobCoexistAttachmentDownload
   | IntegrationJobUpdateContactAvatar
   | IntegrationJobChannelLabelChange
@@ -426,6 +463,7 @@ export type IntegrationJobData =
   | IntegrationJobCommentAIReply
   | IntegrationJobProcessLeadgen
   | IntegrationJobProcessStoryReplyAutomation
+  | IntegrationJobCaptureTemplateFlowResponse
 
 export const integrationQueue =
   process.env.NEXT_PHASE === "phase-production-build"

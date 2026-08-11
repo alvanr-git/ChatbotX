@@ -21,6 +21,8 @@
     "assign": "Määritä",
     "assignConversation": "Määritä keskustelu",
     "back": "Takaisin",
+    "billing": "Laskutus",
+    "redeem": "Lunasta",
     "blockContact": "Estä yhteystieto",
     "unblockContact": "Poista yhteystiedon esto",
     "undo": "Kumoa",
@@ -156,7 +158,8 @@
     "assignConversation": "Määritä keskustelu",
     "assignedToMe": "Määritetty minulle",
     "assignedTo": "Määritetty käyttäjälle {name}",
-    "unAssigned": "Ei määritetty"
+    "unAssigned": "Ei määritetty",
+    "user": "Käyttäjä"
   },
   "aiAgent": {
     "defaultAgent": "Oletusagentti",
@@ -286,6 +289,7 @@
     "title": "Laskutus",
     "plan": {
       "label": "Tilaus: {plan}",
+      "currentLabel": "Nykyinen tilaus",
       "free": "Ilmainen"
     },
     "usage": {
@@ -2503,6 +2507,9 @@
     "noWorkspaces": "Sinulla ei ole vielä työtiloja.",
     "owner": "Omistaja"
   },
+  "editProfile": {
+    "title": "Muokkaa profiilia"
+  },
   "channels": {
     "title": "Kanavat",
     "duplicated": {
@@ -2523,6 +2530,16 @@
         "cancelled": "Uudelleen yhdistäminen peruutettiin. Yritä uudelleen ja myönnä pyydetyt oikeudet.",
         "failed": "Uudelleen yhdistäminen epäonnistui. Yritä uudelleen."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Kiireellinen",
+      "description": "Seuraavien kanavien käyttöoikeustunnusta ei voitu päivittää automaattisesti. Yhdistä ne uudelleen jatkaaksesi viestien lähettämistä ja vastaanottamista.",
+      "cta": "Yhdistä uudelleen"
+    },
+    "refreshAllTokens": {
+      "button": "Päivitä kaikki käyttöoikeudet",
+      "resultSuccess": "Päivitettiin {refreshed} kanava(a).",
+      "resultWithFailures": "Päivitettiin {refreshed} kanava(a), {failed} epäonnistui."
     }
   },
   "workspace": {
@@ -2597,6 +2614,7 @@
     "changeHideState": "Vaihda piilotustilaa",
     "commentHidden": "Tämä kommentti piilotettiin",
     "messageDeleted": "Viesti on poistettu.",
+    "repliedToStory": "Vastasi tarinaasi",
     "sentAttachments": "Lähetettiin {count, plural, one {1 liite} other {# liitettä}}",
     "deleteComment": "Poista kommentti",
     "deleteCommentConfirmation": "Haluatko varmasti poistaa tämän kommentin? Myös sen vastaukset poistetaan sekä saapuneet-kansiostasi että Facebookista. Tätä toimintoa ei voi kumota.",
@@ -2692,6 +2710,7 @@
     "title": "Synkronoidaanko nykyiset yhteystiedot ja keskusteluhistoria?",
     "descriptionWhatsapp": "Kun toiminto on käytössä, yhteystiedot ja enintään kuuden kuukauden keskusteluhistoria tuodaan tästä WhatsApp-numerosta.",
     "descriptionMessenger": "Kun toiminto on käytössä, nykyiset Messenger-yhteystiedot ja enintään kolmen kuukauden keskusteluhistoria tuodaan tältä sivulta.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Ota synkronointi käyttöön",
     "decline": "Älä synkronoi",
     "billingNote": "Suurten sivujen käsittely voi kestää useita tunteja.",
@@ -2891,6 +2910,9 @@
   "auth": {
     "orContinueWith": "Tai jatka käyttäen",
     "continueWithFacebook": "Jatka Facebookilla",
+    "continueWithGoogle": "Jatka Googlella",
+    "continueWithEmail": "Jatka sähköpostilla",
+    "continueWithMagicLink": "Jatka taikalinkillä",
     "dontHaveAnAccount": "Eikö sinulla ole tiliä?",
     "alreadyHaveAnAccount": "Onko sinulla jo tili?",
     "signUp": "Rekisteröidy",
@@ -3372,7 +3394,18 @@
     "title": "Mukautetut kentät"
   },
   "keywords": {
-    "title": "Avainsanat"
+    "title": "Avainsanat",
+    "tabs": {
+      "contact": "Yhteystieto",
+      "page": "Sivu"
+    },
+    "descriptions": {
+      "contactTitle": "Yhteystiedon avainsanat",
+      "contact": "Vastaa automaattisesti, kun kontakti lähettää avainsanan sisältävän viestin työtilaasi.",
+      "pageTitle": "Sivun avainsanat",
+      "page": "Vastaa automaattisesti, kun lähetät avainsanan sisältävän viestin kontaktille."
+    },
+    "pageWarning": "Sivun avainsanan sisältävä viestisisältö voi johtaa viestien lähettämiseen asiakkaalle loputtomana silmukkana. Poista sivun avainsana käytöstä välittömästi, jos kohtaat tämän tilanteen!"
   },
   "triggers": {
     "title": "Käynnistimet"
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "Sallitut kanavat",
-    "description": "Valitse kanavatyypit, joita tämän vuokralaisen työtilat voivat luoda.",
-    "hint": "Salli kaikki kanavat jättämällä kaikki kanavat valitsematta."
+    "title": "Piilotetut kanavat",
+    "description": "Valitse kanava estääksesi tämän vuokralaisen työtiloja luomasta sitä.",
+    "hint": "Salli kaikki kanavat jättämällä kaikki kanavat valitsematta.",
+    "hiddenByPlatform": "Alustan ylläpitäjä on piilottanut tämän kanavan — et voi ottaa sitä uudelleen käyttöön."
   },
   "platformEmailTemplates": {
     "title": "Sähköpostimallit",
@@ -3953,6 +3987,7 @@
     "portalUsers": "Alatilit",
     "portalWorkspaces": "Työtilat",
     "portalPlans": "Tilaukset",
+    "portalTopUpPacks": "Lisäpaketit",
     "portalUsage": "Käyttö",
     "portalCustomDomain": "Mukautettu verkkotunnus",
     "portalPaymentProcessor": "Maksunkäsittelijä",

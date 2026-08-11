@@ -21,6 +21,8 @@
     "assign": "Ata",
     "assignConversation": "Görüşmeyi Ata",
     "back": "Geri",
+    "billing": "Faturalandırma",
+    "redeem": "Kodu kullan",
     "blockContact": "Kişiyi Engelle",
     "unblockContact": "Kişinin Engelini Kaldır",
     "undo": "Geri Al",
@@ -156,7 +158,8 @@
     "assignConversation": "Görüşmeyi ata",
     "assignedToMe": "Bana atandı",
     "assignedTo": "{name} adlı kişiye atandı",
-    "unAssigned": "Atanmamış"
+    "unAssigned": "Atanmamış",
+    "user": "Kullanıcı"
   },
   "aiAgent": {
     "defaultAgent": "Varsayılan Temsilci",
@@ -286,6 +289,7 @@
     "title": "Faturalandırma",
     "plan": {
       "label": "Plan: {plan}",
+      "currentLabel": "Mevcut plan",
       "free": "Ücretsiz"
     },
     "usage": {
@@ -613,6 +617,16 @@
         "cancelled": "Yeniden bağlanma iptal edildi. Lütfen tekrar deneyin ve istenen izinleri verin.",
         "failed": "Yeniden bağlanma başarısız oldu. Lütfen tekrar deneyin."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Acil",
+      "description": "Aşağıdaki kanallar erişim tokenlarını otomatik olarak yenileyemedi. Mesaj göndermeye ve almaya devam etmek için yeniden bağlanın.",
+      "cta": "Yeniden Bağlan"
+    },
+    "refreshAllTokens": {
+      "button": "Tüm izinleri yenile",
+      "resultSuccess": "{refreshed} kanal yenilendi.",
+      "resultWithFailures": "{refreshed} kanal yenilendi, {failed} başarısız oldu."
     }
   },
   "workspace": {
@@ -2567,6 +2581,9 @@
     "noWorkspaces": "Henüz hiç çalışma alanınız yok.",
     "owner": "Sahip"
   },
+  "editProfile": {
+    "title": "Profili Düzenle"
+  },
   "messages": {
     "moveFeature": "{feature} Taşı",
     "poweredBy": "{name} tarafından desteklenmektedir",
@@ -2597,6 +2614,7 @@
     "changeHideState": "Gizleme durumunu değiştir",
     "commentHidden": "Bu yorum gizlendi",
     "messageDeleted": "Mesaj silindi.",
+    "repliedToStory": "Hikayenize yanıt verdi",
     "sentAttachments": "{count, plural, one {1 ek} other {# ek}} gönderildi",
     "deleteComment": "Yorumu sil",
     "deleteCommentConfirmation": "Bu yorumu silmek istediğinizden emin misiniz? Yanıtları da hem gelen kutunuzdan hem de Facebook'tan silinecektir. Bu işlem geri alınamaz.",
@@ -2692,6 +2710,7 @@
     "title": "Mevcut kişiler ve sohbet geçmişi senkronize edilsin mi?",
     "descriptionWhatsapp": "Etkinleştirildiğinde, bu WhatsApp numarasından kişiler ve en fazla 6 aylık sohbet geçmişi içe aktarılacaktır.",
     "descriptionMessenger": "Etkinleştirildiğinde, mevcut Messenger kişileri ve bu Sayfadan en fazla 3 aylık konuşma geçmişi içe aktarılacaktır.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Senkronizasyonu etkinleştir",
     "decline": "Senkronize etme",
     "billingNote": "Büyük sayfaların tamamlanması birkaç saat sürebilir.",
@@ -2891,6 +2910,9 @@
   "auth": {
     "orContinueWith": "Veya şununla devam et",
     "continueWithFacebook": "Facebook ile devam et",
+    "continueWithGoogle": "Google ile devam et",
+    "continueWithEmail": "E-posta ile devam et",
+    "continueWithMagicLink": "Sihirli Bağlantıyla devam et",
     "dontHaveAnAccount": "Hesabınız yok mu?",
     "alreadyHaveAnAccount": "Zaten bir hesabınız var mı?",
     "signUp": "Kaydol",
@@ -3372,7 +3394,18 @@
     "title": "Özel Alanlar"
   },
   "keywords": {
-    "title": "Anahtar Kelimeler"
+    "title": "Anahtar Kelimeler",
+    "tabs": {
+      "contact": "Kişi",
+      "page": "Sayfa"
+    },
+    "descriptions": {
+      "contactTitle": "Kişi anahtar kelimeleri",
+      "contact": "Bir kişi çalışma alanınıza anahtar kelime içeren bir mesaj gönderdiğinde otomatik olarak yanıtla.",
+      "pageTitle": "Sayfa anahtar kelimeleri",
+      "page": "Siz bir kişiye anahtar kelime içeren bir mesaj gönderdiğinizde otomatik olarak yanıtla."
+    },
+    "pageWarning": "Sayfa anahtar kelimesi içeren mesaj içeriği, müşteriye sonsuz döngüde mesaj gönderilmesine neden olabilir. Bu durumla karşılaşırsanız Sayfa anahtar kelimesini hemen devre dışı bırakın!"
   },
   "triggers": {
     "title": "Tetikleyiciler"
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "İzin Verilen Kanallar",
-    "description": "Bu kiracıdaki çalışma alanlarının hangi kanal türlerini oluşturabileceğini seçin.",
-    "hint": "Tüm kanalların izin verilmesi için hiçbirini işaretlemeyin."
+    "title": "Gizlenen Kanallar",
+    "description": "Bu kiracıdaki çalışma alanlarının bir kanalı oluşturmasını engellemek için işaretleyin.",
+    "hint": "Tüm kanalların izin verilmesi için hiçbirini işaretlemeyin.",
+    "hiddenByPlatform": "Platform yöneticisi tarafından gizlendi — bu kanalı yeniden etkinleştiremezsiniz."
   },
   "platformEmailTemplates": {
     "title": "E-posta Şablonları",
@@ -3953,6 +3987,7 @@
     "portalUsers": "Alt Hesaplar",
     "portalWorkspaces": "Çalışma Alanları",
     "portalPlans": "Planlar",
+    "portalTopUpPacks": "Yükleme paketleri",
     "portalUsage": "Kullanım",
     "portalCustomDomain": "Özel Alan Adı",
     "portalPaymentProcessor": "Ödeme İşlemcisi",

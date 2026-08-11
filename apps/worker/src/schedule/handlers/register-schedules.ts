@@ -1,4 +1,8 @@
-import { ScheduleJobData, scheduleQueue } from "@chatbotx.io/worker-config"
+import {
+  PURGE_WORKSPACES_INTERVAL_MINUTES,
+  ScheduleJobData,
+  scheduleQueue,
+} from "@chatbotx.io/worker-config"
 import { Queue } from "bullmq"
 import { env } from "../../env"
 
@@ -227,7 +231,7 @@ export const registerSchedules = async () => {
   await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.purgeWorkspaces,
     {
-      pattern: "0 * * * *",
+      pattern: `*/${PURGE_WORKSPACES_INTERVAL_MINUTES} * * * *`,
     },
     {
       name: ScheduleJobData.purgeWorkspaces,
@@ -239,14 +243,14 @@ export const registerSchedules = async () => {
   )
 
   await scheduleQueue.upsertJobScheduler(
-    ScheduleJobData.refreshZaloTokens,
+    ScheduleJobData.refreshChannelTokens,
     {
       pattern: "0 2 * * *",
     },
     {
-      name: ScheduleJobData.refreshZaloTokens,
+      name: ScheduleJobData.refreshChannelTokens,
       data: {
-        type: ScheduleJobData.refreshZaloTokens,
+        type: ScheduleJobData.refreshChannelTokens,
         data: {},
       },
     },

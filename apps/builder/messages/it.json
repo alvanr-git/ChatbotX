@@ -1118,6 +1118,8 @@
     "assign": "Assegna",
     "assignConversation": "Assegna conversazione",
     "back": "Indietro",
+    "billing": "Fatturazione",
+    "redeem": "Riscatta",
     "blockContact": "Blocca contatto",
     "unblockContact": "Sblocca contatto",
     "undo": "Annulla",
@@ -1253,7 +1255,8 @@
     "assignConversation": "Assegna conversazione",
     "assignedToMe": "Assegnata a me",
     "assignedTo": "Assegnata a {name}",
-    "unAssigned": "Non assegnata"
+    "unAssigned": "Non assegnata",
+    "user": "Utente"
   },
   "aiAgent": {
     "defaultAgent": "Agente predefinito",
@@ -1383,6 +1386,7 @@
     "title": "Fatturazione",
     "plan": {
       "label": "Piano: {plan}",
+      "currentLabel": "Piano attuale",
       "free": "Gratuito"
     },
     "usage": {
@@ -2249,6 +2253,9 @@
     "noWorkspaces": "Non hai ancora alcuna area di lavoro.",
     "owner": "Proprietario"
   },
+  "editProfile": {
+    "title": "Modifica profilo"
+  },
   "channels": {
     "title": "Canali",
     "duplicated": {
@@ -2269,6 +2276,16 @@
         "cancelled": "La riconnessione è stata annullata. Riprova e concedi le autorizzazioni richieste.",
         "failed": "Riconnessione non riuscita. Riprova."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgente",
+      "description": "I seguenti canali non sono riusciti ad aggiornare automaticamente il token di accesso. Ricollegali per continuare a inviare e ricevere messaggi.",
+      "cta": "Ricollega"
+    },
+    "refreshAllTokens": {
+      "button": "Aggiorna tutte le autorizzazioni",
+      "resultSuccess": "Aggiornati {refreshed} canale/i.",
+      "resultWithFailures": "Aggiornati {refreshed} canale/i, {failed} non riusciti."
     }
   },
   "workspace": {
@@ -2343,6 +2360,7 @@
     "changeHideState": "Cambia stato di visibilità",
     "commentHidden": "Questo commento è stato nascosto",
     "messageDeleted": "Il messaggio è stato eliminato.",
+    "repliedToStory": "Ha risposto alla tua storia",
     "sentAttachments": "Inviati {count, plural, one {1 allegato} other {# allegati}}",
     "deleteComment": "Elimina commento",
     "deleteCommentConfirmation": "Vuoi davvero eliminare questo commento? Verranno eliminate anche le relative risposte, sia nella posta in arrivo sia su Facebook. Questa azione non può essere annullata.",
@@ -2438,6 +2456,7 @@
     "title": "Sincronizzare i contatti esistenti e la cronologia chat?",
     "descriptionWhatsapp": "Se attivata, verranno importati da questo numero WhatsApp i contatti e fino a 6 mesi di cronologia chat.",
     "descriptionMessenger": "Se attivata, verranno importati da questa Pagina i contatti Messenger esistenti e fino a 3 mesi di cronologia delle conversazioni.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Attiva sincronizzazione",
     "decline": "Non sincronizzare",
     "billingNote": "Il completamento per le Pagine di grandi dimensioni può richiedere diverse ore.",
@@ -2637,6 +2656,9 @@
   "auth": {
     "orContinueWith": "Oppure continua con",
     "continueWithFacebook": "Continua con Facebook",
+    "continueWithGoogle": "Continua con Google",
+    "continueWithEmail": "Continua con Email",
+    "continueWithMagicLink": "Continua con Magic Link",
     "dontHaveAnAccount": "Non hai un account?",
     "alreadyHaveAnAccount": "Hai già un account?",
     "signUp": "Registrati",
@@ -3118,7 +3140,18 @@
     "title": "Campi personalizzati"
   },
   "keywords": {
-    "title": "Parole chiave"
+    "title": "Parole chiave",
+    "tabs": {
+      "contact": "Contatto",
+      "page": "Pagina"
+    },
+    "descriptions": {
+      "contactTitle": "Parole chiave contatto",
+      "contact": "Rispondi automaticamente quando un contatto invia un messaggio contenente una parola chiave al tuo workspace.",
+      "pageTitle": "Parole chiave pagina",
+      "page": "Rispondi automaticamente quando invii un messaggio contenente una parola chiave a un contatto."
+    },
+    "pageWarning": "Il contenuto di un messaggio con una parola chiave Page può causare l'invio di messaggi al cliente in un ciclo infinito. Disattiva immediatamente la parola chiave Page se riscontri questa situazione!"
   },
   "triggers": {
     "title": "Trigger"
@@ -3647,9 +3680,10 @@
     }
   },
   "platformChannels": {
-    "title": "Canali consentiti",
-    "description": "Scegli quali tipi di canale possono creare le aree di lavoro di questo tenant.",
-    "hint": "Lascia tutti i canali deselezionati per consentirli tutti."
+    "title": "Canali nascosti",
+    "description": "Seleziona un canale per impedire alle aree di lavoro di questo tenant di crearlo.",
+    "hint": "Lascia tutti i canali deselezionati per consentirli tutti.",
+    "hiddenByPlatform": "Nascosto dall'amministratore della piattaforma: non puoi riattivare questo canale."
   },
   "platformEmailTemplates": {
     "title": "Modelli e-mail",
@@ -3699,6 +3733,7 @@
     "portalUsers": "Sotto-account",
     "portalWorkspaces": "Aree di lavoro",
     "portalPlans": "Piani",
+    "portalTopUpPacks": "Pacchetti di ricarica",
     "portalUsage": "Utilizzo",
     "portalCustomDomain": "Dominio personalizzato",
     "portalPaymentProcessor": "Gestore dei pagamenti",

@@ -21,6 +21,8 @@
     "assign": "Zuweisen",
     "assignConversation": "Unterhaltung zuweisen",
     "back": "Zurück",
+    "billing": "Abrechnung",
+    "redeem": "Einlösen",
     "blockContact": "Kontakt blockieren",
     "unblockContact": "Kontakt entsperren",
     "undo": "Rückgängig",
@@ -150,7 +152,8 @@
     "assignConversation": "Unterhaltung zuweisen",
     "assignedToMe": "Mir zugewiesen",
     "assignedTo": "{name} zugewiesen",
-    "unAssigned": "Nicht zugewiesen"
+    "unAssigned": "Nicht zugewiesen",
+    "user": "Benutzer"
   },
   "aiAgent": {
     "defaultAgent": "Standard-Agent",
@@ -271,7 +274,11 @@
   },
   "billing": {
     "title": "Abrechnung",
-    "plan": { "label": "Tarif: {plan}", "free": "Kostenlos" },
+    "plan": {
+      "label": "Tarif: {plan}",
+      "currentLabel": "Aktueller Tarif",
+      "free": "Kostenlos"
+    },
     "usage": {
       "contacts": "Kontakte",
       "mac": "Monatlich aktive Kontakte",
@@ -1871,6 +1878,9 @@
     "noWorkspaces": "Sie haben noch keine Arbeitsbereiche.",
     "owner": "Inhaber"
   },
+  "editProfile": {
+    "title": "Profil bearbeiten"
+  },
   "channels": {
     "title": "Kanäle",
     "duplicated": {
@@ -1891,6 +1901,16 @@
         "cancelled": "Die erneute Verbindung wurde abgebrochen. Versuchen Sie es erneut und erteilen Sie die angeforderten Berechtigungen.",
         "failed": "Erneute Verbindung fehlgeschlagen. Versuchen Sie es erneut."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Dringend",
+      "description": "Bei den folgenden Kanälen konnte das Zugriffstoken nicht automatisch aktualisiert werden. Bitte verbinde sie erneut, um weiterhin Nachrichten senden und empfangen zu können.",
+      "cta": "Erneut verbinden"
+    },
+    "refreshAllTokens": {
+      "button": "Alle Berechtigungen aktualisieren",
+      "resultSuccess": "{refreshed} Kanal/Kanäle aktualisiert.",
+      "resultWithFailures": "{refreshed} Kanal/Kanäle aktualisiert, {failed} fehlgeschlagen."
     }
   },
   "workspace": {
@@ -1959,6 +1979,7 @@
     "changeHideState": "Sichtbarkeitsstatus ändern",
     "commentHidden": "Dieser Kommentar wurde ausgeblendet",
     "messageDeleted": "Die Nachricht wurde gelöscht.",
+    "repliedToStory": "Hat auf deine Story geantwortet",
     "sentAttachments": "{count, plural, one {1 Anhang gesendet} other {# Anhänge gesendet}}",
     "deleteComment": "Kommentar löschen",
     "deleteCommentConfirmation": "Möchten Sie diesen Kommentar wirklich löschen? Seine Antworten werden ebenfalls gelöscht, sowohl in Ihrem Posteingang als auch auf Facebook. Diese Aktion kann nicht rückgängig gemacht werden.",
@@ -2054,6 +2075,7 @@
     "title": "Bestehende Kontakte und Chatverlauf synchronisieren?",
     "descriptionWhatsapp": "Wenn aktiviert, werden Kontakte und bis zu 6 Monate Chatverlauf von dieser WhatsApp-Nummer importiert.",
     "descriptionMessenger": "Wenn aktiviert, werden bestehende Messenger-Kontakte und bis zu 3 Monate Unterhaltungsverlauf von dieser Seite importiert.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Synchronisierung aktivieren",
     "decline": "Nicht synchronisieren",
     "billingNote": "Bei großen Seiten kann der Vorgang mehrere Stunden dauern.",
@@ -2249,6 +2271,9 @@
   "auth": {
     "orContinueWith": "Oder fortfahren mit",
     "continueWithFacebook": "Mit Facebook fortfahren",
+    "continueWithGoogle": "Mit Google fortfahren",
+    "continueWithEmail": "Mit E-Mail fortfahren",
+    "continueWithMagicLink": "Mit Magic Link fortfahren",
     "dontHaveAnAccount": "Noch kein Konto?",
     "alreadyHaveAnAccount": "Bereits ein Konto?",
     "signUp": "Registrieren",
@@ -2667,7 +2692,20 @@
   },
   "auditLogs": { "title": "Audit-Protokolle" },
   "customFields": { "title": "Benutzerdefinierte Felder" },
-  "keywords": { "title": "Schlüsselwörter" },
+  "keywords": {
+    "title": "Schlüsselwörter",
+    "tabs": {
+      "contact": "Kontakt",
+      "page": "Seite"
+    },
+    "descriptions": {
+      "contactTitle": "Kontakt-Schlüsselwörter",
+      "contact": "Automatische Antwort, wenn ein Kontakt eine Nachricht mit einem Schlüsselwort an Ihren Workspace sendet.",
+      "pageTitle": "Seiten-Schlüsselwörter",
+      "page": "Automatische Antwort, wenn Sie eine Nachricht mit einem Schlüsselwort an einen Kontakt senden."
+    },
+    "pageWarning": "Nachrichteninhalte mit einem Seiten-Schlüsselwort können dazu führen, dass Nachrichten in einer Endlosschleife an den Kunden gesendet werden. Deaktivieren Sie das Seiten-Schlüsselwort sofort, wenn dies bei Ihnen auftritt!"
+  },
   "triggers": { "title": "Trigger" },
   "users": { "title": "Benutzer" },
   "sequences": {
@@ -3183,9 +3221,10 @@
     }
   },
   "platformChannels": {
-    "title": "Zulässige Kanäle",
-    "description": "Wählen Sie, welche Kanaltypen Arbeitsbereiche dieses Mandanten erstellen können.",
-    "hint": "Lassen Sie alle Kanäle deaktiviert, um sämtliche Kanäle zuzulassen."
+    "title": "Ausgeblendete Kanäle",
+    "description": "Aktivieren Sie einen Kanal, um zu verhindern, dass Arbeitsbereiche dieses Mandanten ihn erstellen.",
+    "hint": "Lassen Sie alle Kanäle deaktiviert, um sämtliche Kanäle zuzulassen.",
+    "hiddenByPlatform": "Vom Plattform-Administrator ausgeblendet — Sie können diesen Kanal nicht wieder aktivieren."
   },
   "platformEmailTemplates": {
     "title": "E-Mail-Vorlagen",
@@ -3232,6 +3271,7 @@
     "portalUsers": "Unterkonten",
     "portalWorkspaces": "Arbeitsbereiche",
     "portalPlans": "Tarife",
+    "portalTopUpPacks": "Aufladepakete",
     "portalUsage": "Nutzung",
     "portalCustomDomain": "Benutzerdefinierte Domain",
     "portalPaymentProcessor": "Zahlungsdienstleister",

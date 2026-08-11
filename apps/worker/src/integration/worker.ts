@@ -1,6 +1,7 @@
 import { automatedResponseService } from "@chatbotx.io/automated-response"
 import { conversationService } from "@chatbotx.io/business"
 import { emit } from "@chatbotx.io/event-bus"
+import { getStoryReply } from "@chatbotx.io/sdk"
 import {
   defaultWorkerOptions,
   getRedisConnection,
@@ -18,6 +19,7 @@ import { resolveWorkspaceId } from "../lib/resolve-workspace-id"
 import { processAutomatedResponse } from "./handlers/automated-response"
 import { runChallenge } from "./handlers/challenge"
 import { coexistAttachmentDownload } from "./handlers/coexist/attachment-download"
+import { coexistInstagramSync } from "./handlers/coexist/instagram-sync"
 import { coexistMessengerSync } from "./handlers/coexist/messenger-sync"
 import { coexistWhatsappBuffer } from "./handlers/coexist/whatsapp-buffer"
 import { coexistWhatsappFlush } from "./handlers/coexist/whatsapp-flush"
@@ -43,6 +45,7 @@ import {
 import { runRef } from "./handlers/ref"
 import { handleSendSequenceFlow } from "./handlers/sequence-flow"
 import { processStoryReplyAutomation } from "./handlers/story-reply-automation"
+import { captureTemplateFlowResponse } from "./handlers/template-flow-response"
 import { runWaitResume } from "./handlers/wait-resume"
 import { runIntegrationJobWithWebhookContext } from "./job-context"
 import { resolveIncomingTextRouting } from "./routing"
@@ -67,8 +70,13 @@ async function startIntegrationWorker() {
       return await runIntegrationJobWithWebhookContext(job.data, async () => {
         switch (job.data.type) {
           case IntegrationJobAction.incomingMessage: {
-            const { message, postbackAction, quickReplyAction, conversation } =
-              await receiveMessage(job.data.data)
+            const {
+              message,
+              postbackAction,
+              quickReplyAction,
+              conversation,
+              channelType,
+            } = await receiveMessage(job.data.data)
 
             if (!message) {
               return
@@ -86,11 +94,7 @@ async function startIntegrationWorker() {
             const hasAttachment = message.attachments.length > 0
             const isLocation = message.contentType === "location"
 
-            const storyReply = (
-              message.contentAttributes as
-                | { storyReply?: { id: string; url?: string } }
-                | undefined
-            )?.storyReply
+            const storyReply = getStoryReply(message.contentAttributes)
 
             if (isFromContact && storyReply) {
               await integrationQueue.add(
@@ -105,9 +109,7 @@ async function startIntegrationWorker() {
                     storyId: storyReply.id,
                     storyUrl: storyReply.url,
                     message: message.text ?? undefined,
-                    channelType: job.data.data.integrationType as
-                      | "instagram"
-                      | "instagramFacebook",
+                    channelType,
                   },
                 },
                 { jobId: `story-reply-auto-${message.id}` },
@@ -250,6 +252,10 @@ async function startIntegrationWorker() {
             await coexistMessengerSync(job.data.data)
             return
           }
+          case IntegrationJobAction.coexistInstagramSync: {
+            await coexistInstagramSync(job.data.data)
+            return
+          }
           case IntegrationJobAction.coexistAttachmentDownload: {
             await coexistAttachmentDownload(job.data.data)
             return
@@ -268,6 +274,10 @@ async function startIntegrationWorker() {
           }
           case IntegrationJobAction.processStoryReplyAutomation: {
             await processStoryReplyAutomation(job.data.data)
+            return
+          }
+          case IntegrationJobAction.captureTemplateFlowResponse: {
+            await captureTemplateFlowResponse(job.data.data)
             return
           }
           case IntegrationJobAction.processLeadgen: {

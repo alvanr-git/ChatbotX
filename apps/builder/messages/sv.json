@@ -25,6 +25,8 @@
     "assign": "Tilldela",
     "assignConversation": "Tilldela konversation",
     "back": "Tillbaka",
+    "billing": "Fakturering",
+    "redeem": "Lös in",
     "backToSignIn": "Tillbaka till inloggning",
     "blockContact": "Blockera kontakt",
     "cancel": "Avbryt",
@@ -316,7 +318,8 @@
     "assignConversation": "Tilldela konversation",
     "assignedTo": "Tilldelad till {name}",
     "assignedToMe": "Tilldelad till mig",
-    "unAssigned": "Ej tilldelad"
+    "unAssigned": "Ej tilldelad",
+    "user": "Användare"
   },
   "auditLogs": {
     "title": "Granskningsloggar"
@@ -329,6 +332,9 @@
     "changePasswordTitle": "Ändra ditt lösenord",
     "checkYourEmail": "Kontrollera din e-post",
     "continueWithFacebook": "Fortsätt med Facebook",
+    "continueWithGoogle": "Fortsätt med Google",
+    "continueWithEmail": "Fortsätt med e-post",
+    "continueWithMagicLink": "Fortsätt med magisk länk",
     "didNotReceiveEmail": "Fick du inget e-postmeddelande? Kontrollera skräppostmappen.",
     "dontHaveAnAccount": "Har du inget konto?",
     "forgotPassword": "Glömt lösenordet?",
@@ -390,6 +396,7 @@
     },
     "plan": {
       "free": "Kostnadsfritt",
+      "currentLabel": "Nuvarande abonnemang",
       "label": "Abonnemang: {plan}"
     },
     "title": "Fakturering",
@@ -536,7 +543,17 @@
       },
       "success": "Kanalen har återanslutits."
     },
-    "title": "Kanaler"
+    "title": "Kanaler",
+    "tokenRefreshErrorDialog": {
+      "title": "Brådskande",
+      "description": "Följande kanaler kunde inte uppdatera sin åtkomsttoken automatiskt. Anslut dem igen för att fortsätta skicka och ta emot meddelanden.",
+      "cta": "Återanslut"
+    },
+    "refreshAllTokens": {
+      "button": "Uppdatera alla behörigheter",
+      "resultSuccess": "Uppdaterade {refreshed} kanal(er).",
+      "resultWithFailures": "Uppdaterade {refreshed} kanal(er), {failed} misslyckades."
+    }
   },
   "claude": {
     "autoReply": {
@@ -553,6 +570,7 @@
     "billingNote": "Det kan ta flera timmar att slutföra synkroniseringen för stora sidor.",
     "decline": "Synkronisera inte",
     "descriptionMessenger": "När detta är aktiverat importeras befintliga Messenger-kontakter och upp till 3 månaders konversationshistorik från den här sidan.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "descriptionWhatsapp": "När detta är aktiverat importeras kontakter och upp till 6 månaders chatthistorik från det här WhatsApp-numret.",
     "enable": "Aktivera synkronisering",
     "errors": {
@@ -2743,6 +2761,9 @@
     "subtitle": "Välj en arbetsyta för att fortsätta där du slutade, eller skapa en ny.",
     "welcomeBack": "Välkommen tillbaka, {name}"
   },
+  "editProfile": {
+    "title": "Redigera profil"
+  },
   "inboxTeams": {
     "title": "Inkorgsteam"
   },
@@ -2929,7 +2950,18 @@
     "workspaceUnavailable": "Den här arbetsytan är inte längre tillgänglig."
   },
   "keywords": {
-    "title": "Nyckelord"
+    "title": "Nyckelord",
+    "tabs": {
+      "contact": "Kontakt",
+      "page": "Sida"
+    },
+    "descriptions": {
+      "contactTitle": "Kontaktnyckelord",
+      "contact": "Svara automatiskt när en kontakt skickar ett meddelande som innehåller ett nyckelord till din arbetsyta.",
+      "pageTitle": "Sidnyckelord",
+      "page": "Svara automatiskt när du skickar ett meddelande som innehåller ett nyckelord till en kontakt."
+    },
+    "pageWarning": "Meddelandeinnehåll som innehåller ett sidnyckelord kan leda till att meddelanden skickas till kunden i en oändlig loop. Inaktivera sidnyckelordet omedelbart om du stöter på detta!"
   },
   "klaviyo": {
     "errors": {
@@ -3020,6 +3052,7 @@
     "portalCustomDomain": "Anpassad domän",
     "portalPaymentProcessor": "Betalningsleverantör",
     "portalPlans": "Abonnemang",
+    "portalTopUpPacks": "Påfyllnadspaket",
     "portalPricingPage": "Prissättning",
     "portalSmtp": "SMTP-inställningar",
     "portalUsage": "Användning",
@@ -3112,6 +3145,7 @@
     "publishVersionSuccess": "En ny version har publicerats",
     "redoHistoryCleared": "Historiken för Gör om har rensats",
     "refreshTokenSuccessfully": "Token för {feature} har uppdaterats",
+    "repliedToStory": "Svarade på din story",
     "reply": "Svara",
     "resendFeature": "Skicka {feature} igen",
     "resendFeatureDescription": "Skicka {feature} igen till de kontakter som ännu inte har fått det.",
@@ -3454,9 +3488,10 @@
     "title": "Plattformens varumärke"
   },
   "platformChannels": {
-    "description": "Välj vilka kanaltyper som arbetsytor i den här klienten kan skapa.",
+    "description": "Markera en kanal för att förhindra att arbetsytor i den här klienten skapar den.",
     "hint": "Lämna alla kanaler omarkerade för att tillåta samtliga kanaler.",
-    "title": "Tillåtna kanaler"
+    "title": "Dolda kanaler",
+    "hiddenByPlatform": "Dold av plattformsadministratören — du kan inte återaktivera den här kanalen."
   },
   "platformCredentials": {
     "notConfigured": "Inte konfigurerad ännu",

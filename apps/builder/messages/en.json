@@ -21,6 +21,8 @@
     "assign": "Assign",
     "assignConversation": "Assign Conversation",
     "back": "Back",
+    "billing": "Billing",
+    "redeem": "Redeem",
     "blockContact": "Block Contact",
     "unblockContact": "Unblock Contact",
     "undo": "Undo",
@@ -41,6 +43,7 @@
     "disableBot": "Disable Bot",
     "disconnect": "Disconnect",
     "download": "Download",
+    "downloadTemplate": "Download template",
     "edit": "Edit",
     "editFeature": "Edit {feature}",
     "enableBot": "Enable Bot",
@@ -156,7 +159,8 @@
     "assignConversation": "Assign conversation",
     "assignedToMe": "Assigned to me",
     "assignedTo": "Assigned to {name}",
-    "unAssigned": "Unassigned"
+    "unAssigned": "Unassigned",
+    "user": "User"
   },
   "aiAgent": {
     "defaultAgent": "Default Agent",
@@ -286,6 +290,7 @@
     "title": "Billing",
     "plan": {
       "label": "Plan: {plan}",
+      "currentLabel": "Current plan",
       "free": "Free"
     },
     "usage": {
@@ -613,6 +618,16 @@
         "cancelled": "Reconnect was cancelled. Please try again and grant the requested permissions.",
         "failed": "Reconnect failed. Please try again."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgent",
+      "description": "The channels below failed to automatically refresh their access token. Reconnect them to keep sending and receiving messages.",
+      "cta": "Reconnect"
+    },
+    "refreshAllTokens": {
+      "button": "Refresh All Permissions",
+      "resultSuccess": "Refreshed {refreshed} channel(s).",
+      "resultWithFailures": "Refreshed {refreshed} channel(s), {failed} failed."
     }
   },
   "workspace": {
@@ -2572,6 +2587,9 @@
     "noWorkspaces": "You don't have any workspaces yet.",
     "owner": "Owner"
   },
+  "editProfile": {
+    "title": "Edit Profile"
+  },
   "messages": {
     "moveFeature": "Move {feature}",
     "poweredBy": "Powered by {name}",
@@ -2602,6 +2620,7 @@
     "changeHideState": "Change hide state",
     "commentHidden": "This comment was hidden",
     "messageDeleted": "The message has been deleted.",
+    "repliedToStory": "Replied to your story",
     "sentAttachments": "Sent {count, plural, one {1 attachment} other {# attachments}}",
     "deleteComment": "Delete comment",
     "deleteCommentConfirmation": "Are you sure you want to delete this comment? Its replies will also be deleted, both in your inbox and on Facebook. This action cannot be undone.",
@@ -2699,6 +2718,7 @@
     "title": "Sync existing contacts and chat history?",
     "descriptionWhatsapp": "When enabled, contacts and up to 6 months of chat history will be imported from this WhatsApp number.",
     "descriptionMessenger": "When enabled, existing Messenger contacts and up to 3 months of conversation history will be imported from this Page.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Enable sync",
     "decline": "Don't sync",
     "billingNote": "Large pages may take several hours to complete.",
@@ -2898,6 +2918,9 @@
   "auth": {
     "orContinueWith": "Or continue with",
     "continueWithFacebook": "Continue with Facebook",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithEmail": "Continue with Email",
+    "continueWithMagicLink": "Continue with Magic Link",
     "dontHaveAnAccount": "Don't have an account?",
     "alreadyHaveAnAccount": "Already have an account?",
     "signUp": "Sign up",
@@ -3075,6 +3098,7 @@
         "quickReplyPayloadPlaceholder": "Enter payload (optional)",
         "flowToken": "Flow Token",
         "flowTokenPlaceholder": "Enter flow token",
+        "flowNotSynced": "Sync WhatsApp flows to map submitted fields.",
         "catalogProductId": "Product ID",
         "catalogProductIdPlaceholder": "Enter product retailer ID",
         "carouselCard": "Card {index}",
@@ -3382,7 +3406,18 @@
     }
   },
   "keywords": {
-    "title": "Keywords"
+    "title": "Keywords",
+    "tabs": {
+      "contact": "Contact",
+      "page": "Page"
+    },
+    "descriptions": {
+      "contactTitle": "Contact keywords",
+      "contact": "Automatically reply when a contact sends a message containing a keyword to your workspace.",
+      "pageTitle": "Page keywords",
+      "page": "Automatically reply when you send a message containing a keyword to a contact."
+    },
+    "pageWarning": "Message content containing a Page keyword can cause messages to be sent to the customer in an infinite loop. Disable the Page keyword immediately if you encounter this situation!"
   },
   "triggers": {
     "title": "Triggers"
@@ -3911,9 +3946,10 @@
     }
   },
   "platformChannels": {
-    "title": "Allowed Channels",
-    "description": "Choose which channel types workspaces in this tenant can create.",
-    "hint": "Leave every channel unchecked to allow all channels."
+    "title": "Hidden Channels",
+    "description": "Check a channel to stop workspaces in this tenant from creating it.",
+    "hint": "Leave every channel unchecked to allow all channels.",
+    "hiddenByPlatform": "Hidden by the platform admin — you can't re-enable this channel."
   },
   "platformEmailTemplates": {
     "title": "Email Templates",
@@ -3963,6 +3999,7 @@
     "portalUsers": "Sub-accounts",
     "portalWorkspaces": "Workspaces",
     "portalPlans": "Plans",
+    "portalTopUpPacks": "Top-up packs",
     "portalUsage": "Usage",
     "portalCustomDomain": "Custom Domain",
     "portalPaymentProcessor": "Payment Processor",

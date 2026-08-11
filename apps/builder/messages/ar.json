@@ -21,6 +21,8 @@
     "assign": "إسناد",
     "assignConversation": "إسناد المحادثة",
     "back": "رجوع",
+    "billing": "الفوترة",
+    "redeem": "استبدال",
     "blockContact": "حظر جهة الاتصال",
     "unblockContact": "إلغاء حظر جهة الاتصال",
     "undo": "تراجع",
@@ -156,7 +158,8 @@
     "assignConversation": "إسناد المحادثة",
     "assignedToMe": "مسندة إليّ",
     "assignedTo": "مسندة إلى {name}",
-    "unAssigned": "غير مسندة"
+    "unAssigned": "غير مسندة",
+    "user": "مستخدم"
   },
   "aiAgent": {
     "defaultAgent": "الوكيل الافتراضي",
@@ -286,6 +289,7 @@
     "title": "الفوترة",
     "plan": {
       "label": "الخطة: {plan}",
+      "currentLabel": "الخطة الحالية",
       "free": "مجانية"
     },
     "usage": {
@@ -613,6 +617,16 @@
         "cancelled": "تم إلغاء إعادة التوصيل. يرجى المحاولة مرة أخرى ومنح الأذونات المطلوبة.",
         "failed": "فشلت إعادة التوصيل. يرجى المحاولة مرة أخرى."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "عاجل",
+      "description": "تعذّر على القنوات التالية تحديث رمز الوصول تلقائيًا. يرجى إعادة ربطها للاستمرار في إرسال واستقبال الرسائل.",
+      "cta": "إعادة الاتصال"
+    },
+    "refreshAllTokens": {
+      "button": "تحديث كل الأذونات",
+      "resultSuccess": "تم تحديث {refreshed} قناة.",
+      "resultWithFailures": "تم تحديث {refreshed} قناة، وفشلت {failed}."
     }
   },
   "workspace": {
@@ -2572,6 +2586,9 @@
     "noWorkspaces": "ليس لديك أي مساحات عمل بعد.",
     "owner": "المالك"
   },
+  "editProfile": {
+    "title": "تعديل الملف الشخصي"
+  },
   "messages": {
     "moveFeature": "نقل {feature}",
     "poweredBy": "مدعوم من {name}",
@@ -2602,6 +2619,7 @@
     "changeHideState": "تغيير حالة الإخفاء",
     "commentHidden": "تم إخفاء هذا التعليق",
     "messageDeleted": "تم حذف الرسالة.",
+    "repliedToStory": "رد على قصتك",
     "sentAttachments": "تم إرسال {count, plural, one {مرفق واحد} other {# مرفقات}}",
     "deleteComment": "حذف التعليق",
     "deleteCommentConfirmation": "هل أنت متأكد من رغبتك في حذف هذا التعليق؟ ستُحذف ردوده أيضًا من صندوق الوارد ومن Facebook. لا يمكن التراجع عن هذا الإجراء.",
@@ -2699,6 +2717,7 @@
     "title": "هل تريد مزامنة جهات الاتصال وسجل الدردشة الحاليين؟",
     "descriptionWhatsapp": "عند التفعيل، سيستورد ChatbotX جهات الاتصال وما يصل إلى 6 أشهر من سجل الدردشة من رقم WhatsApp هذا.",
     "descriptionMessenger": "عند التفعيل، سيستورد ChatbotX جهات اتصال Messenger الحالية وما يصل إلى 3 أشهر من سجل المحادثات من هذه الصفحة.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "تفعيل المزامنة",
     "decline": "عدم المزامنة",
     "billingNote": "قد تستغرق الصفحات الكبيرة عدة ساعات حتى تكتمل.",
@@ -2898,6 +2917,9 @@
   "auth": {
     "orContinueWith": "أو المتابعة باستخدام",
     "continueWithFacebook": "المتابعة باستخدام Facebook",
+    "continueWithGoogle": "المتابعة باستخدام Google",
+    "continueWithEmail": "المتابعة باستخدام البريد الإلكتروني",
+    "continueWithMagicLink": "المتابعة باستخدام رابط سحري",
     "dontHaveAnAccount": "ليس لديك حساب؟",
     "alreadyHaveAnAccount": "لديك حساب بالفعل؟",
     "signUp": "إنشاء حساب",
@@ -3379,7 +3401,18 @@
     "title": "الحقول المخصصة"
   },
   "keywords": {
-    "title": "الكلمات المفتاحية"
+    "title": "الكلمات المفتاحية",
+    "tabs": {
+      "contact": "جهة الاتصال",
+      "page": "الصفحة"
+    },
+    "descriptions": {
+      "contactTitle": "الكلمات المفتاحية لجهة الاتصال",
+      "contact": "الرد تلقائيًا عند إرسال العميل رسالة تحتوي على كلمة مفتاحية إلى مساحة العمل الخاصة بك.",
+      "pageTitle": "الكلمات المفتاحية للصفحة",
+      "page": "الرد تلقائيًا عندما ترسل أنت رسالة تحتوي على كلمة مفتاحية إلى العميل."
+    },
+    "pageWarning": "قد يؤدي محتوى رسالة تحتوي على كلمة مفتاحية للصفحة إلى إرسال رسائل للعميل بشكل متكرر لا نهائي. قم بإلغاء تفعيل الكلمة المفتاحية للصفحة فورًا إذا واجهت هذه الحالة!"
   },
   "triggers": {
     "title": "المشغّلات"
@@ -3743,9 +3776,10 @@
     }
   },
   "platformChannels": {
-    "title": "القنوات المسموح بها",
-    "description": "اختر أنواع القنوات التي يمكن لمساحات العمل في هذا المستأجر إنشاؤها.",
-    "hint": "اترك جميع القنوات دون تحديد للسماح بكل القنوات."
+    "title": "القنوات المخفية",
+    "description": "حدّد قناة لمنع مساحات العمل في هذا المستأجر من إنشائها.",
+    "hint": "اترك جميع القنوات دون تحديد للسماح بكل القنوات.",
+    "hiddenByPlatform": "مخفي بواسطة مسؤول المنصة — لا يمكنك إعادة تفعيل هذه القناة."
   },
   "platformEmailTemplates": {
     "title": "قوالب البريد الإلكتروني",
@@ -3795,6 +3829,7 @@
     "portalUsers": "الحسابات الفرعية",
     "portalWorkspaces": "مساحات العمل",
     "portalPlans": "الخطط",
+    "portalTopUpPacks": "حزم الشحن",
     "portalUsage": "الاستخدام",
     "portalCustomDomain": "النطاق المخصص",
     "portalPaymentProcessor": "معالج الدفع",

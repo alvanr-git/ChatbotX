@@ -45,7 +45,8 @@ const nextConfig: NextConfig = {
       return alwaysRewrites
     }
 
-    // Local dev: production routes /ws, /storage, and /manage/* via load balancer / Caddy
+    // Local dev: production routes /ws, /storage, /manage/*, and /portal/*
+    // via load balancer / Caddy
     const wsUrl = env.NEXT_PUBLIC_INTERNAL_WS_URL
     const s3Bucket = process.env.S3_BUCKET ?? "chatbotx"
     const s3Endpoint = process.env.S3_ENDPOINT ?? "http://localhost:9000"
@@ -71,6 +72,15 @@ const nextConfig: NextConfig = {
         {
           source: "/api/checkout/:path*",
           destination: `${portalUrl}/portal/api/checkout/:path*`,
+        },
+        {
+          // Top-up-pack checkout (buy more botMessages credit) — same public
+          // authenticated-buyer surface as /api/checkout/*, kept as its own
+          // path so it isn't mistaken for a plan checkout by anything reading
+          // the URL (the request body/session metadata is what actually
+          // disambiguates server-side, but the path stays self-describing).
+          source: "/api/top-ups/:path*",
+          destination: `${portalUrl}/portal/api/top-ups/:path*`,
         },
         {
           source: "/api/billing/webhook",

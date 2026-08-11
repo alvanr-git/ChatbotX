@@ -558,6 +558,9 @@
     "noWorkspaces": "Nu aveți încă niciun spațiu de lucru.",
     "owner": "Proprietar"
   },
+  "editProfile": {
+    "title": "Editează profilul"
+  },
   "actions": {
     "copy": "Copiază",
     "copyUrl": "Copiază adresa URL",
@@ -580,6 +583,8 @@
     "assign": "Atribuie",
     "assignConversation": "Atribuie conversația",
     "back": "Înapoi",
+    "billing": "Facturare",
+    "redeem": "Revendicare cod",
     "blockContact": "Blochează contactul",
     "unblockContact": "Deblochează contactul",
     "undo": "Anulează",
@@ -715,7 +720,8 @@
     "assignConversation": "Atribuie conversația",
     "assignedToMe": "Atribuită mie",
     "assignedTo": "Atribuită lui {name}",
-    "unAssigned": "Neatribuită"
+    "unAssigned": "Neatribuită",
+    "user": "Utilizator"
   },
   "aiAgent": {
     "defaultAgent": "Agent implicit",
@@ -845,6 +851,7 @@
     "title": "Facturare",
     "plan": {
       "label": "Plan: {plan}",
+      "currentLabel": "Plan curent",
       "free": "Gratuit"
     },
     "usage": {
@@ -2523,6 +2530,16 @@
         "cancelled": "Reconectarea a fost anulată. Încearcă din nou și acordă permisiunile solicitate.",
         "failed": "Reconectarea a eșuat. Te rugăm să încerci din nou."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgent",
+      "description": "Următoarele canale nu au reușit să își reînnoiască automat tokenul de acces. Reconectează-le pentru a continua să trimiți și să primești mesaje.",
+      "cta": "Reconectează"
+    },
+    "refreshAllTokens": {
+      "button": "Reîmprospătează toate permisiunile",
+      "resultSuccess": "{refreshed} canal(e) reîmprospătat(e).",
+      "resultWithFailures": "{refreshed} canal(e) reîmprospătat(e), {failed} eșuat(e)."
     }
   },
   "workspace": {
@@ -2597,6 +2614,7 @@
     "changeHideState": "Schimbă starea de ascundere",
     "commentHidden": "Acest comentariu a fost ascuns",
     "messageDeleted": "Mesajul a fost șters.",
+    "repliedToStory": "A răspuns la story-ul tău",
     "sentAttachments": "S-a trimis {count, plural, one {1 atașament} other {# atașamente}}",
     "deleteComment": "Șterge comentariul",
     "deleteCommentConfirmation": "Ești sigur că vrei să ștergi acest comentariu? Răspunsurile sale vor fi șterse și ele, atât din mesajele primite, cât și de pe Facebook. Această acțiune nu poate fi anulată.",
@@ -2692,6 +2710,7 @@
     "title": "Sincronizezi contactele existente și istoricul conversațiilor?",
     "descriptionWhatsapp": "Când este activată, contactele și până la 6 luni din istoricul conversațiilor vor fi importate din acest număr WhatsApp.",
     "descriptionMessenger": "Când este activată, contactele Messenger existente și până la 3 luni din istoricul conversațiilor vor fi importate din această pagină.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Activează sincronizarea",
     "decline": "Nu sincroniza",
     "billingNote": "Paginile mari pot dura câteva ore pentru a se finaliza.",
@@ -2891,6 +2910,9 @@
   "auth": {
     "orContinueWith": "Sau continuă cu",
     "continueWithFacebook": "Continuă cu Facebook",
+    "continueWithGoogle": "Continuă cu Google",
+    "continueWithEmail": "Continuă cu e-mail",
+    "continueWithMagicLink": "Continuă cu link magic",
     "dontHaveAnAccount": "Nu ai un cont?",
     "alreadyHaveAnAccount": "Ai deja un cont?",
     "signUp": "Înregistrare",
@@ -3372,7 +3394,18 @@
     "title": "Câmpuri personalizate"
   },
   "keywords": {
-    "title": "Cuvinte cheie"
+    "title": "Cuvinte cheie",
+    "tabs": {
+      "contact": "Contact",
+      "page": "Pagină"
+    },
+    "descriptions": {
+      "contactTitle": "Cuvinte-cheie de contact",
+      "contact": "Răspunde automat atunci când un contact trimite un mesaj care conține un cuvânt-cheie către workspace-ul dvs.",
+      "pageTitle": "Cuvinte-cheie de pagină",
+      "page": "Răspunde automat atunci când trimiteți un mesaj care conține un cuvânt-cheie unui contact."
+    },
+    "pageWarning": "Conținutul unui mesaj care conține un cuvânt-cheie de Pagină poate duce la trimiterea de mesaje către client într-o buclă infinită. Dezactivați imediat cuvântul-cheie de Pagină dacă întâmpinați această situație!"
   },
   "triggers": {
     "title": "Declanșatoare"
@@ -3967,6 +4000,7 @@
     "portalCustomDomain": "Domeniu personalizat",
     "portalPaymentProcessor": "Procesator de plăți",
     "portalPlans": "Planuri",
+    "portalTopUpPacks": "Pachete de reîncărcare",
     "portalPricingPage": "Prețuri",
     "portalSmtp": "Setări SMTP",
     "portalUsage": "Utilizare",
@@ -4132,9 +4166,10 @@
     "title": "Branding platformă"
   },
   "platformChannels": {
-    "description": "Alege ce tipuri de canale pot crea spațiile de lucru din acest tenant.",
+    "description": "Bifează un canal pentru a împiedica spațiile de lucru din acest tenant să îl creeze.",
     "hint": "Lasă toate canalele nebifate pentru a permite toate canalele.",
-    "title": "Canale permise"
+    "title": "Canale ascunse",
+    "hiddenByPlatform": "Ascuns de administratorul platformei — nu poți reactiva acest canal."
   },
   "platformCredentials": {
     "notConfigured": "Nu este configurat încă",

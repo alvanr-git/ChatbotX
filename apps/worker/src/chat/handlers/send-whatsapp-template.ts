@@ -114,6 +114,9 @@ export async function processWhatsappTemplate(
     const replacedParams = await replaceWhatsappTemplateVariables({
       templateParams: template.params,
       variables,
+      // Authoritative source for NAMED vs POSITIONAL placeholders, so the send
+      // works even for broadcasts/flows saved before named-parameter support.
+      components: (validated.template.components as TemplateComponent[]) || [],
     })
 
     const contentAttributes = {
@@ -201,7 +204,11 @@ export async function processWhatsappTemplate(
         nodeId: step?.nodeId ?? createId(),
         stepType: stepTypes.enum.sendWaTemplateMessage,
         buttons: [],
-        template,
+        // Send the variable-resolved params to the channel. The raw
+        // `template.params` still holds unresolved tokens like {{first_name}};
+        // the integration builds the Graph API payload verbatim and cannot
+        // resolve them, so the recipient would otherwise receive literal tokens.
+        template: { ...template, params: replacedParams },
       },
       metadata,
       messageId: newMessage.id,
@@ -211,6 +218,29 @@ export async function processWhatsappTemplate(
       ...eventLogData,
       action: { messageId: "", flowId: flow?.id || "" },
       occurredAt: new Date(),
+    })
+
+    // Bot-message quota accounting: `chat/worker.ts`'s pre-send gate blocks
+    // `sendWhatsappTemplateMessage` jobs, but nothing previously counted a
+    // successful send here — the quota gate and the quota meter must stay
+    // structurally paired or the gate is enforced against a counter that
+    // never moves.
+    emit("analytics:dashboard", {
+      eventType: "message:bot_sent",
+      workspaceId: conversation.workspaceId,
+      contactId: conversation.contactId,
+      senderType: "bot",
+      occurredAt: new Date(),
+      source: contactInbox.source,
+      sourceId: contactInbox.sourceId,
+      channel: contactInbox.channel,
+      metadata: {
+        triggerContext: {
+          triggerSource: "worker",
+          triggerHandler: "processWhatsappTemplate",
+          triggerType: "message_bot_sent_whatsapp_template",
+        },
+      },
     })
 
     const providerMessageId = result?.messageIds?.[0]

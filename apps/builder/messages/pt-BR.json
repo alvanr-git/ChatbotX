@@ -21,6 +21,8 @@
     "assign": "Atribuir",
     "assignConversation": "Atribuir conversa",
     "back": "Voltar",
+    "billing": "Faturamento",
+    "redeem": "Resgatar",
     "blockContact": "Bloquear contato",
     "unblockContact": "Desbloquear contato",
     "undo": "Desfazer",
@@ -156,7 +158,8 @@
     "assignConversation": "Atribuir conversa",
     "assignedToMe": "Atribuída a mim",
     "assignedTo": "Atribuída a {name}",
-    "unAssigned": "Não atribuída"
+    "unAssigned": "Não atribuída",
+    "user": "Usuário"
   },
   "aiAgent": {
     "defaultAgent": "Agente padrão",
@@ -286,6 +289,7 @@
     "title": "Faturamento",
     "plan": {
       "label": "Plano: {plan}",
+      "currentLabel": "Plano atual",
       "free": "Grátis"
     },
     "usage": {
@@ -2510,6 +2514,16 @@
         "cancelled": "A reconexão foi cancelada. Tente novamente e conceda as permissões solicitadas.",
         "failed": "Falha ao reconectar. Tente novamente."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgente",
+      "description": "Os canais abaixo não conseguiram renovar automaticamente o token de acesso. Reconecte-os para continuar enviando e recebendo mensagens.",
+      "cta": "Reconectar"
+    },
+    "refreshAllTokens": {
+      "button": "Atualizar todas as permissões",
+      "resultSuccess": "{refreshed} canal(is) atualizado(s).",
+      "resultWithFailures": "{refreshed} canal(is) atualizado(s), {failed} com falha."
     }
   },
   "workspace": {
@@ -2584,6 +2598,7 @@
     "changeHideState": "Alterar estado de ocultação",
     "commentHidden": "Este comentário foi ocultado",
     "messageDeleted": "A mensagem foi excluída.",
+    "repliedToStory": "Respondeu ao seu story",
     "sentAttachments": "Enviou {count, plural, one {1 anexo} other {# anexos}}",
     "deleteComment": "Excluir comentário",
     "deleteCommentConfirmation": "Tem certeza de que deseja excluir este comentário? As respostas também serão excluídas, tanto da sua caixa de entrada quanto do Facebook. Esta ação não pode ser desfeita.",
@@ -2679,6 +2694,7 @@
     "title": "Sincronizar contatos existentes e histórico de conversas?",
     "descriptionWhatsapp": "Quando ativado, os contatos e até 6 meses de histórico de conversas serão importados deste número do WhatsApp.",
     "descriptionMessenger": "Quando ativado, os contatos existentes do Messenger e até 3 meses de histórico de conversas serão importados desta Página.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Ativar sincronização",
     "decline": "Não sincronizar",
     "billingNote": "Páginas grandes podem levar várias horas para serem concluídas.",
@@ -2878,6 +2894,9 @@
   "auth": {
     "orContinueWith": "Ou continue com",
     "continueWithFacebook": "Continuar com o Facebook",
+    "continueWithGoogle": "Continuar com o Google",
+    "continueWithEmail": "Continuar com o e-mail",
+    "continueWithMagicLink": "Continuar com o link mágico",
     "dontHaveAnAccount": "Não tem uma conta?",
     "alreadyHaveAnAccount": "Já tem uma conta?",
     "signUp": "Cadastre-se",
@@ -3334,7 +3353,18 @@
     "title": "Campos personalizados"
   },
   "keywords": {
-    "title": "Palavras-chave"
+    "title": "Palavras-chave",
+    "tabs": {
+      "contact": "Contato",
+      "page": "Página"
+    },
+    "descriptions": {
+      "contactTitle": "Palavras-chave de contato",
+      "contact": "Responde automaticamente quando um contato envia uma mensagem contendo uma palavra-chave para o seu workspace.",
+      "pageTitle": "Palavras-chave de página",
+      "page": "Responde automaticamente quando você envia uma mensagem contendo uma palavra-chave para um contato."
+    },
+    "pageWarning": "O conteúdo de uma mensagem com uma palavra-chave de Página pode causar o envio de mensagens ao cliente em um loop infinito. Desative a palavra-chave de Página imediatamente se isso ocorrer!"
   },
   "triggers": {
     "title": "Gatilhos"
@@ -3843,6 +3873,9 @@
     "noWorkspaces": "Você ainda não tem nenhum espaço de trabalho.",
     "owner": "Proprietário"
   },
+  "editProfile": {
+    "title": "Editar perfil"
+  },
   "ecommerce": {
     "title": "Comércio eletrônico",
     "description": "Crie e gerencie sua loja virtual."
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "Canais permitidos",
-    "description": "Escolha quais tipos de canal os espaços de trabalho deste locatário podem criar.",
-    "hint": "Deixe todos os canais desmarcados para permitir todos eles."
+    "title": "Canais ocultos",
+    "description": "Marque um canal para impedir que os espaços de trabalho deste locatário o criem.",
+    "hint": "Deixe todos os canais desmarcados para permitir todos eles.",
+    "hiddenByPlatform": "Ocultado pelo administrador da plataforma — você não pode reativar este canal."
   },
   "platformEmailTemplates": {
     "title": "Modelos de e-mail",
@@ -3953,6 +3987,7 @@
     "portalUsers": "Subcontas",
     "portalWorkspaces": "Espaços de trabalho",
     "portalPlans": "Planos",
+    "portalTopUpPacks": "Pacotes de recarga",
     "portalUsage": "Uso",
     "portalCustomDomain": "Domínio personalizado",
     "portalPaymentProcessor": "Processador de pagamentos",

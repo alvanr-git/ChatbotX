@@ -1,6 +1,7 @@
 import {
+  coexistService,
   inboxService,
-  messengerIntegrationExistsForPage,
+  messengerIntegrationService,
   workspaceService,
 } from "@chatbotx.io/business"
 import { db, eq, findOrFail } from "@chatbotx.io/database/client"
@@ -34,10 +35,11 @@ export const disconnectInstagram = async (ctx: {
 
   try {
     if (isFacebook) {
-      const hasMessengerSibling = await messengerIntegrationExistsForPage({
-        pageId: authValue.metadata.pageId,
-        clientId: authValue.clientId,
-      })
+      const hasMessengerSibling =
+        await messengerIntegrationService.existsForPage({
+          pageId: authValue.metadata.pageId,
+          clientId: authValue.clientId,
+        })
 
       if (!hasMessengerSibling) {
         await integrations.instagramFacebook.disconnect(authValue)
@@ -63,6 +65,19 @@ export const disconnectInstagram = async (ctx: {
   }
 
   await db.transaction(async (tx) => {
+    // Coexist only exists for the native Instagram integration; the Facebook-
+    // mediated variant (type "facebook") never has coexist runs. Gate explicitly
+    // so the intent is clear at the call site (mirrors workspace-lifecycle).
+    if (!isFacebook) {
+      await coexistService.tearDownForIntegration({
+        workspaceId: ctx.workspaceId,
+        integrationId: integrationInstagram.id,
+        channel: "instagram",
+        currentError: "Integration disconnected",
+        tx,
+      })
+    }
+
     await tx
       .delete(integrationInstagramModel)
       .where(eq(integrationInstagramModel.id, integrationInstagram.id))

@@ -191,7 +191,7 @@ function ButtonSteps() {
             </Button>
           }
         />
-        <DropdownMenuContent>
+        <DropdownMenuContent className="w-max">
           <RecursiveDropdownMenu
             data={sendMessageEditorMenusWithButton(t)}
             onClick={onAddAction}
@@ -237,6 +237,7 @@ export function ButtonEditorDialog() {
   )
   const buttonPath = useStepStore((state) => state.buttonPath)
   const setButtonPath = useStepStore((state) => state.setButtonPath)
+  const buttonInitialData = useStepStore((state) => state.buttonInitialData)
   const openButtonEditorDialog = useStepStore(
     (state) => state.openButtonEditorDialog,
   )
@@ -257,25 +258,21 @@ export function ButtonEditorDialog() {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: wip
   useEffect(() => {
-    if (buttonPath && openButtonEditorDialog) {
+    if (buttonPath && openButtonEditorDialog && buttonInitialData) {
       const allNodes = getNodes()
       const foundNode = allNodes.find((node) => node.selected) as FlowNode
       if (foundNode) {
-        const rawData = getProperty(foundNode, buttonPath)
-
-        if (rawData) {
-          setActiveNode(foundNode)
-          form.reset(rawData as ButtonStepProps)
-          setOpenButtonEditorDialog(true)
-          return
-        }
+        setActiveNode(foundNode)
+        form.reset(buttonInitialData)
+        setOpenButtonEditorDialog(true)
+        return
       }
     }
 
     form.reset()
     setActiveNode(null)
     setOpenButtonEditorDialog(false)
-  }, [buttonPath, openButtonEditorDialog])
+  }, [buttonPath, openButtonEditorDialog, buttonInitialData])
 
   const onSave = useCallback(() => {
     if (!(activeNode && buttonPath)) {
@@ -287,16 +284,19 @@ export function ButtonEditorDialog() {
     updateNodeData(activeNode.id, activeNode.data)
 
     const currentButtonId = values.id as string
-    if (values.buttonType === buttonTypes.enum.startAnotherNode) {
+    // `beforeStep.stepType === startAnotherNode` covers buttonType
+    // startAnotherNode itself as well as sendMessage/performAction, which
+    // also always carry a startAnotherNode beforeStep (button.ts) — for all
+    // three, beforeStep.nodeId is a mirror of where the button's own edge
+    // leads (flow.ts skips executing it and follows the edge instead), so
+    // any of them retargeting the combobox must move the edge too.
+    if (values.beforeStep?.stepType === stepTypes.enum.startAnotherNode) {
       const targetNodeId = values.beforeStep.nodeId
 
       if (currentButtonId && targetNodeId) {
         refreshEdge(currentButtonId, activeNode.id, targetNodeId)
       }
-    } else if (
-      currentButtonId &&
-      values.beforeStep?.stepType !== stepTypes.enum.startAnotherNode
-    ) {
+    } else if (currentButtonId) {
       // Any action besides a node jump (openWebsite, startExternalFlow,
       // startExternalNode, ...) fully handles its own routing on the worker
       // side. Clear a leftover edge from a previous startAnotherNode/

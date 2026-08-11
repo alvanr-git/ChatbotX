@@ -21,6 +21,8 @@
     "assign": "Toewijzen",
     "assignConversation": "Gesprek toewijzen",
     "back": "Terug",
+    "billing": "Facturering",
+    "redeem": "Verzilveren",
     "blockContact": "Contact blokkeren",
     "unblockContact": "Contact deblokkeren",
     "undo": "Ongedaan maken",
@@ -156,7 +158,8 @@
     "assignConversation": "Gesprek toewijzen",
     "assignedToMe": "Aan mij toegewezen",
     "assignedTo": "Toegewezen aan {name}",
-    "unAssigned": "Niet toegewezen"
+    "unAssigned": "Niet toegewezen",
+    "user": "Gebruiker"
   },
   "aiAgent": {
     "defaultAgent": "Standaardagent",
@@ -286,6 +289,7 @@
     "title": "Facturering",
     "plan": {
       "label": "Abonnement: {plan}",
+      "currentLabel": "Huidig abonnement",
       "free": "Gratis"
     },
     "usage": {
@@ -2503,6 +2507,9 @@
     "noWorkspaces": "Je hebt nog geen workspaces.",
     "owner": "Eigenaar"
   },
+  "editProfile": {
+    "title": "Profiel bewerken"
+  },
   "channels": {
     "title": "Kanalen",
     "duplicated": {
@@ -2523,6 +2530,16 @@
         "cancelled": "Opnieuw koppelen is geannuleerd. Probeer het opnieuw en verleen de gevraagde machtigingen.",
         "failed": "Opnieuw koppelen is mislukt. Probeer het opnieuw."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgent",
+      "description": "De volgende kanalen konden hun toegangstoken niet automatisch vernieuwen. Verbind ze opnieuw om berichten te kunnen blijven verzenden en ontvangen.",
+      "cta": "Opnieuw koppelen"
+    },
+    "refreshAllTokens": {
+      "button": "Alle machtigingen vernieuwen",
+      "resultSuccess": "{refreshed} kanaal/kanalen vernieuwd.",
+      "resultWithFailures": "{refreshed} kanaal/kanalen vernieuwd, {failed} mislukt."
     }
   },
   "workspace": {
@@ -2597,6 +2614,7 @@
     "changeHideState": "Verbergstatus wijzigen",
     "commentHidden": "Deze opmerking is verborgen",
     "messageDeleted": "Het bericht is verwijderd.",
+    "repliedToStory": "Heeft op je story gereageerd",
     "sentAttachments": "{count, plural, one {1 bijlage verzonden} other {# bijlagen verzonden}}",
     "deleteComment": "Opmerking verwijderen",
     "deleteCommentConfirmation": "Weet je zeker dat je deze opmerking wilt verwijderen? De antwoorden worden ook verwijderd, zowel uit je inbox als van Facebook. Deze actie kan niet ongedaan worden gemaakt.",
@@ -2692,6 +2710,7 @@
     "title": "Bestaande contacten en chatgeschiedenis synchroniseren?",
     "descriptionWhatsapp": "Wanneer dit is ingeschakeld, worden contacten en maximaal 6 maanden chatgeschiedenis van dit WhatsApp-nummer geïmporteerd.",
     "descriptionMessenger": "Wanneer dit is ingeschakeld, worden bestaande Messenger-contacten en maximaal 3 maanden gespreksgeschiedenis van deze pagina geïmporteerd.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Synchronisatie inschakelen",
     "decline": "Niet synchroniseren",
     "billingNote": "Bij grote pagina's kan dit enkele uren duren.",
@@ -2891,6 +2910,9 @@
   "auth": {
     "orContinueWith": "Of ga verder met",
     "continueWithFacebook": "Doorgaan met Facebook",
+    "continueWithGoogle": "Doorgaan met Google",
+    "continueWithEmail": "Doorgaan met e-mail",
+    "continueWithMagicLink": "Doorgaan met magische link",
     "dontHaveAnAccount": "Heb je nog geen account?",
     "alreadyHaveAnAccount": "Heb je al een account?",
     "signUp": "Registreren",
@@ -3372,7 +3394,18 @@
     "title": "Aangepaste velden"
   },
   "keywords": {
-    "title": "Trefwoorden"
+    "title": "Trefwoorden",
+    "tabs": {
+      "contact": "Contact",
+      "page": "Pagina"
+    },
+    "descriptions": {
+      "contactTitle": "Contact-trefwoorden",
+      "contact": "Reageer automatisch wanneer een contact een bericht met een trefwoord naar je workspace stuurt.",
+      "pageTitle": "Pagina-trefwoorden",
+      "page": "Reageer automatisch wanneer je een bericht met een trefwoord naar een contact stuurt."
+    },
+    "pageWarning": "Berichtinhoud met een Pagina-trefwoord kan ertoe leiden dat er berichten in een oneindige lus naar de klant worden verzonden. Schakel het Pagina-trefwoord onmiddellijk uit als dit gebeurt!"
   },
   "triggers": {
     "title": "Triggers"
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "Toegestane kanalen",
-    "description": "Kies welke kanaaltypen werkruimten in deze tenant kunnen maken.",
-    "hint": "Laat alle kanalen uitgevinkt om alle kanalen toe te staan."
+    "title": "Verborgen kanalen",
+    "description": "Vink een kanaal aan om te voorkomen dat werkruimten in deze tenant het kunnen maken.",
+    "hint": "Laat alle kanalen uitgevinkt om alle kanalen toe te staan.",
+    "hiddenByPlatform": "Verborgen door de platformbeheerder — je kunt dit kanaal niet opnieuw inschakelen."
   },
   "platformEmailTemplates": {
     "title": "E-mailsjablonen",
@@ -3953,6 +3987,7 @@
     "portalUsers": "Subaccounts",
     "portalWorkspaces": "Werkruimten",
     "portalPlans": "Abonnementen",
+    "portalTopUpPacks": "Oplaadpakketten",
     "portalUsage": "Gebruik",
     "portalCustomDomain": "Aangepast domein",
     "portalPaymentProcessor": "Betalingsverwerker",

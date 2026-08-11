@@ -21,6 +21,8 @@
     "assign": "Asignar",
     "assignConversation": "Asignar conversación",
     "back": "Atrás",
+    "billing": "Facturación",
+    "redeem": "Canjear",
     "blockContact": "Bloquear contacto",
     "unblockContact": "Desbloquear contacto",
     "undo": "Deshacer",
@@ -156,7 +158,8 @@
     "assignConversation": "Asignar conversación",
     "assignedToMe": "Asignada a mí",
     "assignedTo": "Asignada a {name}",
-    "unAssigned": "Sin asignar"
+    "unAssigned": "Sin asignar",
+    "user": "Usuario"
   },
   "aiAgent": {
     "defaultAgent": "Agente predeterminado",
@@ -286,6 +289,7 @@
     "title": "Facturación",
     "plan": {
       "label": "Plan: {plan}",
+      "currentLabel": "Plan actual",
       "free": "Gratis"
     },
     "usage": {
@@ -613,6 +617,16 @@
         "cancelled": "ReConectar was cancelled. Por favor, try again y grant el requested permisos.",
         "failed": "ReConectar ftodosó. Por favor, try again."
       }
+    },
+    "tokenRefreshErrorDialog": {
+      "title": "Urgente",
+      "description": "Los siguientes canales no pudieron renovar automáticamente su token de acceso. Vuelve a conectarlos para seguir enviando y recibiendo mensajes.",
+      "cta": "Volver a conectar"
+    },
+    "refreshAllTokens": {
+      "button": "Actualizar todos los permisos",
+      "resultSuccess": "Se actualizaron {refreshed} canal(es).",
+      "resultWithFailures": "Se actualizaron {refreshed} canal(es), {failed} fallaron."
     }
   },
   "workspace": {
@@ -2567,6 +2581,9 @@
     "noWorkspaces": "You don't tiene cualquier espacio de trabajos yet.",
     "owner": "Propietario"
   },
+  "editProfile": {
+    "title": "Editar perfil"
+  },
   "messages": {
     "moveFeature": "Mover {feature}",
     "poweredBy": "Con tecnología de {name}",
@@ -2597,6 +2614,7 @@
     "changeHideState": "Cambiar estado de visibilidad",
     "commentHidden": "Este comentario se ha ocultado",
     "messageDeleted": "The mensaje tiene been deleted.",
+    "repliedToStory": "Respondió a tu historia",
     "sentAttachments": "Se enviaron {count, plural, one {1 archivo adjunto} other {# archivos adjuntos}}",
     "deleteComment": "Eliminar comment",
     "deleteCommentConfirmation": "Are tú sure tú want un Eliminar este comment? Its respuestas se also be deleted, both en tu inbox y en Facebook. este action cannot be undone.",
@@ -2692,6 +2710,7 @@
     "title": "Sync existing contactoos y chat history?",
     "descriptionWhatsapp": "When activado, contactoos y up un 6 months de chat history se be imported desde este WhatsApp number.",
     "descriptionMessenger": "When activado, existing Messenger contactoos y up un 3 months de conversación history se be imported desde este Página.",
+    "descriptionInstagram": "When enabled, existing Instagram contacts and up to 3 months of conversation history will be imported from this Instagram account.",
     "enable": "Activar sync",
     "decline": "No sincronizar",
     "billingNote": "Large páginas may take several horas un complete.",
@@ -2891,6 +2910,9 @@
   "auth": {
     "orContinueWith": "O continuar con",
     "continueWithFacebook": "Continue con Facebook",
+    "continueWithGoogle": "Continuar con Google",
+    "continueWithEmail": "Continuar con correo electrónico",
+    "continueWithMagicLink": "Continuar con enlace mágico",
     "dontHaveAnAccount": "Don't tiene un cuenta?",
     "alreadyHaveAnAccount": "Already tiene un cuenta?",
     "signUp": "Registrarse",
@@ -3372,7 +3394,18 @@
     "title": "Campos personalizados"
   },
   "keywords": {
-    "title": "Palabras clave"
+    "title": "Palabras clave",
+    "tabs": {
+      "contact": "Contacto",
+      "page": "Página"
+    },
+    "descriptions": {
+      "contactTitle": "Palabras clave de contacto",
+      "contact": "Responde automáticamente cuando un contacto envía un mensaje que contiene una palabra clave a tu workspace.",
+      "pageTitle": "Palabras clave de página",
+      "page": "Responde automáticamente cuando envías un mensaje que contiene una palabra clave a un contacto."
+    },
+    "pageWarning": "El contenido de un mensaje con una palabra clave de Página puede provocar el envío de mensajes al cliente en un bucle infinito. ¡Desactiva la palabra clave de Página de inmediato si esto ocurre!"
   },
   "triggers": {
     "title": "Desencadenadores"
@@ -3901,9 +3934,10 @@
     }
   },
   "platformChannels": {
-    "title": "Todosowed Canales",
-    "description": "Elegir which canal types workspaces en este tenant puede create.",
-    "hint": "Leave every canal unchecked un todosow todos canales."
+    "title": "Canales ocultos",
+    "description": "Marca un canal para impedir que los espacios de trabajo de este tenant lo creen.",
+    "hint": "Deja todos los canales sin marcar para permitir todos los canales.",
+    "hiddenByPlatform": "Oculto por el administrador de la plataforma; no puedes volver a habilitar este canal."
   },
   "platformEmailTemplates": {
     "title": "Correo Plantillas",
@@ -3953,6 +3987,7 @@
     "portalUsers": "Sub-cuentas",
     "portalWorkspaces": "Espacios de trabajo",
     "portalPlans": "Planes",
+    "portalTopUpPacks": "Paquetes de recarga",
     "portalUsage": "Uso",
     "portalCustomDomain": "Personalizado Domain",
     "portalPaymentProcessor": "Procesador de pagos",

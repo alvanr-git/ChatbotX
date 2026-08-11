@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm"
-import { index, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core"
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core"
 import type {
   InstagramConversationStarter,
   InstagramPersistentMenu,
@@ -20,6 +27,7 @@ export const integrationInstagramModel = pgTable(
     pageId: text().notNull(),
     name: text().notNull(),
     username: text().notNull(),
+    coexistEnabled: boolean().notNull().default(false),
     conversationStarters: jsonb()
       .$type<InstagramConversationStarter>()
       .array()
@@ -53,6 +61,7 @@ export const integrationInstagramModel = pgTable(
       .$type<"instagram" | "facebook">()
       .default("instagram")
       .notNull(),
+    tokenRefreshError: text(),
   },
   (table) => [
     index("IntegrationInstagram_workspaceId_idx").using(
