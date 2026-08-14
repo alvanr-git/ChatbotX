@@ -233,6 +233,60 @@ This repository includes several customizations and architectural upgrades tailo
   sudo docker compose -f docker-compose.dev.yml pull && sudo docker compose -f docker-compose.dev.yml up -d
   ```
 
+## 💻 New PC / Workspace Setup
+
+To access, build, or deploy this project from a new computer, follow these configuration steps:
+
+### 1. Codebase & Dependencies
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/alvanr-git/ChatbotX.git
+   cd ChatbotX
+   ```
+2. Install local workspace dependencies (running `CI=true` prevents terminal hangs on Windows/Mac):
+   ```bash
+   $env:CI="true"   # In PowerShell
+   pnpm install --no-frozen-lockfile
+   ```
+
+### 2. Copy Local Environment Variables
+* The `.env` file is gitignored. Copy your active `.env` file from the previous PC or VM into the **root folder** of the project.
+
+### 3. Setup GCP Authenticated Session
+To run remote deployments, manage database migrations, or trigger VM tasks from your new PC, authorize your Google Cloud session:
+1. Install the [Google Cloud SDK (gcloud CLI)](https://cloud.google.com/sdk/docs/install) locally.
+2. Authenticate and select the project:
+   ```bash
+   gcloud auth login
+   gcloud config set project chatbotx-503911
+   ```
+3. Generate and register your SSH key with the GCP VM:
+   ```bash
+   gcloud compute ssh chatbotx-server --zone=us-central1-a
+   ```
+   *(You can type `exit` to close the connection once established. This registers your key so tools like Antigravity can connect via SSH automatically.)*
+
+### 4. Indexing Codebase with Graphify
+To help Antigravity or Claude Code understand the project structure instantly:
+1. Install Graphify globally:
+   ```bash
+   npm install -g @codegraph-ai/cli
+   ```
+2. Build the graph index from the project root:
+   ```bash
+   codegraph index
+   ```
+
+---
+
+## 🔗 Console & Administration Links
+
+* **Live ChatbotX Console:** [https://app.136.112.173.189.nip.io](https://app.136.112.173.189.nip.io)
+* **GCP Server External IP:** `136.112.173.189`
+* **Local Localhost Port:** `:3123` (or mapped to port `:3000` inside containers)
+
+---
+
 ## Support
 
 If ChatbotX helps you avoid expensive chatbot automation tools, please give us a ⭐ on GitHub.
