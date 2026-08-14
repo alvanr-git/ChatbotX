@@ -1,3 +1,8 @@
+post-commit:
+  jobs:
+    - name: update-graphify
+      run: graphify update . || true
+
 post-checkout:
   jobs:
     - name: branch-name
