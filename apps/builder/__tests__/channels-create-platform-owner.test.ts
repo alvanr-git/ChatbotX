@@ -16,7 +16,7 @@ const {
   mockResolveVisibleChannels,
 } = vi.hoisted(() => ({
   mockResolveForOwner: vi.fn(
-    async (_props: { ownerId: string; type: string }) => null,
+    async (_props: { ownerId?: string; userId?: string; type: string }) => null,
   ),
   mockResolvePlatformOwnerId: vi.fn(async () => "resolved-owner-1"),
   mockResolveVisibleChannels: vi.fn(async () => [] as string[]),
@@ -46,6 +46,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@chatbotx.io/business", () => ({
   platformCredentialService: {
     resolveForOwner: mockResolveForOwner,
+    resolvePublicForUser: mockResolveForOwner,
   },
   tenantService: {
     resolveVisibleChannels: mockResolveVisibleChannels,
@@ -154,7 +155,7 @@ describe("channels/create — platform owner fan-out", () => {
       ].sort(),
     )
     for (const [props] of mockResolveForOwner.mock.calls) {
-      expect(props.ownerId).toBe("resolved-owner-1")
+      expect(props.userId ?? props.ownerId).toBe("resolved-owner-1")
     }
   })
 })
