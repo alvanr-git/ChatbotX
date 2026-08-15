@@ -58,6 +58,7 @@ vi.mock("@chatbotx.io/business", () => ({
   },
   platformCredentialService: {
     resolveForOwner: vi.fn(async () => null),
+    resolvePublicForUser: vi.fn(async () => null),
   },
   tenantService: {
     resolveVisibleChannels: vi.fn(async () => [
