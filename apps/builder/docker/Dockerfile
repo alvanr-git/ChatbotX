@@ -17,7 +17,7 @@ RUN turbo prune builder --docker
 
 # Install dependencies
 FROM base AS deps
-ENV NODE_OPTIONS="--max-old-space-size=6144"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 WORKDIR /app
 COPY --from=pre /app/out/json/ .
@@ -40,7 +40,7 @@ ENV BETTER_AUTH_URL="http://localhost:3000"
 
 ENV EXPERIMENTAL_CPUS=1
 ENV NEXT_CPU_LIMIT=1
-ENV NODE_OPTIONS="--max-old-space-size=6144"
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 # - `.next/cache` cache mount: Next.js incremental artifacts survive across CI
 #   runs (persisted via buildkit-cache-dance in release.yml).
 # - TURBO_* secret mounts: optional Turbo remote cache (self-hosted
