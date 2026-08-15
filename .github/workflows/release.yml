@@ -54,7 +54,7 @@ jobs:
         uses: rharkor/caching-for-turbo@v2.5.1
 
       - name: Type-check, lint, and test
-        run: pnpm turbo run check-types lint test
+        run: pnpm turbo run check-types lint test --concurrency=4
 
   prepare-metadata:
     runs-on: ubuntu-latest
