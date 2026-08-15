@@ -9,6 +9,7 @@ export const contactInboxResource = createSelectSchema(contactInboxModel, {
   contactId: z.string(),
   inboxId: z.string(),
   channel: z.string(),
+  username: z.string().nullable().optional(),
   contactLastReadAt: z.date().nullable().optional(),
 })
   .pick({
