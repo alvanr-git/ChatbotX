@@ -51,7 +51,10 @@ vi.mock("next/navigation", () => ({
 }))
 
 vi.mock("@chatbotx.io/business", () => ({
-  platformCredentialService: { resolveForOwner: mockResolveForOwner },
+  platformCredentialService: {
+    resolveForOwner: mockResolveForOwner,
+    resolvePublicForUser: mockResolveForOwner,
+  },
   workspaceService: {
     find: mockFindWorkspace,
     findById: mockFindWorkspaceById,
