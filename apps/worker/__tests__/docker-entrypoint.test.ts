@@ -64,7 +64,7 @@ afterEach(() => {
   rmSync(distDir, { recursive: true, force: true })
 })
 
-describe("docker-entrypoint worker discovery", () => {
+describe.skipIf(process.platform === "win32")("docker-entrypoint worker discovery", () => {
   test("resolves a standard worker to its dist bundle", () => {
     const { stdout, status } = run("worker", "chat")
     expect(status).toBe(0)
