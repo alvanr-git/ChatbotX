@@ -2,6 +2,8 @@
   "extends": "@chatbotx.io/typescript-config/base.json",
   "include": ["src/**/*.ts", "__tests__/**/*.ts"],
   "compilerOptions": {
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   }
 }

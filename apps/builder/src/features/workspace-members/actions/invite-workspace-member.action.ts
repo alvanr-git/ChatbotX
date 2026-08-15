@@ -57,7 +57,9 @@ export const inviteWorkspaceMemberAction = workspaceActionClient
       .insert(invitationModel)
       .values({
         id: createId(),
-        email: parsedInput.email ? parsedInput.email.toLowerCase().trim() : null,
+        email: parsedInput.email
+          ? parsedInput.email.toLowerCase().trim()
+          : null,
         code: SymbolicSnowflakeIDs.generate(),
         permissions: isCommunity()
           ? getSuperAdminPermissions()

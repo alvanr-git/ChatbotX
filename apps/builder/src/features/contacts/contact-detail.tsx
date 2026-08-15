@@ -220,7 +220,9 @@ export const ContactDetail = ({
             type: "shortText",
             readOnly: true,
           },
-          ...(activeContactInbox && 'username' in activeContactInbox && activeContactInbox.username
+          ...(activeContactInbox &&
+          "username" in activeContactInbox &&
+          activeContactInbox.username
             ? [
                 {
                   key: "username",

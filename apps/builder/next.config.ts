@@ -17,13 +17,6 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },
-  // Type-checking is NOT part of `next build`: the in-build tsc pass duplicated
-  // `check-types` and OOMs a default 4GB heap. The type gate lives in
-  // .github/workflows/ci.yml (`turbo run check-types lint test`) — keep that
-  // workflow green before trusting a build.
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   experimental: {
     serverActions: {
       bodySizeLimit: "20mb",
@@ -36,6 +29,11 @@ const nextConfig: NextConfig = {
     // turbopackServerFastRefresh: false,
   },
   poweredByHeader: false,
+  // Type-checking is NOT part of `next build`: the in-build tsc pass duplicated
+  // `check-types` and OOMs a default 4GB heap. The type gate lives in
+  // .github/workflows/ci.yml (`turbo run check-types lint test`) — keep that
+  // workflow green before trusting a build.
+
   typescript: {
     // Skip type-checking during `next build` — saves ~4 GB RAM on constrained VMs.
     // Types are still checked by the IDE / CI lint step.

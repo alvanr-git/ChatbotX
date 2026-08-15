@@ -102,10 +102,11 @@ export async function listInstagramFacebookMedia(workspaceId: string) {
     "facebook",
   )
   if (integrations.length === 0) {
-    const directIntegrations = await instagramIntegrationService.findByWorkspaceId(
-      workspaceId,
-      "instagram",
-    )
+    const directIntegrations =
+      await instagramIntegrationService.findByWorkspaceId(
+        workspaceId,
+        "instagram",
+      )
     return collectInstagramMedia(directIntegrations, (integration) =>
       listInstagramLoginMediaApi({
         auth: integration.auth as InstagramAuthValue,

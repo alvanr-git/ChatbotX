@@ -130,8 +130,7 @@ export const integrationService = {
       workspaceId: string
       inboxId: string
     }>(
-      integrationType === "instagram" ||
-        integrationType === "instagramFacebook"
+      integrationType === "instagram" || integrationType === "instagramFacebook"
         ? sql`SELECT * FROM "IntegrationInstagram" WHERE "igId" = ${integrationIdentifier} OR "pageId" = ${integrationIdentifier} LIMIT 1`
         : sql`SELECT * FROM ${sql.identifier(modelName)} WHERE ${sql.identifier(columnName)} = ${integrationIdentifier} LIMIT 1`,
     )
@@ -151,10 +150,7 @@ export const integrationService = {
     }
 
     if (!result.rows[0]) {
-      throw new IntegrationNotFoundError(
-        integrationType,
-        integrationIdentifier,
-      )
+      throw new IntegrationNotFoundError(integrationType, integrationIdentifier)
     }
 
     const workspace = await workspaceService.findById({

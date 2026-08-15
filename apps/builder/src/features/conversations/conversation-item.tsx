@@ -200,12 +200,12 @@ export default function ConversationItem({
               {conversation.contact?.fullName}
             </span>
             {isComment ? (
-              <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+              <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-[10px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                 <MessageCircleMoreIcon className="size-3" />
                 Comment
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
+              <span className="inline-flex items-center gap-1 rounded bg-sky-100 px-1.5 py-0.5 font-semibold text-[10px] text-sky-800 dark:bg-sky-950/40 dark:text-sky-300">
                 <MailIcon className="size-3" />
                 DM
               </span>

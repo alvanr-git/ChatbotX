@@ -24,7 +24,10 @@ class FbCommentAutomationService extends BaseService {
           eq(fbCommentAutomationModel.workspaceId, props.workspaceId),
           eq(fbCommentAutomationModel.isActive, true),
           isInstagram
-            ? inArray(fbCommentAutomationModel.type, ["instagram", "instagramFacebook"])
+            ? inArray(fbCommentAutomationModel.type, [
+                "instagram",
+                "instagramFacebook",
+              ])
             : eq(fbCommentAutomationModel.type, props.channelType),
         ),
       )

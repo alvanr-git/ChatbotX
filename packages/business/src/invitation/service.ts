@@ -4,7 +4,9 @@ import { BaseService } from "../base.service"
 
 class InvitationService extends BaseService {
   async isEmailAllowed(email: string): Promise<boolean> {
-    if (!email) return false
+    if (!email) {
+      return false
+    }
     const normalizedEmail = email.toLowerCase().trim()
 
     // 1. Check if user already exists in the system

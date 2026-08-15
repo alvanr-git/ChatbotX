@@ -792,7 +792,10 @@ export const receiveComment = async (
     sourceId: commentData.fromId,
     sourceConversationId: commentData.postId,
     firstName: commentData.fromName,
-    username: commentData.fromName !== "instagram_user" ? commentData.fromName : undefined,
+    username:
+      commentData.fromName === "instagram_user"
+        ? undefined
+        : commentData.fromName,
   }
 
   const detected = await detectContactAndConversation({
@@ -1017,7 +1020,10 @@ export const detectContactAndConversation = async (props: {
       sourceId: conversationSourceId,
     })
 
-    if (incomingContact.username && existingContactInbox.username !== incomingContact.username) {
+    if (
+      incomingContact.username &&
+      existingContactInbox.username !== incomingContact.username
+    ) {
       await db
         .update(contactInboxModel)
         .set({ username: incomingContact.username })

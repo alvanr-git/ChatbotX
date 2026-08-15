@@ -1,3 +1,1 @@
-import FolderPage from "./page"
-
-export default FolderPage
+export { default } from "./page"
