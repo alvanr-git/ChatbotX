@@ -36,6 +36,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@chatbotx.io/business", () => ({
   platformCredentialService: {
     resolveForOwner: vi.fn(async () => null),
+    resolvePublicForUser: vi.fn(async () => null),
   },
   tenantService: {
     resolveVisibleChannels: mockResolveVisibleChannels,
