@@ -17,6 +17,7 @@ import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { type GridComponents, Virtuoso } from "react-virtuoso"
+import { toast } from "sonner"
 import { useDebouncedCallback } from "use-debounce"
 import type { ConversationFilters } from "../chat/store/chat-store"
 import { useChatStore } from "../chat/store/chat-store-provider"
@@ -56,7 +57,9 @@ export default function ConversationList({
   const [page, setPage] = useState(1)
   // biome-ignore lint/correctness/useExhaustiveDependencies: wip
   useEffect(() => {
-    loadMoreConversations(workspaceId)
+    loadMoreConversations(workspaceId).catch(() => {
+      toast.error(t("messages.errorLoadingData"))
+    })
   }, [page])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount to resolve deep-linked conversation
@@ -85,7 +88,11 @@ export default function ConversationList({
   const handleChange = useDebouncedCallback(() => {
     removeConversationIdFromUrl()
     resetState()
-    loadMoreConversations(workspaceId, { respectUrlConversationId: false })
+    loadMoreConversations(workspaceId, {
+      respectUrlConversationId: false,
+    }).catch(() => {
+      toast.error(t("messages.errorLoadingData"))
+    })
   }, 300)
 
   const form = useForm<ConversationFilters>({

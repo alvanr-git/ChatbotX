@@ -93,6 +93,8 @@ export const systemFieldTypes = z.enum([
 
   "last_step",
   "current_step",
+  "booking_calendar",
+  "booking_date",
   "member_name",
   "team_name",
   "last_input_failure",
@@ -233,5 +235,8 @@ export const contactFilterFields = z.enum([
   "lastUserInputType",
   "locale",
   "language",
+  "fromCtwaAd",
+  "ctwaConversion",
+  "ctwaRetarget",
 ])
 export type ContactFilterField = z.infer<typeof contactFilterFields>
