@@ -64,48 +64,51 @@ afterEach(() => {
   rmSync(distDir, { recursive: true, force: true })
 })
 
-describe.skipIf(process.platform === "win32")("docker-entrypoint worker discovery", () => {
-  test("resolves a standard worker to its dist bundle", () => {
-    const { stdout, status } = run("worker", "chat")
-    expect(status).toBe(0)
-    expect(stdout.trim()).toBe(join(distDir, "chat", "worker.mjs"))
-  })
+describe.skipIf(process.platform === "win32")(
+  "docker-entrypoint worker discovery",
+  () => {
+    test("resolves a standard worker to its dist bundle", () => {
+      const { stdout, status } = run("worker", "chat")
+      expect(status).toBe(0)
+      expect(stdout.trim()).toBe(join(distDir, "chat", "worker.mjs"))
+    })
 
-  test("aliases sequence variants to their historical CLI names", () => {
-    expect(run("worker", "sequence-producer").stdout.trim()).toBe(
-      join(distDir, "sequence-scheduler", "worker-producer.mjs"),
-    )
-    expect(run("worker", "sequence-consumer").stdout.trim()).toBe(
-      join(distDir, "sequence-scheduler", "worker-consumer.mjs"),
-    )
-  })
+    test("aliases sequence variants to their historical CLI names", () => {
+      expect(run("worker", "sequence-producer").stdout.trim()).toBe(
+        join(distDir, "sequence-scheduler", "worker-producer.mjs"),
+      )
+      expect(run("worker", "sequence-consumer").stdout.trim()).toBe(
+        join(distDir, "sequence-scheduler", "worker-consumer.mjs"),
+      )
+    })
 
-  test("auto-discovers a new worker with no script edit", () => {
-    const { stdout, status } = run("worker", "foo")
-    expect(status).toBe(0)
-    expect(stdout.trim()).toBe(join(distDir, "foo", "worker.mjs"))
-  })
+    test("auto-discovers a new worker with no script edit", () => {
+      const { stdout, status } = run("worker", "foo")
+      expect(status).toBe(0)
+      expect(stdout.trim()).toBe(join(distDir, "foo", "worker.mjs"))
+    })
 
-  test("rejects a worker that was not built (e.g. removed analytics)", () => {
-    const { stdout, status } = run("worker", "analytics")
-    expect(status).toBe(3)
-    expect(stdout).toContain("Usage:")
-  })
+    test("rejects a worker that was not built (e.g. removed analytics)", () => {
+      const { stdout, status } = run("worker", "analytics")
+      expect(status).toBe(3)
+      expect(stdout).toContain("Usage:")
+    })
 
-  test("usage lists discovered workers including events and sequence variants", () => {
-    const { stdout } = run("worker", "badname")
-    expect(stdout).toContain("events")
-    expect(stdout).toContain("sequence-producer")
-    expect(stdout).toContain("sequence-consumer")
-    // The stale analytics worker must never appear.
-    expect(stdout).not.toContain("analytics")
-  })
+    test("usage lists discovered workers including events and sequence variants", () => {
+      const { stdout } = run("worker", "badname")
+      expect(stdout).toContain("events")
+      expect(stdout).toContain("sequence-producer")
+      expect(stdout).toContain("sequence-consumer")
+      // The stale analytics worker must never appear.
+      expect(stdout).not.toContain("analytics")
+    })
 
-  test("errors when no worker bundles are present", () => {
-    rmSync(distDir, { recursive: true, force: true })
-    mkdirSync(distDir, { recursive: true })
-    const { stdout, status } = run("worker", "all")
-    expect(status).toBe(4)
-    expect(stdout).toContain("No worker bundles found")
-  })
-})
+    test("errors when no worker bundles are present", () => {
+      rmSync(distDir, { recursive: true, force: true })
+      mkdirSync(distDir, { recursive: true })
+      const { stdout, status } = run("worker", "all")
+      expect(status).toBe(4)
+      expect(stdout).toContain("No worker bundles found")
+    })
+  },
+)
