@@ -62,3 +62,5 @@ jobs:
             git pull origin main
             sudo docker compose -f docker-compose.dev.yml pull
             sudo docker compose -f docker-compose.dev.yml up -d
+            sudo docker image prune -f
+
