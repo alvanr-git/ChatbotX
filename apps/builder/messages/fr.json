@@ -145,7 +145,10 @@
     "onSuccess": "En cas de réussite",
     "clone": "Cloner",
     "remove": "Retirer",
-    "restore": "Restaurer"
+    "restore": "Restaurer",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Vous devez être super-administrateur de l’espace de travail pour effectuer cette action."

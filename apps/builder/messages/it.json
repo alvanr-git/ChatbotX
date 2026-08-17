@@ -1510,7 +1510,10 @@
     "onSuccess": "In caso di successo",
     "clone": "Clona",
     "remove": "Rimuovi",
-    "restore": "Ripristina"
+    "restore": "Ripristina",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Devi essere super admin dello spazio di lavoro per farlo."

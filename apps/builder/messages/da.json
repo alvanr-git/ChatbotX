@@ -145,7 +145,10 @@
     "onSuccess": "På succes",
     "clone": "Klon",
     "remove": "Fjern",
-    "restore": "Gendan"
+    "restore": "Gendan",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Du skal være super admin for arbejdsområdet for at gøre dette."

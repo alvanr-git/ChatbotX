@@ -145,7 +145,10 @@
     "onSuccess": "Saat berhasil",
     "clone": "Klon",
     "remove": "Hapus",
-    "restore": "Pulihkan"
+    "restore": "Pulihkan",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Anda harus menjadi super admin workspace untuk melakukan ini."

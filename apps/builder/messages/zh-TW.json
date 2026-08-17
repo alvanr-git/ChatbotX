@@ -1661,7 +1661,10 @@
     "onSuccess": "成功",
     "clone": "複製",
     "remove": "移除",
-    "restore": "還原"
+    "restore": "還原",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "您需要是工作區的超級管理員才能執行此操作。"
