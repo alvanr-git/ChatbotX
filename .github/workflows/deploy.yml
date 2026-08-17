@@ -47,6 +47,14 @@ jobs:
           push: true
           tags: ghcr.io/alvanr-git/chatbotx/chatbotx-realtime:latest
 
+      - name: Build and Push JavaScript Executor
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/javascript-executor/docker/Dockerfile
+          push: true
+          tags: ghcr.io/alvanr-git/chatbotx/chatbotx-javascript-executor:latest
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest

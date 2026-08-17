@@ -60,9 +60,7 @@ services:
   javascript-executor:
     platform: linux/amd64
     restart: unless-stopped
-    build:
-      context: .
-      dockerfile: apps/javascript-executor/docker/Dockerfile
+    image: ghcr.io/alvanr-git/chatbotx/chatbotx-javascript-executor:latest
     environment:
       JAVASCRIPT_EXECUTOR_TOKEN: ${JAVASCRIPT_EXECUTOR_TOKEN:-change-me-in-production-at-least-32-chars}
       MAX_CONCURRENCY: ${MAX_CONCURRENCY:-2}
