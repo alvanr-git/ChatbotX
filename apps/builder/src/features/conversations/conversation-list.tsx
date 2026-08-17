@@ -11,9 +11,10 @@ import { Button } from "@chatbotx.io/ui/components/ui/button"
 import { Form } from "@chatbotx.io/ui/components/ui/form"
 import { Skeleton } from "@chatbotx.io/ui/components/ui/skeleton"
 import { cn } from "@chatbotx.io/ui/lib/utils"
-import { SearchIcon, UserPlusIcon } from "lucide-react"
+import { RefreshCwIcon, SearchIcon, UserPlusIcon } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { useAction } from "next-safe-action/hooks"
 import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { type GridComponents, Virtuoso } from "react-virtuoso"
@@ -22,6 +23,7 @@ import { useDebouncedCallback } from "use-debounce"
 import type { ConversationFilters } from "../chat/store/chat-store"
 import { useChatStore } from "../chat/store/chat-store-provider"
 import { CreateContactDialog } from "../contacts/create-contact-dialog"
+import { checkInboxAction } from "./actions/check-inbox.action"
 import { ConversationFilter } from "./conversation-filter"
 import ConversationItem from "./conversation-item"
 
@@ -49,6 +51,28 @@ export default function ConversationList({
   } = useChatStore((state) => state)
 
   const [showSearchInput, setShowSearchInput] = useState(false)
+
+  const { execute: checkInbox, isExecuting: isCheckingInbox } = useAction(
+    checkInboxAction.bind(null, workspaceId),
+    {
+      onSuccess: () => {
+        resetState()
+        loadMoreConversations(workspaceId, {
+          respectUrlConversationId: true,
+        }).catch(() => {
+          toast.error(t("messages.errorLoadingData"))
+        })
+        toast.success(t("actions.checkingDmsAndComments"))
+      },
+      onError: ({ error }) => {
+        if (error.serverError) {
+          toast.error(error.serverError)
+        } else {
+          toast.error(t("actions.checkDmsAndCommentsError"))
+        }
+      },
+    },
+  )
 
   // Check if there are more pages to load
   const hasNextPage =
@@ -197,6 +221,25 @@ export default function ConversationList({
           />
 
           <ConversationFilter canViewEmailAndPhone={canViewEmailAndPhone} />
+
+          <Button
+            className="px-2"
+            disabled={isCheckingInbox}
+            onClick={() => {
+              checkInbox()
+            }}
+            size="sm"
+            title={t("actions.checkDmsAndComments")}
+            type="button"
+            variant="outline"
+          >
+            <RefreshCwIcon
+              className={cn(
+                "h-4 w-4",
+                isCheckingInbox && "animate-spin text-primary",
+              )}
+            />
+          </Button>
         </div>
 
         <div className="flex-1">

@@ -8,12 +8,13 @@ const FACEBOOK_OAUTH_BASE = "https://www.facebook.com"
 const INSTAGRAM_SCOPES = [
   "instagram_basic",
   "instagram_manage_messages",
-  "instagram_manage_events",
+  "instagram_manage_comments",
   "pages_manage_metadata",
   "pages_show_list",
   "business_management",
 ]
 
+export const INSTAGRAM_MANAGE_COMMENTS_SCOPE = "instagram_manage_comments"
 export const INSTAGRAM_MANAGE_EVENTS_SCOPE = "instagram_manage_events"
 
 export type InstagramAccount = {
@@ -97,6 +98,12 @@ export function debugToken({
     )
     return res.data ?? {}
   })
+}
+
+export function hasInstagramManageCommentsScope(
+  scopes: string[] | undefined,
+): boolean {
+  return Boolean(scopes?.includes(INSTAGRAM_MANAGE_COMMENTS_SCOPE))
 }
 
 export function hasInstagramManageEventsScope(
