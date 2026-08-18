@@ -4,7 +4,7 @@ import { z } from "zod"
 export const keys = () =>
   createEnv({
     server: {
-      NEXT_PUBLIC_BUILDER_URL: z.url(),
+      NEXT_PUBLIC_BUILDER_URL: z.url().default("http://localhost:3123"),
       // The dedicated, brand-neutral broker host — the canonical provider-facing
       // origin for both OAuth redirect_uris (Google, Facebook, …) and host-validated
       // webhooks (WhatsApp/Meta, TikTok). It is registered as the single redirect_uri
@@ -12,7 +12,7 @@ export const keys = () =>
       // the originating domain. Optional: falls back to NEXT_PUBLIC_BUILDER_URL so
       // single-domain deploys keep working.
       NEXT_PUBLIC_BROKER_URL: z.url().optional(),
-      BETTER_AUTH_SECRET: z.string(),
+      BETTER_AUTH_SECRET: z.string().default("chatbotx-secret-key-at-least-32-chars-long"),
     },
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,

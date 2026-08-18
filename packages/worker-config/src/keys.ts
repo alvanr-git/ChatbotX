@@ -4,9 +4,13 @@ import { z } from "zod"
 export const keys = () =>
   createEnv({
     server: {
-      REDIS_URL: z.url(),
+      REDIS_URL: z.url().default("redis://localhost:6379"),
       NEXT_PHASE: z.string().default(""),
     },
-    experimental__runtimeEnv: {},
+    runtimeEnv: {
+      REDIS_URL: process.env.REDIS_URL,
+      NEXT_PHASE: process.env.NEXT_PHASE,
+    },
+    emptyStringAsUndefined: true,
     skipValidation: process.env.SKIP_ENV_CHECK === "true",
   })
