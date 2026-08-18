@@ -29,7 +29,12 @@ export default async function BroadcastsPage(props: {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-bold text-lg sm:text-xl">{t("broadcasts.title")}</h3>
+      <div>
+        <h3 className="font-bold text-lg sm:text-xl">{t("broadcasts.title")}</h3>
+        <p className="text-muted-foreground text-sm mt-1">
+          {t("broadcasts.description")}
+        </p>
+      </div>
       <Suspense>
         <BroadcastsTable promises={promises} />
       </Suspense>
