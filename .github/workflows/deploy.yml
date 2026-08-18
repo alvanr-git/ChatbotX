@@ -71,8 +71,11 @@ jobs:
             git reset --hard origin/main
             sudo journalctl --vacuum-size=50M || true
             sudo docker builder prune -af || true
-            sudo docker system prune -af --volumes || true
+            sudo docker system prune -af || true
             echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             sudo docker compose -f docker-compose.dev.yml pull
             sudo docker compose -f docker-compose.dev.yml up -d --force-recreate
+            sleep 10
+            sudo docker compose -f docker-compose.dev.yml ps
+            sudo docker compose -f docker-compose.dev.yml logs --tail 50 builder
             sudo docker image prune -af
