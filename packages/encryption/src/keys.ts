@@ -6,21 +6,11 @@ const HEX_REGEX = /^[0-9a-fA-F]+$/
 
 const hexKeySchema = z
   .string()
-  .transform((val) =>
-    val.length !== 64 || !HEX_REGEX.test(val)
-      ? "0000000000000000000000000000000000000000000000000000000000000000"
-      : val,
+  .length(
+    KEY_HEX_LENGTH,
+    "Encryption key must be a 32-byte hex string (64 hex chars). Generate with: openssl rand -hex 32",
   )
-  .pipe(
-    z
-      .string()
-      .length(
-        KEY_HEX_LENGTH,
-        "Encryption key must be a 32-byte hex string (64 hex chars). Generate with: openssl rand -hex 32",
-      )
-      .regex(HEX_REGEX, "Encryption key must be hex-encoded (0-9, a-f)."),
-  )
-  .default("0000000000000000000000000000000000000000000000000000000000000000")
+  .regex(HEX_REGEX, "Encryption key must be hex-encoded (0-9, a-f).")
 
 export const keys = () =>
   createEnv({

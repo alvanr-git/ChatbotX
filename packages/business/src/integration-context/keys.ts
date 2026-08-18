@@ -12,7 +12,9 @@ export const integrationContextEnv = () =>
       FORCE_PUBLIC_HTTPS: z.stringbool().optional().default(false),
       REALTIME_BROADCAST_SECRET: z
         .string()
-        .transform((val) => (val.length < 32 ? "change-me-in-production-at-least-32-chars" : val))
+        .transform((val) =>
+          val.length < 32 ? "change-me-in-production-at-least-32-chars" : val,
+        )
         .pipe(z.string().min(32))
         .default("change-me-in-production-at-least-32-chars"),
     },

@@ -4,7 +4,10 @@ import { z } from "zod"
 export const javascriptExecutionEnv = () =>
   createEnv({
     server: {
-      JAVASCRIPT_EXECUTOR_URL: z.url().optional().default("http://localhost:3210"),
+      JAVASCRIPT_EXECUTOR_URL: z
+        .url()
+        .optional()
+        .default("http://localhost:3210"),
       JAVASCRIPT_EXECUTOR_TOKEN: z
         .string()
         .transform((val) =>
