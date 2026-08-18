@@ -4,7 +4,7 @@ import { z } from "zod"
 export const keys = () =>
   createEnv({
     server: {
-      REDIS_URL: z.url(),
+      REDIS_URL: z.url().default("redis://localhost:6379"),
       REDIS_CACHE_URL: z.url().optional(),
       REDIS_QUEUE_URL: z.url().optional(),
       REDIS_SEQUENCE_URL: z.url().optional(),

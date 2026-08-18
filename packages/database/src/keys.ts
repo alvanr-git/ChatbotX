@@ -4,7 +4,7 @@ import { z } from "zod"
 export const keys = () =>
   createEnv({
     server: {
-      DATABASE_URL: z.url(),
+      DATABASE_URL: z.url().default("postgresql://chatbotx:secretkey@localhost:5432/chatbotx"),
       DATABASE_DEBUG: z.stringbool().optional().default(false),
       MESSAGE_SHARDS_PASSWORD: z.string().optional(),
       MESSAGE_SHARDS_SSL: z.stringbool().optional().default(false),
