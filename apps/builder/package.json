@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "dotenv -e ../../.env -- next build",
+    "build": "dotenv -e ../../.env -- cross-env SKIP_ENV_CHECK=true next build",
     "check-types": "tsc --noEmit",
     "dev": "dotenv -e .env -e ../../.env -- next dev -p 3123 | pino-pretty",
     "https": "dotenv -e .env -e ../../.env -- next dev -p 3123 --experimental-https",
@@ -152,6 +152,7 @@
     "@types/react-dom": "19.2.3",
     "@types/swagger-ui-react": "^5.18.0",
     "babel-plugin-react-compiler": "^1.0.0",
+    "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "pg": "^8.20.0",
     "pino-pretty": "^13.1.3",
