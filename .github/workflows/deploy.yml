@@ -69,8 +69,10 @@ jobs:
             cd /opt/chatbotx
             git fetch origin main
             git reset --hard origin/main
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            sudo journalctl --vacuum-size=50M || true
+            sudo docker builder prune -af || true
             sudo docker system prune -af --volumes || true
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             sudo docker compose -f docker-compose.dev.yml pull
             sudo docker compose -f docker-compose.dev.yml up -d --force-recreate
             sudo docker image prune -af
