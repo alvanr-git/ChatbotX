@@ -12,5 +12,8 @@ export const keys = () =>
       NEXT_PHASE: process.env.NEXT_PHASE,
     },
     emptyStringAsUndefined: true,
-    skipValidation: process.env.SKIP_ENV_CHECK === "true",
+    skipValidation:
+      process.env.SKIP_ENV_CHECK === "true" ||
+      process.env.SKIP_ENV_CHECK === "1" ||
+      process.env.NEXT_PHASE === "phase-production-build",
   })

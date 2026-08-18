@@ -16,7 +16,10 @@ export const keys = () =>
     },
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,
-    skipValidation: process.env.SKIP_ENV_CHECK === "true",
+    skipValidation:
+      process.env.SKIP_ENV_CHECK === "true" ||
+      process.env.SKIP_ENV_CHECK === "1" ||
+      process.env.NEXT_PHASE === "phase-production-build",
   })
 
 export const env = keys()

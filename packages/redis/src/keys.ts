@@ -10,5 +10,8 @@ export const keys = () =>
       REDIS_SEQUENCE_URL: z.url().optional(),
     },
     runtimeEnv: process.env,
-    skipValidation: process.env.SKIP_ENV_CHECK === "true",
+    skipValidation:
+      process.env.SKIP_ENV_CHECK === "true" ||
+      process.env.SKIP_ENV_CHECK === "1" ||
+      process.env.NEXT_PHASE === "phase-production-build",
   })
