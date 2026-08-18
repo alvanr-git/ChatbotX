@@ -38,6 +38,7 @@ COPY --from=pre /app/out/full/ .
 ENV BETTER_AUTH_SECRET="docker-build-time-placeholder-not-used-at-runtime-0"
 ENV BETTER_AUTH_URL="http://localhost:3000"
 ENV NEXT_PUBLIC_BUILDER_URL="http://localhost:3000"
+ENV SKIP_ENV_CHECK="true"
 
 ENV EXPERIMENTAL_CPUS=1
 ENV NEXT_CPU_LIMIT=1
