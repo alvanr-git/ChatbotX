@@ -8,13 +8,14 @@ export const keys = () =>
         .url()
         .min(1)
         .default("smtp://username:password@localhost:1025"),
-      SMTP_FROM: z.string().min(1),
+      SMTP_FROM: z.string().min(1).default("noreply@localhost"),
     },
     runtimeEnv: {
       SMTP_SERVER:
         process.env.SMTP_SERVER || "smtp://username:password@localhost:1025",
-      SMTP_FROM: process.env.SMTP_FROM,
+      SMTP_FROM: process.env.SMTP_FROM || "noreply@localhost",
     },
+    emptyStringAsUndefined: true,
     skipValidation: process.env.SKIP_ENV_CHECK === "true",
   })
 
