@@ -69,6 +69,11 @@ jobs:
             cd /opt/chatbotx
             git fetch origin main
             git reset --hard origin/main
+            if [ ! -f .env ]; then
+              cp .env.example .env
+            else
+              sed -i 's/^NEXT_PUBLIC_EDITION=.*/NEXT_PUBLIC_EDITION=community/' .env
+            fi
             sudo journalctl --vacuum-size=50M || true
             sudo docker builder prune -af || true
             sudo docker system prune -af || true
