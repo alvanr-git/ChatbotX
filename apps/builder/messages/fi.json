@@ -1986,6 +1986,10 @@
     }
   },
   "flows": {
+    "export": {
+      "notPublished": "Tätä flow'ta ei ole koskaan julkaistu. Julkaise se ennen viemistä.",
+      "failed": "Vienti epäonnistui. Yritä uudelleen."
+    },
     "title": "Flow't",
     "quickReplies": {
       "limitReached": "Pikavastausten enimmäismäärä saavutettu ({max})."
@@ -2115,7 +2119,11 @@
       "appointmentScheduling": "Ajanvaraus",
       "triggerN8n": "Trigger n8n",
       "metaConversions": "Meta Conversions API",
-      "sendMetaCapiEvent": "Lähetä Meta CAPI -tapahtuma"
+      "sendMetaCapiEvent": "Lähetä Meta CAPI -tapahtuma",
+      "import": "Tuo vuo",
+      "export": "Vie",
+      "importStarted": "Vuota tuodaan. Tarkista tuontihistoriasta tulokset.",
+      "importJsonOnly": "Vain JSON-tiedostot"
     },
     "splitTraffic": {
       "balanceHint": "Kokonaissumman on oltava 100 %.",
@@ -2269,32 +2277,12 @@
   },
   "ads": {
     "title": "Mainokset",
-    "nav": {
-      "clickToWhatsappAds": "Click to WhatsApp Ads",
-      "clickToTiktokAds": "Click to TikTok Ads",
-      "connectAccounts": "Yhdistä tilit",
-      "conversionEvents": "Konversiotapahtumat",
-      "adsAnalytics": "Mainosanalytiikka",
-      "reporting": "Raportointi",
-      "ctwa": "CTWA",
-      "googleAds": "Google Ads",
-      "comingSoon": "Tulossa pian"
-    },
     "connectAccounts": {
-      "title": "Hallitse kaikkia mainostilejäsi",
-      "description": "Seuraa konversioita ja optimoi click-to-WhatsApp-mainoskampanjasi.",
-      "learnMore": "Lue lisää",
       "connectAdAccount": "Yhdistä mainostili",
       "adAccountName": "Mainostilin nimi",
-      "disconnect": "Katkaise yhteys",
-      "empty": "Yhtään mainostiliä ei ole vielä yhdistetty.",
-      "adAccountsTitle": "Metan mainostilit",
-      "adAccountsDescription": "Yhdistä Facebook Ads latataksesi click-to-WhatsApp-kampanjoissa käytettävät mainostilit.",
       "adAccountsReconnectBanner": "Meta-mainostilisi tunnistetiedot ovat vanhentuneet tai menettäneet käyttöoikeuksia. Yhdistä Facebook Ads uudelleen, jotta mainosraportointi pysyy käytettävissä.",
       "adAccountsNotConnected": "Yhtään Meta-mainostiliä ei ole vielä yhdistetty.",
       "adAccountsEmpty": "Tälle Facebook Ads -yhteydelle ei löytynyt Meta-mainostileja.",
-      "adAccountsNote": "Kulutus ja uudelleenkohdistuksen kohdeyleisöt tulevat näistä mainostileistä.",
-      "reconnectBanner": "Yhdistä WhatsApp-tilisi uudelleen, jotta konversiotapahtumien lähettäminen Metalle onnistuu.",
       "reconnect": "Yhdistä uudelleen",
       "reconnectSuccess": "WhatsApp-tili yhdistetty uudelleen.",
       "selectAccountLabel": "WhatsApp-tili",
@@ -2304,22 +2292,9 @@
         "unverified": "Käyttöoikeutta ei ole vahvistettu"
       },
       "table": {
-        "name": "Nimi",
-        "phoneNumber": "Puhelinnumero",
-        "wabaId": "WABA-tunnus",
-        "permission": "Automaattiset tapahtumat"
-      },
-      "providers": {
-        "meta": "Meta",
-        "googleAds": "Google Ads",
-        "tiktok": "TikTok"
+        "wabaId": "WABA-tunnus"
       },
       "connectWhatsapp": {
-        "title": "Yhdistä ensin WhatsApp-tilisi",
-        "description": "Click-to-WhatsApp-konversioiden seuranta vaatii yhdistetyn WhatsApp-tilin, ennen kuin voit linkittää mainostilejä ja luoda konversiotietojoukkoja.",
-        "step1": "Yhdistä WhatsApp Business -tilisi Kanavat-osiossa.",
-        "step2": "Palaa tänne valtuuttaaksesi Meta Ads:in ja valitse mainostilisi.",
-        "step3": "Luomme automaattisesti konversiotietojoukon WhatsApp Business -tilisi avulla.",
         "cta": "Yhdistä WhatsApp-tili"
       }
     },
@@ -3391,7 +3366,8 @@
       "messageTemplates": "Viestimallit",
       "profile": "Profiili",
       "usefulLinks": "Hyödylliset linkit",
-      "conversionsApi": "Mainosten optimointi"
+      "conversionsApi": "Mainosten optimointi",
+      "settings": "Asetukset"
     },
     "accountHealths": {
       "title": "Hallitse WhatsApp-tiliäsi",
@@ -3521,7 +3497,13 @@
       "label": "Mallin ylätunniste"
     },
     "transferPhoneNumber": "Siirrä puhelin toiselta WhatsApp-palveluntarjoajalta",
-    "signupSessionExpired": "WhatsApp-rekisteröinti-istuntosi on vanhentunut. Aloita yhdistäminen uudelleen."
+    "signupSessionExpired": "WhatsApp-rekisteröinti-istuntosi on vanhentunut. Aloita yhdistäminen uudelleen.",
+    "capi": {
+      "automaticEvents": {
+        "title": "Automaattiset tapahtumat",
+        "description": "Lähetä konversiotapahtumat tästä WhatsApp-numerosta automaattisesti Metalle. Jos lupa puuttuu, yhdistä tili uudelleen myöntääksesi sen."
+      }
+    }
   },
   "zalo": {
     "title": "Zalo OA",

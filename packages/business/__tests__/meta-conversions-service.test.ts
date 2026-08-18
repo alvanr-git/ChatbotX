@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
+const WHATSAPP_FLOW_SOURCE_KEY_PATTERN = /^flow:s1:c1:\d{8}$/
+const MESSENGER_TRIGGER_SOURCE_KEY_PATTERN = /^trigger:t1:c1:.+$/
+
 const mocks = vi.hoisted(() => ({
   enqueueIntegrationJob: vi.fn(),
   findPendingBySourceKey: vi.fn(),
@@ -869,5 +872,50 @@ describe("MetaConversionsService", () => {
       },
       undefined,
     )
+  })
+
+  describe("buildLeadSourceKey", () => {
+    test("whatsapp dedups per contact per UTC day (identical key within a day)", () => {
+      const first = metaConversionsService.buildLeadSourceKey({
+        scope: "flow",
+        scopeId: "s1",
+        contactInboxId: "c1",
+        channel: "whatsapp",
+      })
+      const second = metaConversionsService.buildLeadSourceKey({
+        scope: "flow",
+        scopeId: "s1",
+        contactInboxId: "c1",
+        channel: "whatsapp",
+      })
+
+      expect(first).toBe(second)
+      expect(first).toMatch(WHATSAPP_FLOW_SOURCE_KEY_PATTERN)
+    })
+
+    test("messenger and instagram never dedup (a unique key per fire)", () => {
+      const messengerFirst = metaConversionsService.buildLeadSourceKey({
+        scope: "trigger",
+        scopeId: "t1",
+        contactInboxId: "c1",
+        channel: "messenger",
+      })
+      const messengerSecond = metaConversionsService.buildLeadSourceKey({
+        scope: "trigger",
+        scopeId: "t1",
+        contactInboxId: "c1",
+        channel: "messenger",
+      })
+      const instagram = metaConversionsService.buildLeadSourceKey({
+        scope: "flow",
+        scopeId: "s1",
+        contactInboxId: "c1",
+        channel: "instagram",
+      })
+
+      expect(messengerFirst).not.toBe(messengerSecond)
+      expect(instagram).not.toBe(messengerFirst)
+      expect(messengerFirst).toMatch(MESSENGER_TRIGGER_SOURCE_KEY_PATTERN)
+    })
   })
 })
