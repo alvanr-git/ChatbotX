@@ -126,10 +126,11 @@ export const geminiImageModelOptions: {
  * with automatic fallback to older/newer working versions if the primary model is deprecated or unsupported.
  */
 export async function generateObjectWithGeminiFallback(
-  options: Omit<Parameters<typeof generateObject>[0], "model"> & {
+  options: Record<string, unknown> & {
     preferredModel?: string
   },
 ) {
+  const { preferredModel: _p, ...rawOptions } = options
   const primaryModel = options.preferredModel || DEFAULT_GEMINI_MODEL
   const modelsToTry = [
     primaryModel,
@@ -139,9 +140,8 @@ export async function generateObjectWithGeminiFallback(
   let lastError: unknown = null
   for (const modelName of modelsToTry) {
     try {
-      const { preferredModel: _p, ...generateOptions } = options
       return await generateObject({
-        ...(generateOptions as unknown as Parameters<typeof generateObject>[0]),
+        ...(rawOptions as unknown as Parameters<typeof generateObject>[0]),
         model: google(modelName) as unknown as Parameters<
           typeof generateObject
         >[0]["model"],
