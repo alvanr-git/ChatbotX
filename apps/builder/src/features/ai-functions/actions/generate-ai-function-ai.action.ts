@@ -1,7 +1,6 @@
 "use server"
 
-import { google } from "@ai-sdk/google"
-import { generateObject } from "ai"
+import { generateObjectWithGeminiFallback } from "@chatbotx.io/ai"
 import { z } from "zod"
 import { workspaceIdrequestParams } from "@/features/common/schemas"
 import { workspaceActionClient } from "@/lib/safe-action"
@@ -60,10 +59,8 @@ Return a JSON object containing:
 - outputMessage: template confirmation response for the user`
 
     try {
-      const { object } = await generateObject({
-        model: google("gemini-2.5-flash") as unknown as Parameters<
-          typeof generateObject
-        >[0]["model"],
+      const { object } = await generateObjectWithGeminiFallback({
+        preferredModel: "gemini-3.6-flash",
         schema: generatedAIFunctionOutputSchema,
         system: systemPrompt,
         prompt: parsedInput.prompt,

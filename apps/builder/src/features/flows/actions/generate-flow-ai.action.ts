@@ -1,7 +1,7 @@
 "use server"
 
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
-import { generateObject } from "ai"
+import { generateObjectWithGeminiFallback } from "@chatbotx.io/ai"
 import { z } from "zod"
 import {
   type WorkspaceIdRequestParams,
@@ -47,7 +47,7 @@ export const generateFlowWithAiAction = workspaceActionClient
     }) => {
       const apiKey =
         process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
-      const google = createGoogleGenerativeAI({
+      const _google = createGoogleGenerativeAI({
         apiKey: apiKey || "dummy-key-for-fallback",
       })
 
@@ -60,10 +60,8 @@ Given a user prompt describing a chatbot workflow or conversation sequence, you 
 - Connect consecutive nodes with edges from source to target.`
 
       try {
-        const { object } = await generateObject({
-          model: google("gemini-2.5-flash") as unknown as Parameters<
-            typeof generateObject
-          >[0]["model"],
+        const { object } = await generateObjectWithGeminiFallback({
+          preferredModel: "gemini-3.6-flash",
           schema: generatedFlowOutputSchema,
           system: systemPrompt,
           prompt: parsedInput.prompt,

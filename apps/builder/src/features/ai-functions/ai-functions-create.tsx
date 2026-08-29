@@ -213,7 +213,7 @@ export function AIFunctionsCreate({
                   <span>Generate Function Parameters with Gemini AI</span>
                 </div>
                 <span className="font-mono text-muted-foreground text-xs">
-                  Gemini 2.5 Flash
+                  Gemini 3.6 Flash
                 </span>
               </div>
               <p className="text-muted-foreground text-xs">
