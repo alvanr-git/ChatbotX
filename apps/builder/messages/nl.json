@@ -148,7 +148,10 @@
     "clone": "Klonen",
     "remove": "Verwijderen",
     "restore": "Herstellen",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Je moet superbeheerder van de werkruimte zijn om dit te doen."
@@ -433,7 +436,8 @@
       "template": "Sjabloon",
       "noTemplate": "Geen sjabloon",
       "integration": "Integratie"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "fields": {
     "omnichannel": {
@@ -2299,7 +2303,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Als er knoppen zijn toegevoegd, verstuurt TikTok alleen de eerste 40 tekens van dit bericht — de rest wordt afgekapt."
     },
-    "dataWasSaved": "Gegevens zijn opgeslagen"
+    "dataWasSaved": "Gegevens zijn opgeslagen",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "Permanente gebruikersmenu's"
   },
   "webhooks": {
-    "title": "Webhooks"
+    "title": "Webhooks",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Toegangspuntlinks",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ contacten",
     "exportAllNotice": "Alle contacten die overeenkomen met het huidige filter worden geëxporteerd.",
     "exportTakingLong": "Het exporteren duurt langer dan verwacht",
-    "exportTakingLongDescription": "De export wordt nog verwerkt. Je kunt dit dialoogvenster sluiten en over enkele minuten de exportgeschiedenis bekijken."
+    "exportTakingLongDescription": "De export wordt nog verwerkt. Je kunt dit dialoogvenster sluiten en over enkele minuten de exportgeschiedenis bekijken.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Auditlogboeken",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Berichtinhoud met een Pagina-trefwoord kan ertoe leiden dat er berichten in een oneindige lus naar de klant worden verzonden. Schakel het Pagina-trefwoord onmiddellijk uit als dit gebeurt!"
   },
   "triggers": {
-    "title": "Triggers"
+    "title": "Triggers",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Gebruikers"
@@ -3951,10 +3959,12 @@
     "friday": "Vrijdag",
     "saturday": "Zaterdag",
     "sunday": "Zondag",
-    "afterText": "Na"
+    "afterText": "Na",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Hulpmiddelen"
+    "title": "Hulpmiddelen",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

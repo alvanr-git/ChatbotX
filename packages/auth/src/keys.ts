@@ -12,7 +12,9 @@ export const keys = () =>
       // the originating domain. Optional: falls back to NEXT_PUBLIC_BUILDER_URL so
       // single-domain deploys keep working.
       NEXT_PUBLIC_BROKER_URL: z.url().optional(),
-      BETTER_AUTH_SECRET: z.string().default("chatbotx-secret-key-at-least-32-chars-long"),
+      BETTER_AUTH_SECRET: z
+        .string()
+        .default("chatbotx-secret-key-at-least-32-chars-long"),
     },
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,

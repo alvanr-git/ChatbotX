@@ -148,7 +148,10 @@
     "clone": "שכפול",
     "remove": "הסרה",
     "restore": "שחזור",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "עליכם להיות מנהל-על של סביבת העבודה כדי לבצע פעולה זו."
@@ -523,7 +526,8 @@
     "sendText": {
       "tiktokTitleTruncated": "כאשר מצורפים כפתורים, טיקטוק שולח רק את 40 התווים הראשונים של ההודעה הזו — השאר ייחתך."
     },
-    "dataWasSaved": "הנתונים נשמרו"
+    "dataWasSaved": "הנתונים נשמרו",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -1882,7 +1886,8 @@
     "title": "תפריטי משתמש קבועים"
   },
   "webhooks": {
-    "title": "Webhooks"
+    "title": "Webhooks",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "קישורים לנקודות כניסה",
@@ -2044,7 +2049,8 @@
     "countCapped": "{count}+ אנשי קשר",
     "exportAllNotice": "כל אנשי הקשר שתואמים למסנן הנוכחי ייוצאו.",
     "exportTakingLong": "הייצוא נמשך זמן רב מהצפוי",
-    "exportTakingLongDescription": "הייצוא עדיין בעיבוד. ניתן לסגור חלון זה ולבדוק שוב בעוד מספר דקות בהיסטוריית הייצוא."
+    "exportTakingLongDescription": "הייצוא עדיין בעיבוד. ניתן לסגור חלון זה ולבדוק שוב בעוד מספר דקות בהיסטוריית הייצוא.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "יומני ביקורת",
@@ -2086,7 +2092,8 @@
     "pageWarning": "תוכן הודעה המכיל מילת מפתח לעמוד עלול לגרום לשליחת הודעות ללקוח בלופ אינסופי. השבת את מילת המפתח לעמוד באופן מיידי אם נתקלת במקרה זה!"
   },
   "triggers": {
-    "title": "גורמים מפעילים"
+    "title": "גורמים מפעילים",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "משתמשים"
@@ -2175,10 +2182,12 @@
     "friday": "יום שישי",
     "saturday": "שבת",
     "sunday": "יום ראשון",
-    "afterText": "אחרי"
+    "afterText": "אחרי",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "כלים"
+    "title": "כלים",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -4787,7 +4796,8 @@
       "template": "תבנית",
       "noTemplate": "ללא תבנית",
       "integration": "שילוב"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "כן",

@@ -9,7 +9,6 @@ import {
   CardSimIcon,
   CircleQuestionMarkIcon,
   CopyIcon,
-  Gamepad2Icon,
   ImagesIcon,
   LinkIcon,
   MapIcon,
@@ -188,7 +187,7 @@ export const ToolsList = () => {
     <div className="space-y-4">
       <div>
         <h3 className="font-bold text-xl">{t("tools.title")}</h3>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="mt-1 text-muted-foreground text-sm">
           {t("tools.description")}
         </p>
       </div>

@@ -152,7 +152,10 @@
     "view": "Visa",
     "viewAnalytics": "Visa analys",
     "wait": "Vänta",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Du måste vara superadministratör för arbetsytan för att göra detta."
@@ -566,7 +569,8 @@
     "whatsappWithin24Hours": {
       "description": "Kan innehålla kampanjer och skickas endast till användare som har skickat meddelanden till din bot under de senaste 24 timmarna.",
       "title": "Aktiva kontakter inom 24 timmar"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "channels": {
     "duplicated": {
@@ -838,7 +842,8 @@
     "exportTakingLong": "Exporten tar längre tid än väntat",
     "exportTakingLongDescription": "Exporten bearbetas fortfarande. Du kan stänga den här dialogrutan och kontrollera exporthistoriken igen om några minuter.",
     "linkCopied": "Länken har kopierats till urklipp",
-    "title": "Kontakter"
+    "title": "Kontakter",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "coupons": {
     "actions": {
@@ -3025,7 +3030,8 @@
     "sendText": {
       "tiktokTitleTruncated": "När knappar är kopplade skickar TikTok bara de första 40 tecknen i det här meddelandet — resten klipps bort."
     },
-    "dataWasSaved": "Uppgifterna sparades"
+    "dataWasSaved": "Uppgifterna sparades",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -4375,7 +4381,8 @@
       "exception": "Valideringsfel",
       "nameExists": "Sekvensnamnet finns redan"
     },
-    "wednesday": "Onsdag"
+    "wednesday": "Onsdag",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "settings": {
     "agents": {
@@ -4495,7 +4502,8 @@
     "title": "TikTok"
   },
   "tools": {
-    "title": "Verktyg"
+    "title": "Verktyg",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "trigger": {
     "actions": {
@@ -4560,7 +4568,8 @@
     "when": "När detta händer"
   },
   "triggers": {
-    "title": "Utlösare"
+    "title": "Utlösare",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "unsubscribePage": {
     "description": "Du kommer inte längre att få e-post från den här avsändaren.",
@@ -4607,7 +4616,8 @@
     "workspaceUnavailable": "Den här arbetsytan är inte längre tillgänglig."
   },
   "webhooks": {
-    "title": "Webhookar"
+    "title": "Webhookar",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "whatsapp": {
     "accountHealths": {

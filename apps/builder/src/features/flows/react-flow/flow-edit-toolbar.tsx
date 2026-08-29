@@ -48,9 +48,9 @@ import { useAction } from "next-safe-action/hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { GetInboxUrlDialog } from "@/features/inboxes/components/get-inbox-url"
-import { GenerateFlowAiDialog } from "../components/generate-flow-ai-dialog"
 import { publishFlowAction } from "../actions/publish-flow-action"
 import { revertToPublishedAction } from "../actions/revert-to-published-action"
+import { GenerateFlowAiDialog } from "../components/generate-flow-ai-dialog"
 import { DeleteFlowsDialog } from "../delete-flow-dialog"
 import { DuplicateFlowDialog } from "../duplicate-flow-dialog"
 import { downloadFlowExport } from "../lib/download-flow-export"
@@ -311,11 +311,11 @@ export function FlowEditToolbar({
           size="sm"
           variant="default"
         >
-        {(isValidating || isPendingPublish) && (
-          <Loader2Icon className="animate-spin" />
-        )}
-        {t("actions.publish")}
-      </Button>
+          {(isValidating || isPendingPublish) && (
+            <Loader2Icon className="animate-spin" />
+          )}
+          {t("actions.publish")}
+        </Button>
       </div>
 
       <DropdownMenu>

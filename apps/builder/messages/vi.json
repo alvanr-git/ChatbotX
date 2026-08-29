@@ -436,7 +436,8 @@
       "template": "Template",
       "noTemplate": "Không có template",
       "integration": "Tích hợp"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Có",
@@ -2376,7 +2377,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Khi có gắn nút, TikTok chỉ gửi tối đa 40 ký tự đầu của tin nhắn này — phần còn lại sẽ bị cắt bỏ."
     },
-    "dataWasSaved": "Đã lưu dữ liệu"
+    "dataWasSaved": "Đã lưu dữ liệu",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3737,7 +3739,8 @@
     "linkCopied": "Đã sao chép liên kết vào clipboard",
     "countExact": "{count} liên hệ",
     "countCapped": "{count}+ liên hệ",
-    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất."
+    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "errorLogs": {
     "title": "Nhật ký lỗi"
@@ -3782,7 +3785,8 @@
     "pageWarning": "Nội dung tin nhắn chứa từ khoá cho trang có thể dẫn đến gửi tin nhắn cho khách lặp vô hạn. Hãy huỷ kích hoạt từ khoá cho trang ngay lập tức nếu bạn gặp phải trường hợp này!"
   },
   "triggers": {
-    "title": "Kích hoạt"
+    "title": "Kích hoạt",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "appointments": {
     "title": "Cuộc hẹn",
@@ -3831,7 +3835,8 @@
     "title": "Menu cố định người dùng"
   },
   "webhooks": {
-    "title": "Webhooks"
+    "title": "Webhooks",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Liên kết giới thiệu",
@@ -3990,10 +3995,12 @@
     "saturday": "Thứ Bảy",
     "sunday": "Chủ Nhật",
     "afterText": "Sau",
-    "title": "Chăm sóc"
+    "title": "Chăm sóc",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Công cụ"
+    "title": "Công cụ",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "users": {
     "title": "Người dùng"

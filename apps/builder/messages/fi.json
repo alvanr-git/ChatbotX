@@ -148,7 +148,10 @@
     "clone": "Kloonaa",
     "remove": "Poista",
     "restore": "Palauta",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Sinun täytyy olla työtilan pääylläpitäjä tehdäksesi tämän."
@@ -433,7 +436,8 @@
       "template": "Malli",
       "noTemplate": "Ei mallia",
       "integration": "Integraatio"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Kyllä",
@@ -2299,7 +2303,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Kun painikkeita on liitetty, TikTok lähettää vain tämän viestin ensimmäiset 40 merkkiä — loput katkaistaan."
     },
-    "dataWasSaved": "Tiedot tallennettiin"
+    "dataWasSaved": "Tiedot tallennettiin",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "Käyttäjän pysyvät valikot"
   },
   "webhooks": {
-    "title": "Webhookit"
+    "title": "Webhookit",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Aloituspisteiden linkit",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ yhteystietoa",
     "exportAllNotice": "Kaikki nykyistä suodatinta vastaavat yhteystiedot viedään.",
     "exportTakingLong": "Vienti kestää odotettua kauemmin",
-    "exportTakingLongDescription": "Vientiä käsitellään edelleen. Voit sulkea tämän valintaikkunan ja tarkistaa tilanteen muutaman minuutin kuluttua vientihistoriasta."
+    "exportTakingLongDescription": "Vientiä käsitellään edelleen. Voit sulkea tämän valintaikkunan ja tarkistaa tilanteen muutaman minuutin kuluttua vientihistoriasta.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Tarkastuslokit",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Sivun avainsanan sisältävä viestisisältö voi johtaa viestien lähettämiseen asiakkaalle loputtomana silmukkana. Poista sivun avainsana käytöstä välittömästi, jos kohtaat tämän tilanteen!"
   },
   "triggers": {
-    "title": "Käynnistimet"
+    "title": "Käynnistimet",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Käyttäjät"
@@ -3951,10 +3959,12 @@
     "friday": "Perjantai",
     "saturday": "Lauantai",
     "sunday": "Sunnuntai",
-    "afterText": "Jälkeen"
+    "afterText": "Jälkeen",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Työkalut"
+    "title": "Työkalut",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

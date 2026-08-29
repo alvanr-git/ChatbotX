@@ -148,7 +148,10 @@
     "clone": "استنساخ",
     "remove": "إزالة",
     "restore": "استعادة",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "يجب أن تكون مسؤولًا فائقًا لمساحة العمل للقيام بذلك."
@@ -433,7 +436,8 @@
       "template": "القالب",
       "noTemplate": "لا يوجد قالب",
       "integration": "التكامل"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "نعم",
@@ -2373,7 +2377,8 @@
     "sendText": {
       "tiktokTitleTruncated": "عند إرفاق أزرار، يرسل TikTok أول 40 حرفًا فقط من هذه الرسالة، وسيتم قص الباقي."
     },
-    "dataWasSaved": "تم حفظ البيانات"
+    "dataWasSaved": "تم حفظ البيانات",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "القوائم الدائمة للمستخدمين"
   },
   "webhooks": {
-    "title": "خطافات الويب"
+    "title": "خطافات الويب",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "روابط نقاط الدخول",
@@ -3820,7 +3826,8 @@
     "countCapped": "أكثر من {count} جهة اتصال",
     "exportAllNotice": "سيتم تصدير جميع جهات الاتصال المطابقة لعامل التصفية الحالي.",
     "exportTakingLong": "يستغرق التصدير وقتًا أطول من المتوقع",
-    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير."
+    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "سجلات التدقيق",
@@ -3862,7 +3869,8 @@
     "pageWarning": "قد يؤدي محتوى رسالة تحتوي على كلمة مفتاحية للصفحة إلى إرسال رسائل للعميل بشكل متكرر لا نهائي. قم بإلغاء تفعيل الكلمة المفتاحية للصفحة فورًا إذا واجهت هذه الحالة!"
   },
   "triggers": {
-    "title": "المشغّلات"
+    "title": "المشغّلات",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "المستخدمون"
@@ -3951,10 +3959,12 @@
     "friday": "الجمعة",
     "saturday": "السبت",
     "sunday": "الأحد",
-    "afterText": "بعد"
+    "afterText": "بعد",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "الأدوات"
+    "title": "الأدوات",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

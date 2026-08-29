@@ -247,7 +247,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Când sunt atașate butoane, TikTok trimite doar primele 40 de caractere din acest mesaj — restul va fi trunchiat."
     },
-    "dataWasSaved": "Datele au fost salvate"
+    "dataWasSaved": "Datele au fost salvate",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -927,7 +928,10 @@
     "clone": "Clonează",
     "remove": "Elimină",
     "restore": "Restaurează",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Trebuie să fii superadministrator al spațiului de lucru pentru a face acest lucru."
@@ -1212,7 +1216,8 @@
       "template": "Șablon",
       "noTemplate": "Niciun șablon",
       "integration": "Integrare"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Da",
@@ -3658,7 +3663,8 @@
     "title": "Meniuri persistente utilizator"
   },
   "webhooks": {
-    "title": "Webhook-uri"
+    "title": "Webhook-uri",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Linkuri de intrare",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ contacte",
     "exportAllNotice": "Toate contactele care corespund filtrului curent vor fi exportate.",
     "exportTakingLong": "Exportul durează mai mult decât era de așteptat",
-    "exportTakingLongDescription": "Exportul este încă în curs de procesare. Poți închide acest dialog și poți reveni peste câteva minute din istoricul exporturilor."
+    "exportTakingLongDescription": "Exportul este încă în curs de procesare. Poți închide acest dialog și poți reveni peste câteva minute din istoricul exporturilor.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Jurnale de audit",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Conținutul unui mesaj care conține un cuvânt-cheie de Pagină poate duce la trimiterea de mesaje către client într-o buclă infinită. Dezactivați imediat cuvântul-cheie de Pagină dacă întâmpinați această situație!"
   },
   "triggers": {
-    "title": "Declanșatoare"
+    "title": "Declanșatoare",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Utilizatori"
@@ -3951,10 +3959,12 @@
     "friday": "Vineri",
     "saturday": "Sâmbătă",
     "sunday": "Duminică",
-    "afterText": "După"
+    "afterText": "După",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Instrumente"
+    "title": "Instrumente",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

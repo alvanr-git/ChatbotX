@@ -1577,7 +1577,10 @@
     "clone": "Clona",
     "remove": "Rimuovi",
     "restore": "Ripristina",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Devi essere super admin dello spazio di lavoro per farlo."
@@ -1862,7 +1865,8 @@
       "template": "Modello",
       "noTemplate": "Nessun modello",
       "integration": "Integrazione"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Sì",
@@ -2299,7 +2303,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Quando sono presenti pulsanti, TikTok invia solo i primi 40 caratteri di questo messaggio: il resto verrà troncato."
     },
-    "dataWasSaved": "Dati salvati"
+    "dataWasSaved": "Dati salvati",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "Menu permanenti degli utenti"
   },
   "webhooks": {
-    "title": "Webhook"
+    "title": "Webhook",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Link dei punti di ingresso",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ contatti",
     "exportAllNotice": "Verranno esportati tutti i contatti che corrispondono al filtro corrente.",
     "exportTakingLong": "L'esportazione sta richiedendo più tempo del previsto",
-    "exportTakingLongDescription": "L'esportazione è ancora in corso. Puoi chiudere questa finestra e ricontrollare tra qualche minuto nella cronologia delle esportazioni."
+    "exportTakingLongDescription": "L'esportazione è ancora in corso. Puoi chiudere questa finestra e ricontrollare tra qualche minuto nella cronologia delle esportazioni.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Registri di controllo",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Il contenuto di un messaggio con una parola chiave Page può causare l'invio di messaggi al cliente in un ciclo infinito. Disattiva immediatamente la parola chiave Page se riscontri questa situazione!"
   },
   "triggers": {
-    "title": "Trigger"
+    "title": "Trigger",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Utenti"
@@ -3951,10 +3959,12 @@
     "friday": "Venerdì",
     "saturday": "Sabato",
     "sunday": "Domenica",
-    "afterText": "Dopo"
+    "afterText": "Dopo",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Strumenti"
+    "title": "Strumenti",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

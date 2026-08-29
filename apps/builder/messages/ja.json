@@ -148,7 +148,10 @@
     "clone": "複製",
     "remove": "削除",
     "restore": "復元",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "この操作を行うには、ワークスペースのスーパー管理者である必要があります。"
@@ -433,7 +436,8 @@
       "template": "テンプレート",
       "noTemplate": "テンプレートなし",
       "integration": "連携"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "はい",
@@ -2299,7 +2303,8 @@
     "sendText": {
       "tiktokTitleTruncated": "ボタンを追加すると、TikTokはこのメッセージの最初の40文字までしか送信しません。残りは切り捨てられます。"
     },
-    "dataWasSaved": "データが保存されました"
+    "dataWasSaved": "データが保存されました",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3637,7 +3642,8 @@
     "title": "ユーザー固定メニュー"
   },
   "webhooks": {
-    "title": "Webhook"
+    "title": "Webhook",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "エントリーポイントリンク",
@@ -3799,7 +3805,8 @@
     "countCapped": "{count}件以上の連絡先",
     "exportAllNotice": "現在のフィルターに一致するすべての連絡先がエクスポートされます。",
     "exportTakingLong": "エクスポートに予想以上の時間がかかっています",
-    "exportTakingLongDescription": "エクスポートは引き続き処理中です。このダイアログを閉じ、数分後にエクスポート履歴から確認できます。"
+    "exportTakingLongDescription": "エクスポートは引き続き処理中です。このダイアログを閉じ、数分後にエクスポート履歴から確認できます。",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "監査ログ",
@@ -3841,7 +3848,8 @@
     "pageWarning": "ページキーワードを含むメッセージの内容が、無限ループで顧客にメッセージを送信する原因となる可能性があります。この状況が発生した場合は、直ちにページキーワードを無効にしてください!"
   },
   "triggers": {
-    "title": "トリガー"
+    "title": "トリガー",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "ユーザー"
@@ -3930,10 +3938,12 @@
     "friday": "金曜日",
     "saturday": "土曜日",
     "sunday": "日曜日",
-    "afterText": "後"
+    "afterText": "後",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "ツール"
+    "title": "ツール",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

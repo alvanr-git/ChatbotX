@@ -148,7 +148,10 @@
     "clone": "Klonla",
     "remove": "Kaldır",
     "restore": "Geri Yükle",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Bunu yapmak için çalışma alanı süper yöneticisi olmanız gerekir."
@@ -433,7 +436,8 @@
       "template": "Şablon",
       "noTemplate": "Şablon yok",
       "integration": "Entegrasyon"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Evet",
@@ -2373,7 +2377,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Butonlar eklendiğinde TikTok bu mesajın yalnızca ilk 40 karakterini gönderir — geri kalanı kesilir."
     },
-    "dataWasSaved": "Veriler kaydedildi"
+    "dataWasSaved": "Veriler kaydedildi",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "Kullanıcı Kalıcı Menüleri"
   },
   "webhooks": {
-    "title": "Webhook'lar"
+    "title": "Webhook'lar",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Giriş Noktası Bağlantıları",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ kişi",
     "exportAllNotice": "Geçerli filtreyle eşleşen tüm kişiler dışa aktarılacaktır.",
     "exportTakingLong": "Dışa aktarma beklenenden uzun sürüyor",
-    "exportTakingLongDescription": "Dışa aktarma hâlâ işleniyor. Bu iletişim kutusunu kapatıp birkaç dakika sonra dışa aktarma geçmişinden tekrar kontrol edebilirsiniz."
+    "exportTakingLongDescription": "Dışa aktarma hâlâ işleniyor. Bu iletişim kutusunu kapatıp birkaç dakika sonra dışa aktarma geçmişinden tekrar kontrol edebilirsiniz.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Denetim Günlükleri",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Sayfa anahtar kelimesi içeren mesaj içeriği, müşteriye sonsuz döngüde mesaj gönderilmesine neden olabilir. Bu durumla karşılaşırsanız Sayfa anahtar kelimesini hemen devre dışı bırakın!"
   },
   "triggers": {
-    "title": "Tetikleyiciler"
+    "title": "Tetikleyiciler",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Kullanıcılar"
@@ -3951,10 +3959,12 @@
     "friday": "Cuma",
     "saturday": "Cumartesi",
     "sunday": "Pazar",
-    "afterText": "Sonra"
+    "afterText": "Sonra",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Araçlar"
+    "title": "Araçlar",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

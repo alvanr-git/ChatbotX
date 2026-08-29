@@ -50,7 +50,7 @@ export default async function ContactsPage(props: {
           <h4 className="font-bold text-xl">{t("contacts.title")}</h4>
           <CreateContactDialog workspaceId={workspaceId} />
         </div>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="mt-1 text-muted-foreground text-sm">
           {t("contacts.description")}
         </p>
       </div>

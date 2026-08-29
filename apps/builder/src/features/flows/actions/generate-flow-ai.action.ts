@@ -45,7 +45,8 @@ export const generateFlowWithAiAction = workspaceActionClient
       bindArgsParsedInputs: WorkspaceIdRequestParams
       parsedInput: z.infer<typeof generateFlowInputSchema>
     }) => {
-      const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
+      const apiKey =
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY
       const google = createGoogleGenerativeAI({
         apiKey: apiKey || "dummy-key-for-fallback",
       })
@@ -60,7 +61,9 @@ Given a user prompt describing a chatbot workflow or conversation sequence, you 
 
       try {
         const { object } = await generateObject({
-          model: google("gemini-2.5-flash") as any,
+          model: google("gemini-2.5-flash") as unknown as Parameters<
+            typeof generateObject
+          >[0]["model"],
           schema: generatedFlowOutputSchema,
           system: systemPrompt,
           prompt: parsedInput.prompt,
@@ -68,77 +71,82 @@ Given a user prompt describing a chatbot workflow or conversation sequence, you 
 
         const flowObj = object as z.infer<typeof generatedFlowOutputSchema>
         // Transform simplified Gemini output into full ChatbotX FlowVersion schema nodes
-        const fullNodes = flowObj.nodes.map((n: z.infer<typeof generatedNodeSchema>) => {
-          if (n.type === "start") {
-            return {
-              id: n.id,
-              type: "start",
-              position: n.position,
-              data: {
-                details: {
-                  name: n.name || "Start",
-                  isStartNode: true,
+        const fullNodes = flowObj.nodes.map(
+          (n: z.infer<typeof generatedNodeSchema>) => {
+            if (n.type === "start") {
+              return {
+                id: n.id,
+                type: "start",
+                position: n.position,
+                data: {
+                  details: {
+                    name: n.name || "Start",
+                    isStartNode: true,
+                  },
                 },
-              },
+              }
             }
-          }
 
-          if (n.type === "sendMessage") {
+            if (n.type === "sendMessage") {
+              return {
+                id: n.id,
+                type: "sendMessage",
+                position: n.position,
+                data: {
+                  details: {
+                    name: n.name || "Send Message",
+                    steps: [
+                      {
+                        id: `step-${n.id}`,
+                        type: "sendText",
+                        content: {
+                          text:
+                            n.textMessage || "Hello! How can I help you today?",
+                        },
+                      },
+                    ],
+                  },
+                },
+              }
+            }
+
             return {
               id: n.id,
               type: "sendMessage",
               position: n.position,
               data: {
                 details: {
-                  name: n.name || "Send Message",
+                  name: n.name || "Message",
                   steps: [
                     {
                       id: `step-${n.id}`,
                       type: "sendText",
                       content: {
-                        text: n.textMessage || "Hello! How can I help you today?",
+                        text: n.textMessage || "Continuing workflow...",
                       },
                     },
                   ],
                 },
               },
             }
-          }
+          },
+        )
 
-          return {
-            id: n.id,
-            type: "sendMessage",
-            position: n.position,
-            data: {
-              details: {
-                name: n.name || "Message",
-                steps: [
-                  {
-                    id: `step-${n.id}`,
-                    type: "sendText",
-                    content: {
-                      text: n.textMessage || "Continuing workflow...",
-                    },
-                  },
-                ],
-              },
-            },
-          }
-        })
-
-        const fullEdges = flowObj.edges.map((e: z.infer<typeof generatedEdgeSchema>, idx: number) => ({
-          id: e.id || `edge-${idx}`,
-          source: e.source,
-          sourceHandle: `${e.source}-handle-continue`,
-          target: e.target,
-          targetHandle: `${e.target}-handle-input`,
-        }))
+        const fullEdges = flowObj.edges.map(
+          (e: z.infer<typeof generatedEdgeSchema>, idx: number) => ({
+            id: e.id || `edge-${idx}`,
+            source: e.source,
+            sourceHandle: `${e.source}-handle-continue`,
+            target: e.target,
+            targetHandle: `${e.target}-handle-input`,
+          }),
+        )
 
         return {
           nodes: fullNodes,
           edges: fullEdges,
         }
-      } catch (err: any) {
+      } catch {
         // Fallback for missing/invalid API key or network issues
         const defaultNodes = [
           {

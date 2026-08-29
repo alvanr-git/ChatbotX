@@ -128,7 +128,10 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     }
     if (instagramFacebook) {
       const redirectUri = await generateInstagramFacebookRedirectUri(
-        { userId: platformOwnerId, publicConfig: instagramFacebook.publicConfig },
+        {
+          userId: platformOwnerId,
+          publicConfig: instagramFacebook.publicConfig,
+        },
         workspaceId,
       )
       redirect(redirectUri)

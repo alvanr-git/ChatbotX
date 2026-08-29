@@ -27,7 +27,7 @@ const PRESET_PROMPTS = [
 type GenerateFlowAiDialogProps = {
   workspaceId: string
   trigger?: React.ReactElement
-  onGenerated?: (nodes: any[], edges: any[]) => void
+  onGenerated?: (nodes: unknown[], edges: unknown[]) => void
 }
 
 export function GenerateFlowAiDialog({
@@ -39,38 +39,47 @@ export function GenerateFlowAiDialog({
   const [prompt, setPrompt] = useState("")
   const { setNodes, setEdges } = useReactFlow()
 
-  const generateAction = useAction(generateFlowWithAiAction.bind(null, workspaceId), {
-    onSuccess: ({ data }) => {
-      if (data?.nodes && data?.edges) {
-        if (onGenerated) {
-          onGenerated(data.nodes, data.edges)
-        } else {
-          setNodes(data.nodes)
-          setEdges(data.edges)
+  const generateAction = useAction(
+    generateFlowWithAiAction.bind(null, workspaceId),
+    {
+      onSuccess: ({ data }) => {
+        if (data?.nodes && data?.edges) {
+          if (onGenerated) {
+            onGenerated(data.nodes, data.edges)
+          } else {
+            setNodes(data.nodes)
+            setEdges(data.edges)
+          }
+          toast.success("Flow generated successfully with Gemini AI!")
+          setOpen(false)
+          setPrompt("")
         }
-        toast.success("Flow generated successfully with Gemini AI!")
-        setOpen(false)
-        setPrompt("")
-      }
+      },
+      onError: ({ error }) => {
+        toast.error(error.serverError || "Failed to generate flow with AI")
+      },
     },
-    onError: ({ error }) => {
-      toast.error(error.serverError || "Failed to generate flow with AI")
-    },
-  })
+  )
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!prompt.trim()) return
+    if (!prompt.trim()) {
+      return
+    }
     generateAction.execute({ prompt: prompt.trim() })
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog onOpenChange={setOpen} open={open}>
       <DialogTrigger
         render={
           trigger || (
-            <Button size="sm" variant="outline" className="gap-2 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10">
-              <SparklesIcon className="h-4 w-4 text-amber-500 animate-pulse" />
+            <Button
+              className="gap-2 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+              size="sm"
+              variant="outline"
+            >
+              <SparklesIcon className="h-4 w-4 animate-pulse text-amber-500" />
               <span>Generate with AI</span>
             </Button>
           )
@@ -84,30 +93,31 @@ export function GenerateFlowAiDialog({
               Build Workflow with Gemini AI
             </DialogTitle>
             <DialogDescription>
-              Instruct Gemini to design a complete chatbot flow for your use case.
+              Instruct Gemini to design a complete chatbot flow for your use
+              case.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <Textarea
-              placeholder="e.g. Create a WhatsApp lead generation flow that asks for the customer's name, email, and preferred appointment time..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={4}
               className="resize-none text-sm"
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g. Create a WhatsApp lead generation flow that asks for the customer's name, email, and preferred appointment time..."
+              rows={4}
+              value={prompt}
             />
 
             <div>
-              <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+              <p className="mb-2 flex items-center gap-1 font-medium text-muted-foreground text-xs">
                 <BotIcon className="h-3.5 w-3.5" /> Quick Preset Prompts:
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {PRESET_PROMPTS.map((p, idx) => (
+                {PRESET_PROMPTS.map((p) => (
                   <button
-                    key={idx}
-                    type="button"
+                    className="rounded-md bg-secondary/80 px-2.5 py-1 text-left text-secondary-foreground text-xs transition-colors hover:bg-secondary"
+                    key={p}
                     onClick={() => setPrompt(p)}
-                    className="text-xs rounded-md bg-secondary/80 hover:bg-secondary px-2.5 py-1 text-secondary-foreground text-left transition-colors"
+                    type="button"
                   >
                     {p}
                   </button>
@@ -118,17 +128,17 @@ export function GenerateFlowAiDialog({
 
           <DialogFooter>
             <Button
+              disabled={generateAction.isPending}
+              onClick={() => setOpen(false)}
               type="button"
               variant="ghost"
-              onClick={() => setOpen(false)}
-              disabled={generateAction.isPending}
             >
               Cancel
             </Button>
             <Button
-              type="submit"
-              disabled={!prompt.trim() || generateAction.isPending}
               className="gap-2 bg-gradient-to-r from-amber-500 to-primary text-white"
+              disabled={!prompt.trim() || generateAction.isPending}
+              type="submit"
             >
               {generateAction.isPending ? (
                 <>

@@ -148,7 +148,10 @@
     "clone": "Klon",
     "remove": "Hapus",
     "restore": "Pulihkan",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Anda harus menjadi super admin workspace untuk melakukan ini."
@@ -433,7 +436,8 @@
       "template": "Template",
       "noTemplate": "Tanpa template",
       "integration": "Integrasi"
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "condition": {
     "yes": "Ya",
@@ -2299,7 +2303,8 @@
     "sendText": {
       "tiktokTitleTruncated": "Saat tombol dilampirkan, TikTok hanya mengirim 40 karakter pertama pesan ini — sisanya akan terpotong."
     },
-    "dataWasSaved": "Data telah disimpan"
+    "dataWasSaved": "Data telah disimpan",
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "heading": {
@@ -3658,7 +3663,8 @@
     "title": "Menu Persisten Pengguna"
   },
   "webhooks": {
-    "title": "Webhook"
+    "title": "Webhook",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Tautan Titik Masuk",
@@ -3820,7 +3826,8 @@
     "countCapped": "{count}+ kontak",
     "exportAllNotice": "Semua kontak yang cocok dengan filter saat ini akan diekspor.",
     "exportTakingLong": "Ekspor memerlukan waktu lebih lama dari perkiraan",
-    "exportTakingLongDescription": "Ekspor masih diproses. Anda dapat menutup dialog ini dan memeriksanya kembali dalam beberapa menit dari riwayat ekspor."
+    "exportTakingLongDescription": "Ekspor masih diproses. Anda dapat menutup dialog ini dan memeriksanya kembali dalam beberapa menit dari riwayat ekspor.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "auditLogs": {
     "title": "Log Audit",
@@ -3862,7 +3869,8 @@
     "pageWarning": "Konten pesan yang berisi kata kunci Page dapat menyebabkan pesan terkirim ke pelanggan secara berulang tanpa henti. Segera nonaktifkan kata kunci Page jika Anda mengalami situasi ini!"
   },
   "triggers": {
-    "title": "Pemicu"
+    "title": "Pemicu",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Pengguna"
@@ -3951,10 +3959,12 @@
     "friday": "Jumat",
     "saturday": "Sabtu",
     "sunday": "Minggu",
-    "afterText": "Setelah"
+    "afterText": "Setelah",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
-    "title": "Alat"
+    "title": "Alat",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",
