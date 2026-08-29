@@ -13,6 +13,7 @@ import {
   LinkIcon,
   MapIcon,
   QrCodeIcon,
+  SparklesIcon,
   TicketPercentIcon,
   UserCheck2Icon,
   Wand2Icon,
@@ -23,6 +24,13 @@ import { useCallback, useMemo } from "react"
 import { useWorkspaceId } from "@/hooks/routing"
 
 const TOOLS_CONFIG = [
+  {
+    id: "ai-functions",
+    labelKey: "aiFunctions.title",
+    descriptionKey: "aiFunctions.description",
+    icon: SparklesIcon,
+    getLink: (id: string) => `/space/${id}/ai-functions`,
+  },
   {
     id: "facebook-comment",
     labelKey: "facebookCommentAutomation.title",
@@ -185,11 +193,41 @@ export const ToolsList = () => {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="font-bold text-xl">{t("tools.title")}</h3>
-        <p className="mt-1 text-muted-foreground text-sm">
-          {t("tools.description")}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-xl">{t("tools.title")}</h3>
+          <p className="mt-1 text-muted-foreground text-sm">
+            {t("tools.description")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <SparklesIcon className="h-5 w-5 animate-pulse text-amber-500" />
+          </div>
+          <div>
+            <h4 className="font-semibold text-sm">
+              AI Function & Workflow Builder
+            </h4>
+            <p className="text-muted-foreground text-xs">
+              Instruct Gemini AI to automatically generate custom tool
+              functions, data collection rules, and chatbot workflows.
+            </p>
+          </div>
+        </div>
+        <Card
+          className="cursor-pointer border-primary/40 bg-primary/10 shadow-none transition-colors hover:bg-primary/20"
+          onClick={() => router.push(`/space/${workspaceId}/ai-functions`)}
+        >
+          <CardContent className="flex items-center gap-2 px-3.5 py-2">
+            <SparklesIcon className="h-4 w-4 text-amber-500" />
+            <span className="font-medium text-primary text-xs">
+              Open AI Builder
+            </span>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid w-auto grid-cols-[repeat(auto-fit,minmax(200px,350px))] justify-center gap-4">

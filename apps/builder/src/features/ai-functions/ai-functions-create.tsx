@@ -16,9 +16,16 @@ import {
   DialogTrigger,
 } from "@chatbotx.io/ui/components/ui/dialog"
 import { Form } from "@chatbotx.io/ui/components/ui/form"
+import { Textarea } from "@chatbotx.io/ui/components/ui/textarea"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useHookFormAction } from "@next-safe-action/adapter-react-hook-form/hooks"
-import { Loader2Icon, MoveRightIcon, PlusIcon, TrashIcon } from "lucide-react"
+import {
+  Loader2Icon,
+  MoveRightIcon,
+  PlusIcon,
+  SparklesIcon,
+  TrashIcon,
+} from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
 import { useFieldArray } from "react-hook-form"
@@ -26,6 +33,7 @@ import { toast } from "sonner"
 import CustomFieldField from "../custom-fields/components/custom-field-field"
 import { useFlowSelectOptions } from "../flows/provider/flow-hook"
 import { createAIFunctionAction } from "./actions/create-ai-function.action"
+import { generateAIFunctionAiAction } from "./actions/generate-ai-function-ai.action"
 import { updateAIFunctionAction } from "./actions/update-ai-function.action"
 import { createAIFunctionRequest } from "./schemas/action"
 
@@ -51,6 +59,40 @@ export function AIFunctionsCreate({
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen ?? internalOpen
   const setIsOpen = setControlledOpen ?? setInternalOpen
+
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+
+  const handleGenerateAi = async () => {
+    if (!aiPrompt.trim()) {
+      return
+    }
+    setIsGeneratingAi(true)
+    try {
+      const res = await generateAIFunctionAiAction(workspaceId, {
+        prompt: aiPrompt.trim(),
+      })
+      if (res?.data) {
+        form.setValue("name", res.data.name, { shouldValidate: true })
+        form.setValue("purpose", res.data.purpose, { shouldValidate: true })
+        form.setValue("outputMessage", res.data.outputMessage, {
+          shouldValidate: true,
+        })
+        if (res.data.dataCollect && res.data.dataCollect.length > 0) {
+          form.setValue("dataCollect", res.data.dataCollect, {
+            shouldValidate: true,
+          })
+        }
+        toast.success("AI Function configured with Gemini!")
+      } else {
+        toast.error(res?.serverError || "Failed to generate AI function")
+      }
+    } catch {
+      toast.error("Failed to generate AI function configuration")
+    } finally {
+      setIsGeneratingAi(false)
+    }
+  }
 
   const flowOptions = useFlowSelectOptions()
 
@@ -164,6 +206,64 @@ export function AIFunctionsCreate({
             className="flex flex-col space-y-6 py-4"
             onSubmit={handleSubmitWithAction}
           >
+            <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold text-primary text-sm">
+                  <SparklesIcon className="h-4 w-4 animate-pulse text-amber-500" />
+                  <span>Generate Function Parameters with Gemini AI</span>
+                </div>
+                <span className="font-mono text-muted-foreground text-xs">
+                  Gemini 2.5 Flash
+                </span>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Instruct Gemini to build this tool function for you (e.g.
+                &quot;Collect customer email and order ID to check shipment
+                status&quot;):
+              </p>
+              <div className="flex gap-2">
+                <Textarea
+                  className="min-h-[60px] bg-background text-xs"
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="Type your instructions for Gemini AI..."
+                  value={aiPrompt}
+                />
+                <Button
+                  className="gap-1.5 self-end whitespace-nowrap"
+                  disabled={isGeneratingAi || !aiPrompt.trim()}
+                  onClick={handleGenerateAi}
+                  type="button"
+                  variant="default"
+                >
+                  {isGeneratingAi ? (
+                    <Loader2Icon className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SparklesIcon className="h-4 w-4 text-amber-300" />
+                  )}
+                  Build with AI
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <span className="self-center text-[11px] text-muted-foreground">
+                  Presets:
+                </span>
+                {[
+                  "Book an appointment with customer name & date",
+                  "Check order shipment status with order ID & email",
+                  "Collect lead info (name, phone number, company)",
+                ].map((preset) => (
+                  <button
+                    className="rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                    key={preset}
+                    onClick={() => setAiPrompt(preset)}
+                    type="button"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <InputField
               label={t("fields.name.label")}
               name="name"
