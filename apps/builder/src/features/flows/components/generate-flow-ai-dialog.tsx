@@ -26,7 +26,7 @@ const PRESET_PROMPTS = [
 
 type GenerateFlowAiDialogProps = {
   workspaceId: string
-  trigger?: React.ReactNode
+  trigger?: React.ReactElement
   onGenerated?: (nodes: any[], edges: any[]) => void
 }
 
@@ -66,14 +66,16 @@ export function GenerateFlowAiDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button size="sm" variant="outline" className="gap-2 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10">
-            <SparklesIcon className="h-4 w-4 text-amber-500 animate-pulse" />
-            <span>Generate with AI</span>
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          trigger || (
+            <Button size="sm" variant="outline" className="gap-2 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10">
+              <SparklesIcon className="h-4 w-4 text-amber-500 animate-pulse" />
+              <span>Generate with AI</span>
+            </Button>
+          )
+        }
+      />
       <DialogContent className="sm:max-w-[550px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>

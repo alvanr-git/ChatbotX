@@ -100,7 +100,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
 
   if (selectedChannel === "whatsapp" && whatsapp && isVisible("whatsapp")) {
     const oauthCallbackUrl = await buildProviderCallbackUrl(
-      whatsapp,
+      { userId: platformOwnerId, ...whatsapp },
       WHATSAPP_OAUTH_CALLBACK_PATH,
     )
     return (
@@ -128,14 +128,14 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     }
     if (instagramFacebook) {
       const redirectUri = await generateInstagramFacebookRedirectUri(
-        instagramFacebook.publicConfig,
+        { userId: platformOwnerId, publicConfig: instagramFacebook.publicConfig },
         workspaceId,
       )
       redirect(redirectUri)
     }
     if (instagram) {
       const redirectUri = await generateInstagramRedirectUri(
-        instagram.publicConfig,
+        { userId: platformOwnerId, publicConfig: instagram.publicConfig },
         workspaceId,
       )
       redirect(redirectUri)
@@ -149,7 +149,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     isVisible("instagram")
   ) {
     const redirectUri = await generateInstagramRedirectUri(
-      instagram,
+      { userId: platformOwnerId, ...instagram },
       workspaceId,
     )
     redirect(redirectUri)
@@ -164,19 +164,25 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     isVisible("instagram")
   ) {
     const redirectUri = await generateInstagramFacebookRedirectUri(
-      instagramFacebook,
+      { userId: platformOwnerId, ...instagramFacebook },
       workspaceId,
     )
     redirect(redirectUri)
   }
 
   if (selectedChannel === "zalo" && zalo && isVisible("zalo")) {
-    const redirectUri = await generateZaloRedirectUri(zalo, workspaceId)
+    const redirectUri = await generateZaloRedirectUri(
+      { userId: platformOwnerId, ...zalo },
+      workspaceId,
+    )
     redirect(redirectUri)
   }
 
   if (selectedChannel === "tiktok" && tiktok && isVisible("tiktok")) {
-    const redirectUri = await generateTiktokRedirectUri(tiktok, workspaceId)
+    const redirectUri = await generateTiktokRedirectUri(
+      { userId: platformOwnerId, ...tiktok },
+      workspaceId,
+    )
     redirect(redirectUri)
   }
 

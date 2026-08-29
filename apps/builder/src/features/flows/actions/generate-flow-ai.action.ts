@@ -60,14 +60,15 @@ Given a user prompt describing a chatbot workflow or conversation sequence, you 
 
       try {
         const { object } = await generateObject({
-          model: google("gemini-2.5-flash"),
+          model: google("gemini-2.5-flash") as any,
           schema: generatedFlowOutputSchema,
           system: systemPrompt,
           prompt: parsedInput.prompt,
         })
 
+        const flowObj = object as z.infer<typeof generatedFlowOutputSchema>
         // Transform simplified Gemini output into full ChatbotX FlowVersion schema nodes
-        const fullNodes = object.nodes.map((n) => {
+        const fullNodes = flowObj.nodes.map((n: z.infer<typeof generatedNodeSchema>) => {
           if (n.type === "start") {
             return {
               id: n.id,
@@ -125,7 +126,7 @@ Given a user prompt describing a chatbot workflow or conversation sequence, you 
           }
         })
 
-        const fullEdges = object.edges.map((e, idx) => ({
+        const fullEdges = flowObj.edges.map((e: z.infer<typeof generatedEdgeSchema>, idx: number) => ({
           id: e.id || `edge-${idx}`,
           source: e.source,
           sourceHandle: `${e.source}-handle-continue`,
