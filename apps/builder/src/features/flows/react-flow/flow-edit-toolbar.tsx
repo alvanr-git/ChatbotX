@@ -48,6 +48,7 @@ import { useAction } from "next-safe-action/hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { GetInboxUrlDialog } from "@/features/inboxes/components/get-inbox-url"
+import { GenerateFlowAiDialog } from "../components/generate-flow-ai-dialog"
 import { publishFlowAction } from "../actions/publish-flow-action"
 import { revertToPublishedAction } from "../actions/revert-to-published-action"
 import { DeleteFlowsDialog } from "../delete-flow-dialog"
@@ -302,18 +303,20 @@ export function FlowEditToolbar({
           </p>
         </TooltipContent>
       </Tooltip>
-      <Button
-        className="ms-5"
-        disabled={isValidating || isPendingPublish}
-        onClick={onClickPublish}
-        size="sm"
-        variant="default"
-      >
+      <div className="ms-4 flex items-center gap-2">
+        <GenerateFlowAiDialog workspaceId={workspaceId} />
+        <Button
+          disabled={isValidating || isPendingPublish}
+          onClick={onClickPublish}
+          size="sm"
+          variant="default"
+        >
         {(isValidating || isPendingPublish) && (
           <Loader2Icon className="animate-spin" />
         )}
         {t("actions.publish")}
       </Button>
+      </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger className="px-1.5">

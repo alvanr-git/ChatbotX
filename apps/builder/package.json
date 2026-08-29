@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "dotenv -e ../../.env -- cross-env SKIP_ENV_CHECK=true next build",
-    "check-types": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
+    "check-types": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "dev": "dotenv -e .env -e ../../.env -- next dev -p 3123 | pino-pretty",
     "https": "dotenv -e .env -e ../../.env -- next dev -p 3123 --experimental-https",
     "i18n:check": "i18n-check --source en --locales messages",
@@ -59,7 +59,6 @@
     "@chatbotx.io/integration-zalo": "workspace:*",
     "@chatbotx.io/logger": "workspace:*",
     "@chatbotx.io/mail": "workspace:*",
-    "@chatbotx.io/minigame-ui": "workspace:*",
     "@chatbotx.io/partysocket-config": "workspace:*",
     "@chatbotx.io/redis": "workspace:*",
     "@chatbotx.io/scheduler": "workspace:*",

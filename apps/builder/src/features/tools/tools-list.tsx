@@ -133,13 +133,6 @@ const TOOLS_CONFIG = [
     icon: TicketPercentIcon,
     getLink: (id: string) => `/space/${id}/topic-coupons`,
   },
-  {
-    id: "minigames",
-    labelKey: "minigames.title",
-    descriptionKey: "minigames.description",
-    icon: Gamepad2Icon,
-    getLink: (id: string) => `/space/${id}/minigames`,
-  },
   // {
   //   id: "webhooks",
   //   labelKey: "webhooks.title",
