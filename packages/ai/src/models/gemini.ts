@@ -141,7 +141,7 @@ export async function generateObjectWithGeminiFallback(
     try {
       const { preferredModel: _p, ...generateOptions } = options
       return await generateObject({
-        ...generateOptions,
+        ...(generateOptions as unknown as Parameters<typeof generateObject>[0]),
         model: google(modelName) as unknown as Parameters<
           typeof generateObject
         >[0]["model"],
