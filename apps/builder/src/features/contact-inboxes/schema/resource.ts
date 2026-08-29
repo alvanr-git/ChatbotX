@@ -11,6 +11,10 @@ export const contactInboxResource = createSelectSchema(contactInboxModel, {
   channel: z.string(),
   username: z.string().nullable().optional(),
   contactLastReadAt: z.date().nullable().optional(),
+  // Nullish (not just nullable): payloads serialized before the
+  // sourceUserId/sourceUsername migration lack these keys entirely.
+  sourceUserId: z.string().nullish(),
+  sourceUsername: z.string().nullish(),
 })
   .pick({
     id: true,
@@ -19,6 +23,8 @@ export const contactInboxResource = createSelectSchema(contactInboxModel, {
     channel: true,
     source: true,
     sourceId: true,
+    sourceUserId: true,
+    sourceUsername: true,
     language: true,
     username: true,
     lastIncomingMessageAt: true,

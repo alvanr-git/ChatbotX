@@ -23,6 +23,7 @@ export const contactImportFields = z.enum([
   "email",
   "firstName",
   "lastName",
+  "sourceUserId",
 ])
 export type ContactImportField = z.infer<typeof contactImportFields>
 
@@ -33,16 +34,32 @@ export const contactImportColumnMapSchema = z
     email: z.string().optional(),
     firstName: z.string().optional(),
     lastName: z.string().optional(),
+    // Channel-agnostic column-map key mirroring `ContactInbox.sourceUserId`
+    // (e.g. a WhatsApp Business-Scoped User ID). Only whatsapp import extracts
+    // it today — see `extractRowData`.
+    sourceUserId: z.string().optional(),
   })
   .strip()
 export type ContactImportColumnMap = z.infer<
   typeof contactImportColumnMapSchema
 >
 
+/**
+ * Mapping target: a contact custom field id, or a workspace-level bot field
+ * (Account Field) reference in the `bot_field:<id>` token shape used by the
+ * combined field picker. A bot field holds ONE value per workspace, so the
+ * import applies its mapped column once after completion (last row wins)
+ * instead of writing per row.
+ */
+const contactImportFieldTargetSchema = z.union([
+  bigintAsStringSchema,
+  z.string().regex(/^bot_field:\d+$/),
+])
+
 export const contactImportFieldMappingSchema = z.array(
   z.object({
     column: z.string(),
-    customFieldId: bigintAsStringSchema,
+    customFieldId: contactImportFieldTargetSchema,
   }),
 )
 export type ContactImportFieldMapping = z.infer<

@@ -1,5 +1,6 @@
 "use server"
 
+import { getAuditActor } from "@chatbotx.io/business/audit"
 import { and, db, eq } from "@chatbotx.io/database/client"
 import {
   type ContactImportMeta,
@@ -17,6 +18,7 @@ import {
   workspaceIdrequestParams,
 } from "@/features/common/schemas"
 import {
+  buildContactImportMeta,
   type ImportContactsRequest,
   type ImportContactsResponse,
   importContactsRequest,
@@ -80,22 +82,7 @@ export const importContactsAction = workspaceActionClient
         })
       }
 
-      const meta: ContactImportMeta = {
-        channel: parsedInput.channel,
-        timezone: parsedInput.timezone,
-        countryCode: parsedInput.countryCode,
-        columnMap: {
-          contactId: parsedInput.contactId,
-          phoneNumber: parsedInput.phoneNumber,
-          email: parsedInput.email,
-          firstName: parsedInput.firstName,
-          lastName: parsedInput.lastName,
-        },
-        fieldMapping: parsedInput.fieldMapping?.filter(
-          (mapping) => mapping.column && mapping.customFieldId,
-        ),
-        tagId: parsedInput.tagId || undefined,
-      }
+      const meta: ContactImportMeta = buildContactImportMeta(parsedInput)
 
       // M-1: Prevent multiple concurrent imports for the same workspace. A user
       // rapidly submitting several files could cause overlapping quota races.
@@ -146,9 +133,15 @@ export const importContactsAction = workspaceActionClient
         })
       })
 
+      const actor = getAuditActor()
+
       await defaultQueue.add(DefaultJobAction.runImport, {
         type: DefaultJobAction.runImport,
-        data: { importId },
+        data: {
+          importId,
+          ipAddress: actor?.ipAddress,
+          userAgent: actor?.userAgent,
+        },
       })
 
       return { importId }

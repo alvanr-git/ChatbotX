@@ -18,7 +18,7 @@ import {
   finalizeContactProfile,
   normalizeLanguage,
 } from "@chatbotx.io/business/contact-locale"
-import { db, eq } from "@chatbotx.io/database/client"
+import { db, eq, isUniqueViolationError } from "@chatbotx.io/database/client"
 import {
   type ContactSource,
   contactSources,
@@ -26,6 +26,8 @@ import {
 } from "@chatbotx.io/database/partials"
 import { createMessageRepository } from "@chatbotx.io/database/repositories"
 import {
+  CONTACT_INBOX_SOURCE_ID_KEY,
+  CONTACT_INBOX_SOURCE_USER_ID_KEY,
   contactInboxModel,
   contactModel,
   conversationModel,
@@ -56,10 +58,12 @@ import {
   getStoryReply,
   type IncomingContact,
   type IncomingMessage,
+  isSourceUserIdKeyedIdentity,
   type MessageLocationEntity,
   type MessageWhatsappFlowResponseEntity,
   messageTypes,
   type ReceivedMessageResult,
+  resolveWithSourceUserIdFallback,
   SdkException,
 } from "@chatbotx.io/sdk"
 import { createId } from "@chatbotx.io/utils"
@@ -68,10 +72,14 @@ import {
   chatQueue,
   IntegrationJobAction,
   type IntegrationJobDeleteIncomingComment,
+  type IntegrationJobDeleteIncomingMessage,
+  type IntegrationJobMessageReaction,
   type IntegrationJobReceiveComment,
   type IntegrationJobReceiveMessage,
   type IntegrationJobUpdateIncomingComment,
   integrationQueue,
+  NotificationJobAction,
+  notificationQueue,
 } from "@chatbotx.io/worker-config"
 import { UnrecoverableError } from "bullmq"
 import { normalizeError } from "universal-error-normalizer"
@@ -81,7 +89,7 @@ import {
   integrationService,
   isInstagramViaFacebook,
 } from "../../services/integrations"
-import { sanitizeFlowAction } from "./flow-action"
+import { resolvePostbackButtonLabel, sanitizeFlowAction } from "./flow-action"
 
 type ContactInboxTracking = ContactInboxTrackingData
 
@@ -245,25 +253,40 @@ export const receiveMessage = async (
     integrationIdentifier,
   })
 
-  const detected = await detectContactAndConversation({
-    incomingContact,
-    inbox,
-    integrationRow,
-    source:
-      metaReferralToContactSource(referralSource) ??
-      contactSources.enum.inboundMessage,
-  })
+  // Label resolution only reads the raw text (direction correction never
+  // changes it) and the workspace, so it can overlap the contact lookup.
+  const [detected, postbackButtonLabel] = await Promise.all([
+    detectContactAndConversation({
+      incomingContact,
+      inbox,
+      integrationRow,
+      source:
+        metaReferralToContactSource(referralSource) ??
+        contactSources.enum.inboundMessage,
+    }),
+    resolvePostbackButtonLabel({
+      postbackAction,
+      buttonTitle: parsedMessage.buttonTitle,
+      message: rawIncomingMessage,
+      workspaceId: inbox.workspaceId,
+    }),
+  ])
   if (!detected) {
     throw new SdkException("Unable to resolve contact and conversation")
   }
   const { contactInbox, conversation, contact, isNewContact } = detected
-  const incomingMessage = correctStoryReplyDirectionForNewContact(
+  const directedIncomingMessage = correctStoryReplyDirectionForNewContact(
     rawIncomingMessage,
     isNewContact,
   )
+  const incomingMessage =
+    postbackButtonLabel && directedIncomingMessage
+      ? { ...directedIncomingMessage, text: postbackButtonLabel }
+      : directedIncomingMessage
   const systemFieldUpdates = getReceivedMessageSystemFieldUpdates({
-    ...parsedMessage,
+    buttonTitle: parsedMessage.buttonTitle || postbackButtonLabel,
     message: incomingMessage,
+    referral: parsedMessage.referral,
   })
 
   // Overwrite Contact.phoneNumber/email from message text — every inbound
@@ -423,6 +446,26 @@ export const receiveMessage = async (
         }
       }
     }
+  }
+
+  // Referral-only events (no message/postback attached — e.g. a
+  // `messaging_referrals` webhook on an existing thread) never reach the
+  // `if (incomingMessage)` branch above, so `ContactInbox.referral` would
+  // otherwise never get persisted for them. `updateTracking` merges the
+  // referral jsonb via COALESCE and self-invalidates the tracking cache
+  // since no `tx` is passed here. Deliberately does not touch
+  // `firstInteractionAt` (last-touch attribution, not a conversation reset).
+  // Intentionally left uncaught: a transient failure here must fail the
+  // BullMQ job so it retries, otherwise CTM/CTID attribution is silently
+  // lost forever and `runRef` below would run without the persisted
+  // referral. The jsonb merge is idempotent, so a retry is safe.
+  if (!incomingMessage && parsedMessage.referral) {
+    await contactInboxService.updateTracking({
+      contactInboxId: contactInbox.id,
+      contactId: contactInbox.contactId,
+      workspaceId: inbox.workspaceId,
+      data: { referral: parsedMessage.referral },
+    })
   }
 
   if (ref && isWorkspaceActive) {
@@ -651,6 +694,31 @@ const saveAndBroadcastMessage = async (props: {
     })
   } catch (error) {
     logger.warn(error, "Unable to emit realtime message")
+  }
+
+  // Push notification for a genuinely new inbound message only — this
+  // broadcast above is unconditional, so the guard here is built explicitly
+  // rather than copied from it.
+  if (isNew && isInboundMessage) {
+    try {
+      await notificationQueue.add(
+        NotificationJobAction.notifyIncomingMessage,
+        {
+          type: NotificationJobAction.notifyIncomingMessage,
+          data: {
+            workspaceId: inbox.workspaceId,
+            conversationId: conversation.id,
+            messageId: newMessage.id,
+            messageText: newMessage.text?.slice(0, 140),
+            contentType: newMessage.contentType,
+            attachmentCount: newMessage.attachments.length,
+          },
+        },
+        { jobId: `notify-incoming-${newMessage.id}` },
+      )
+    } catch (error) {
+      logger.warn(error, "Unable to enqueue incoming message notification")
+    }
   }
 
   if (isNew) {
@@ -978,6 +1046,247 @@ export const deleteIncomingComment = async (
   }
 }
 
+// When a contact unsends a previously-sent DM, soft-delete it in the DB and
+// broadcast the deletion to the inbox — mirrors deleteIncomingComment, keyed
+// on the message's `mid` (already stored as Message.sourceId, see
+// saveAndBroadcastMessage above).
+export const deleteIncomingMessage = async (
+  props: IntegrationJobDeleteIncomingMessage["data"],
+): Promise<void> => {
+  const { integrationType, integrationIdentifier, messageId } = props
+
+  const { inbox } =
+    await integrationService.identifyInboxAndIntegrationAuthFromIdentifier(
+      integrationType as IntegrationType,
+      integrationIdentifier,
+    )
+
+  const repository = await createMessageRepository()
+  const deleted = await repository.deleteBySourceId(
+    messageId,
+    inbox.workspaceId,
+    new Date(),
+  )
+
+  if (deleted.length === 0) {
+    logger.warn({ messageId }, "deleteIncomingMessage: message not found")
+    return
+  }
+
+  const messageIds = deleted.map((row) => row.id)
+  try {
+    await broadcastToWorkspaceParty(inbox.workspaceId, {
+      eventType: RealtimeEventType.messageDeleted,
+      data: { messageIds },
+    })
+  } catch (error) {
+    logger.warn(error, "deleteIncomingMessage: unable to broadcast")
+  }
+}
+
+type ContactInboxWithContact = ContactInboxModel & { contact: ContactModel }
+
+type ContactInboxResolverProps = {
+  inbox: InboxModel
+  incomingContact: IncomingContact
+}
+
+// Ordered identity lookup via the shared fallback contract: sourceId first
+// (today's behavior, unchanged — a phone-keyed match never falls through),
+// then the scoped user id (e.g. a WhatsApp BSUID) when the payload carries
+// one. Both columns are backed by unique indexes on (inboxId, …).
+const resolveExistingContactInbox = async ({
+  inbox,
+  incomingContact,
+}: ContactInboxResolverProps): Promise<ContactInboxWithContact | undefined> =>
+  await resolveWithSourceUserIdFallback(incomingContact, (where) =>
+    db.query.contactInboxModel.findFirst({
+      where: { inboxId: inbox.id, channel: inbox.channel, ...where },
+      with: { contact: true },
+    }),
+  )
+
+// When a contact reacts (or removes a reaction) to a DM, record it as an
+// activity-type message in the conversation timeline. A reaction only ever
+// happens within an existing conversation, so — unlike a real inbound
+// message — a reaction from an unrecognized contact is skipped rather than
+// creating a new contact, and never consumes MAC quota.
+export const processMessageReaction = async (
+  props: IntegrationJobMessageReaction["data"],
+): Promise<void> => {
+  const {
+    integrationType,
+    integrationIdentifier,
+    messageId,
+    action,
+    emoji,
+    contactSourceId,
+  } = props
+
+  const { inbox } =
+    await integrationService.identifyInboxAndIntegrationAuthFromIdentifier(
+      integrationType as IntegrationType,
+      integrationIdentifier,
+    )
+
+  const existingContactInbox = await resolveExistingContactInbox({
+    inbox,
+    incomingContact: { sourceId: contactSourceId },
+  })
+  if (!existingContactInbox) {
+    logger.warn(
+      { contactSourceId, messageId },
+      "processMessageReaction: contact not found — skipping",
+    )
+    return
+  }
+
+  const conversation = await conversationService.findOrCreate({
+    workspaceId: inbox.workspaceId,
+    contactId: existingContactInbox.contactId,
+    sourceId: null,
+  })
+
+  // Deliberately bypasses saveAndBroadcastMessage: that helper treats any
+  // non-"outgoing" messageType as a genuine inbound message, which would
+  // refresh ContactInbox.lastIncomingMessageAt (corrupting the messaging-window
+  // check) and fire the unconditional message:received event that MAC billing
+  // and ads-conversion listeners consume with no way to exclude an activity
+  // row. A reaction only ever inserts/updates one lightweight activity
+  // message — persist + broadcast, nothing else.
+  const repository = await createMessageRepository()
+  // Stable (no wall-clock component) so a BullMQ retry of this same job
+  // upserts the same activity row instead of creating a duplicate. Must not
+  // reuse the reacted-to message's mid: that would collide with
+  // createOrUpdate's dedup-by-sourceId and corrupt the original message.
+  const reactionSourceId = `${messageId}-reaction-${action}`
+  const reactionText =
+    action === "react"
+      ? `Reacted${emoji ? ` ${emoji}` : ""}`
+      : "Removed a reaction"
+
+  const { message: reactionRow, isNew } = await repository.createOrUpdate({
+    id: createId(),
+    conversationId: conversation.id,
+    contactInboxId: existingContactInbox.id,
+    workspaceId: inbox.workspaceId,
+    senderType: "contact",
+    senderId: existingContactInbox.contactId,
+    sourceId: reactionSourceId,
+    messageType: messageTypes.enum.activity,
+    contentType: contentTypes.enum.text,
+    text: reactionText,
+    createdAt: new Date(),
+  })
+
+  if (isNew) {
+    try {
+      broadcastToWorkspaceParty(inbox.workspaceId, {
+        eventType: RealtimeEventType.messageCreated,
+        data: reactionRow,
+      })
+    } catch (error) {
+      logger.warn(error, "processMessageReaction: unable to broadcast")
+    }
+    return
+  }
+
+  // Same action reused within createOrUpdate's dedup window (e.g. a changed
+  // emoji) — update the existing row instead of silently ignoring it.
+  if (reactionRow.text !== reactionText) {
+    const updated = await repository.updateMessageText(
+      reactionRow.id,
+      inbox.workspaceId,
+      reactionText,
+      reactionRow.createdAt,
+    )
+    if (updated) {
+      try {
+        broadcastToWorkspaceParty(inbox.workspaceId, {
+          eventType: RealtimeEventType.messageUpdated,
+          data: {
+            messageId: updated.id,
+            newText: reactionText,
+            removedAttachment: false,
+          },
+        })
+      } catch (error) {
+        logger.warn(error, "processMessageReaction: unable to broadcast update")
+      }
+    }
+  }
+}
+
+// Shared by the direct-hit path and the unique-violation race recovery below
+// (D8): syncs newly-learned identity fields onto the matched row, then
+// resolves/opens the conversation.
+const buildExistingContactMatch = async (props: {
+  inbox: InboxModel
+  incomingContact: IncomingContact
+  conversationSourceId: string | null
+  existing: ContactInboxWithContact
+}): Promise<{
+  contactInbox: ContactInboxModel
+  contact: ContactModel
+  conversation: ConversationModel
+  isNewContact: false
+}> => {
+  const { inbox, incomingContact, conversationSourceId, existing } = props
+  const { contact, ...contactInbox } = existing
+
+  const { contactInbox: syncedContactInbox, learnedPrimaryIdentity } =
+    await contactInboxService.syncScopedIdentity({
+      contactInbox,
+      incomingContact,
+    })
+
+  // Phone learned later on a BSUID-keyed row (D3): write it to
+  // Contact.phoneNumber only — never rewrite ContactInbox.sourceId. Kept at
+  // this call site (not inside the contact-inbox service) so contactService
+  // stays a caller-level composition, not a cross-domain import.
+  let syncedContact = contact
+  if (learnedPrimaryIdentity) {
+    try {
+      syncedContact = await contactService.update(
+        { workspaceId: inbox.workspaceId, id: contact.id },
+        { phoneNumber: learnedPrimaryIdentity },
+      )
+    } catch (error) {
+      logger.warn(
+        {
+          error,
+          contactId: contact.id,
+          contactInboxId: syncedContactInbox.id,
+        },
+        "Contact.phoneNumber backfill from newly-learned identity failed",
+      )
+    }
+  }
+
+  const conversation = await conversationService.findOrCreate({
+    workspaceId: inbox.workspaceId,
+    contactId: syncedContactInbox.contactId,
+    sourceId: conversationSourceId,
+  })
+
+  return {
+    contactInbox: syncedContactInbox,
+    contact: syncedContact,
+    conversation,
+    isNewContact: false,
+  }
+}
+
+const CONTACT_INBOX_IDENTITY_CONSTRAINTS = [
+  CONTACT_INBOX_SOURCE_ID_KEY,
+  CONTACT_INBOX_SOURCE_USER_ID_KEY,
+] as const
+
+const isContactInboxIdentityRace = (error: unknown): boolean =>
+  CONTACT_INBOX_IDENTITY_CONSTRAINTS.some((constraint) =>
+    isUniqueViolationError(error, constraint),
+  )
+
 export const detectContactAndConversation = async (props: {
   inbox: InboxModel
   incomingContact: IncomingContact
@@ -996,13 +1305,9 @@ export const detectContactAndConversation = async (props: {
 }> => {
   const { incomingContact, inbox, integrationRow, source } = props
 
-  const existingContactInbox = await db.query.contactInboxModel.findFirst({
-    where: {
-      inboxId: inbox.id,
-      channel: inbox.channel,
-      sourceId: incomingContact.sourceId,
-    },
-    with: { contact: true },
+  const existingContactInbox = await resolveExistingContactInbox({
+    inbox,
+    incomingContact,
   })
 
   // The conversation source id (e.g. a Facebook post id for comments) keys the
@@ -1014,30 +1319,84 @@ export const detectContactAndConversation = async (props: {
   // `findOrCreate` resolves the existing conversation or opens a fresh one when
   // the source id is new (e.g. a comment on a different post).
   if (existingContactInbox) {
-    const conversation = await conversationService.findOrCreate({
-      workspaceId: inbox.workspaceId,
-      contactId: existingContactInbox.contactId,
-      sourceId: conversationSourceId,
+    return await buildExistingContactMatch({
+      inbox,
+      incomingContact,
+      conversationSourceId,
+      existing: existingContactInbox,
     })
-
-    if (
-      incomingContact.username &&
-      existingContactInbox.username !== incomingContact.username
-    ) {
-      await db
-        .update(contactInboxModel)
-        .set({ username: incomingContact.username })
-        .where(eq(contactInboxModel.id, existingContactInbox.id))
-      existingContactInbox.username = incomingContact.username
-    }
-
-    return {
-      contactInbox: existingContactInbox,
-      contact: existingContactInbox.contact,
-      conversation,
-      isNewContact: false,
-    }
   }
+
+  // Used below to skip phone-hint inference when the sourceId is a scoped
+  // user id (e.g. a WhatsApp BSUID), not an actual phone number (§8.1).
+  const isBsuidKeyedIncomingContact =
+    isSourceUserIdKeyedIdentity(incomingContact)
+
+  try {
+    return await createNewContactAndContactInbox({
+      inbox,
+      integrationRow,
+      incomingContact,
+      source,
+      conversationSourceId,
+      isBsuidKeyedIncomingContact,
+    })
+  } catch (error) {
+    // D8: two concurrent first-messages from the same identity can both pass
+    // the resolver-chain miss above. The loser hits a unique-violation on
+    // either `(inboxId, sourceId)` or the new partial `(inboxId,
+    // sourceUserId)` index; its transaction rolls back (no orphan Contact, no
+    // MAC double-count). Re-run the resolver chain and return the winning
+    // row instead of dead-lettering the job.
+    if (!isContactInboxIdentityRace(error)) {
+      throw error
+    }
+    logger.warn(
+      { inboxId: inbox.id, sourceId: incomingContact.sourceId },
+      "ContactInbox creation race detected; resolving winning row",
+    )
+    const winner = await resolveExistingContactInbox({
+      inbox,
+      incomingContact,
+    })
+    if (!winner) {
+      throw error
+    }
+    return await buildExistingContactMatch({
+      inbox,
+      incomingContact,
+      conversationSourceId,
+      existing: winner,
+    })
+  }
+}
+
+const createNewContactAndContactInbox = async (props: {
+  inbox: InboxModel
+  integrationRow: {
+    id: string
+    auth: AuthValue
+    inboxId: string
+    [x: string]: unknown
+  }
+  incomingContact: IncomingContact
+  source: ContactSource
+  conversationSourceId: string | null
+  isBsuidKeyedIncomingContact: boolean
+}): Promise<{
+  contactInbox: ContactInboxModel
+  contact: ContactModel
+  conversation: ConversationModel
+  isNewContact: true
+}> => {
+  const {
+    inbox,
+    integrationRow,
+    incomingContact,
+    source,
+    conversationSourceId,
+    isBsuidKeyedIncomingContact,
+  } = props
 
   let contactData: typeof contactModel.$inferInsert = {
     ...incomingContact,
@@ -1084,9 +1443,14 @@ export const detectContactAndConversation = async (props: {
       timezone: contactData.timezone,
     },
     {
+      // §8.1: a BSUID-keyed identity is not a phone number — feeding it here
+      // would infer garbage locale/timezone. Only pass the sourceId as a
+      // phone hint when it is NOT BSUID-keyed (deterministic per D2).
       phoneHint:
         incomingContact.phoneNumber ??
-        (inbox.channel === "whatsapp" ? incomingContact.sourceId : undefined),
+        (inbox.channel === "whatsapp" && !isBsuidKeyedIncomingContact
+          ? incomingContact.sourceId
+          : undefined),
       fallbackLocale: inbox.channel === "zalo" ? "vi_VN" : undefined,
     },
   )
@@ -1106,6 +1470,9 @@ export const detectContactAndConversation = async (props: {
   // cannot overrun the limit; the `ContactActiveMonthly` presence row written
   // inside the transaction makes the `message:received` event emitted later a
   // dedup no-op (no double count). `contacts` stays the info-only metric.
+  // Contact + ContactInbox creation share this one transaction (D8): a losing
+  // insert's unique-violation rolls back both rows together — no orphan
+  // Contact — and is recovered by the caller's try/catch above.
   const result = await quotaEnforcementService.createNewContactWithMac({
     ownerId: ws.ownerId,
     workspaceId: inbox.workspaceId,
@@ -1131,6 +1498,8 @@ export const detectContactAndConversation = async (props: {
           originalContactId: newContact.id,
           source,
           sourceId: incomingContact.sourceId,
+          sourceUserId: incomingContact.sourceUserId ?? null,
+          sourceUsername: incomingContact.sourceUsername ?? null,
           channel: inbox.channel,
           language: finalizedProfile.language,
           username: incomingContact.username,
@@ -1169,10 +1538,18 @@ export const detectContactAndConversation = async (props: {
     // The MAC (billing) cap is a deterministic business outcome, not a
     // transient failure: retrying never succeeds. Throw UnrecoverableError so
     // BullMQ fails the job once without retry/backoff instead of dead-lettering
-    // the inbound message after exhausting attempts. Logged at `warn` so the
-    // cap is observable without paging on expected behavior.
-    logger.warn(
-      { workspaceId: inbox.workspaceId, ownerId: ws.ownerId },
+    // the inbound message after exhausting attempts. Logged at `error` (with
+    // enough context to identify the dropped contact) so a brand-new
+    // contact's first-ever message being silently dropped is discoverable via
+    // alerting, not just the account-level MAC banner (which only reflects
+    // the aggregate cap, not this specific drop).
+    logger.error(
+      {
+        workspaceId: inbox.workspaceId,
+        ownerId: ws.ownerId,
+        channel: inbox.channel,
+        sourceId: incomingContact.sourceId,
+      },
       "Inbound new-contact rejected: MAC limit reached",
     )
     throw new UnrecoverableError("contact_mac_limit_reached")
@@ -1186,6 +1563,7 @@ export const detectContactAndConversation = async (props: {
     newContact.firstName || undefined,
     newContact.phoneNumber || undefined,
     newContact.email || undefined,
+    contactInbox.id,
   )
 
   if (contactInbox.sourceId) {
