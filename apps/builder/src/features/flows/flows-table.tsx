@@ -6,6 +6,7 @@ import { buttonVariants } from "@chatbotx.io/ui/components/ui/button"
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@chatbotx.io/ui/components/ui/card"
@@ -68,6 +69,7 @@ export function FlowsTable({
     <Card>
       <CardHeader>
         <CardTitle className="font-bold text-xl">{t("flows.title")}</CardTitle>
+        <CardDescription>{t("flows.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <DataTable table={table}>

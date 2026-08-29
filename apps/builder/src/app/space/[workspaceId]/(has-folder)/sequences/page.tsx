@@ -1,6 +1,7 @@
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@chatbotx.io/ui/components/ui/card"
@@ -38,6 +39,7 @@ export default async function SequencesPage(props: {
         <CardTitle className="font-bold text-xl">
           {t("sequences.title")}
         </CardTitle>
+        <CardDescription>{t("sequences.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <SequencesTable promises={promises} workspaceId={workspaceId} />

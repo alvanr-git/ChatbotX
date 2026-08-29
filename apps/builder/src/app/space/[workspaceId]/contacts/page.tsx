@@ -45,9 +45,14 @@ export default async function ContactsPage(props: {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="font-bold text-xl">{t("contacts.title")}</h4>
-        <CreateContactDialog workspaceId={workspaceId} />
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <h4 className="font-bold text-xl">{t("contacts.title")}</h4>
+          <CreateContactDialog workspaceId={workspaceId} />
+        </div>
+        <p className="text-muted-foreground text-sm mt-1">
+          {t("contacts.description")}
+        </p>
       </div>
 
       <Suspense>

@@ -1,6 +1,7 @@
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@chatbotx.io/ui/components/ui/card"
@@ -39,6 +40,7 @@ export default async function WebhooksPage(props: {
         <CardTitle className="font-bold text-xl">
           {t("webhooks.title")}
         </CardTitle>
+        <CardDescription>{t("webhooks.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense>

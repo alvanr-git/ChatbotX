@@ -1,6 +1,7 @@
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@chatbotx.io/ui/components/ui/card"
@@ -39,6 +40,7 @@ export default async function TriggersPage(props: {
         <CardTitle className="font-bold text-xl">
           {t("triggers.title")}
         </CardTitle>
+        <CardDescription>{t("triggers.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense>

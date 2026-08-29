@@ -24,7 +24,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Builder
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/builder/docker/Dockerfile
@@ -32,7 +32,7 @@ jobs:
           tags: ghcr.io/alvanr-git/chatbotx/chatbotx-builder:latest
 
       - name: Build and Push Worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/worker/docker/Dockerfile
@@ -40,7 +40,7 @@ jobs:
           tags: ghcr.io/alvanr-git/chatbotx/chatbotx-worker:latest
 
       - name: Build and Push Realtime
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/realtime/docker/Dockerfile
@@ -48,7 +48,7 @@ jobs:
           tags: ghcr.io/alvanr-git/chatbotx/chatbotx-realtime:latest
 
       - name: Build and Push JavaScript Executor
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/javascript-executor/docker/Dockerfile
