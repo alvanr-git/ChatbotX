@@ -2,7 +2,7 @@
 
 import { generateObjectWithGeminiFallback } from "@chatbotx.io/ai"
 import { z } from "zod"
-import { workspaceIdrequestParams } from "@/features/common/schemas"
+import { workspaceIdrequestParams } from "@/features/common/schema"
 import { workspaceActionClient } from "@/lib/safe-action"
 
 export const generatedAIFunctionOutputSchema = z.object({

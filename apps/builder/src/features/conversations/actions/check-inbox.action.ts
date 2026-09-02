@@ -1,14 +1,16 @@
 "use server"
 
 import { ScheduleJobData, scheduleQueue } from "@chatbotx.io/worker-config"
+import { z } from "zod"
 import {
   type WorkspaceIdRequestParams,
   workspaceIdrequestParams,
-} from "@/features/common/schemas"
+} from "@/features/common/schema"
 import { workspaceActionClient } from "@/lib/safe-action"
 
 export const checkInboxAction = workspaceActionClient
   .bindArgsSchemas(workspaceIdrequestParams)
+  .schema(z.object({}))
   .action(
     async ({
       bindArgsParsedInputs: [workspaceId],

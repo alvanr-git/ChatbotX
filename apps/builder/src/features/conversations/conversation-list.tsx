@@ -226,7 +226,7 @@ export default function ConversationList({
             className="px-2"
             disabled={isCheckingInbox}
             onClick={() => {
-              checkInbox()
+              checkInbox({})
             }}
             size="sm"
             title={t("actions.checkDmsAndComments")}
