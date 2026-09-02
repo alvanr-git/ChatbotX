@@ -26,9 +26,6 @@
     "billing": "Thanh toán",
     "redeem": "Đổi mã",
     "blockContact": "Chặn liên hệ",
-    "checkDmsAndComments": "Kiểm tra Tin nhắn & Bình luận",
-    "checkingDmsAndComments": "Đang kiểm tra tin nhắn và bình luận mới...",
-    "checkDmsAndCommentsError": "Kiểm tra tin nhắn và bình luận mới thất bại.",
     "unblockContact": "Bỏ chặn liên hệ",
     "undo": "Hoàn tác",
     "redo": "Làm lại",
@@ -151,7 +148,12 @@
     "clone": "Nhân bản",
     "remove": "Xóa",
     "restore": "Khôi phục",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "saveAsDraft": "Lưu nháp",
+    "schedule": "Lên lịch",
+    "moveToDraft": "Chuyển về nháp",
+    "stop": "Dừng",
+    "resume": "Tiếp tục"
   },
   "errors": {
     "superAdminRequired": "Bạn cần là super admin của workspace để thực hiện thao tác này."
@@ -348,9 +350,11 @@
     "title": "Phát sóng",
     "status": {
       "scheduled": "Đã lên lịch",
-      "sent": "Đã gửi",
+      "sent": "Hoàn thành",
       "sending": "Đang gửi",
-      "cancelled": "Đã huỷ"
+      "cancelled": "Đã huỷ",
+      "draft": "Nháp",
+      "failed": "Thất bại"
     },
     "stats": {
       "sent": "Đã gửi",
@@ -437,7 +441,63 @@
       "noTemplate": "Không có template",
       "integration": "Tích hợp"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "Tất cả"
+    },
+    "views": {
+      "table": "Bảng",
+      "calendar": "Lịch"
+    },
+    "panel": {
+      "collapse": "Thu gọn bảng lọc",
+      "expand": "Mở bảng lọc"
+    },
+    "empty": {
+      "title": "Chưa có broadcast nào",
+      "description": "Tạo broadcast đầu tiên để gửi tới liên hệ của bạn.",
+      "filteredTitle": "Không có broadcast phù hợp",
+      "filteredDescription": "Thử trạng thái khác hoặc xoá từ khoá tìm kiếm."
+    },
+    "scheduleDialog": {
+      "title": "Lên lịch broadcast",
+      "description": "Chọn thời điểm gửi \"{name}\"."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Xoá broadcast} other {Xoá các broadcast}}",
+      "description": "{count, plural, one {\"{name}\" sẽ bị xoá. Dữ liệu sẽ được xoá ở nền.} other {# broadcast sẽ bị xoá. Dữ liệu của chúng sẽ được xoá ở nền.}}",
+      "partial": "Đã xoá {deleted}/{requested} — số còn lại đã đổi trạng thái"
+    },
+    "calendar": {
+      "today": "Hôm nay",
+      "apply": "Áp dụng",
+      "more": "+{count} nữa",
+      "ranges": {
+        "month": "Tháng",
+        "week": "Tuần",
+        "day": "Ngày",
+        "custom": "Tùy chỉnh"
+      },
+      "previous": "Trước",
+      "next": "Sau",
+      "emptyDay": "Không có broadcast nào trong ngày này",
+      "emptyRange": "Không có broadcast nào trong khoảng này",
+      "jumpToDate": "Đi tới ngày"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Chuyển về nháp",
+      "description": "\"{name}\" sẽ được hủy lịch và chuyển về mục nháp."
+    },
+    "stopDialog": {
+      "title": "Dừng broadcast",
+      "description": "Các tin nhắn còn lại của \"{name}\" sẽ dừng trong khoảng một phút. Một vài tin đã được chuyển cho kênh gửi có thể vẫn được gửi đi. Bạn có thể tiếp tục sau — chỉ những người chưa nhận sẽ nhận được tin."
+    },
+    "resumeDialog": {
+      "title": "Tiếp tục broadcast",
+      "description": "\"{name}\" sẽ tiếp tục gửi đến những người nhận chưa nhận được tin."
+    }
   },
   "condition": {
     "yes": "Có",
@@ -1338,7 +1398,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Nhà cung cấp"
+      "label": "Nhà cung cấp",
+      "placeholder": "Chọn nhà cung cấp"
     },
     "prompt": {
       "label": "Prompt",
@@ -2225,6 +2286,7 @@
       "sendFile": "Gửi tệp",
       "sendGif": "Gửi Gif",
       "sendImage": "Gửi hình ảnh",
+      "sendMultipleImages": "Nhiều hình ảnh",
       "sendMessage": "Gửi tin nhắn",
       "sendNode": "Bắt đầu nút khác",
       "sendText": "Gửi văn bản",
@@ -2267,9 +2329,7 @@
       "export": "Xuất",
       "importStarted": "Luồng đang được nhập. Kiểm tra lịch sử nhập để xem kết quả.",
       "importJsonOnly": "Chỉ tệp JSON",
-      "adsConversions": "Quảng cáo và Meta Conversions",
-      "trackAdsLead": "Theo dõi khách tiềm năng từ quảng cáo",
-      "trackAdsPurchase": "Theo dõi giao dịch mua từ quảng cáo"
+      "adsConversions": "Quảng cáo và Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "Tổng phần trăm phải bằng 100%.",
@@ -2306,6 +2366,10 @@
       "addSlide": "Thêm thẻ",
       "removeSlide": "Xoá thẻ",
       "whatsappLinkButtonIgnored": "Với WhatsApp, liên kết của thẻ này sẽ không hoạt động: thẻ có nút mở liên kết thì không được có nút nào khác. Nút sẽ được gửi như một nút trả lời."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Xóa ảnh",
+      "selectImage": "Chọn ảnh"
     },
     "additionalSteps": "Các bước bổ sung",
     "delayType": {
@@ -2377,8 +2441,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Khi có gắn nút, TikTok chỉ gửi tối đa 40 ký tự đầu của tin nhắn này — phần còn lại sẽ bị cắt bỏ."
     },
-    "dataWasSaved": "Đã lưu dữ liệu",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Đã lưu dữ liệu"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "Không tìm thấy trang Facebook",
       "noPagesDescription": "Các trang nằm trong Business Manager cần được cấp quyền Business Manager khi kết nối. Hãy kết nối lại Messenger và cấp tất cả quyền được yêu cầu.",
+      "noConnectablePagesTitle": "Không có trang nào khả dụng để kết nối",
+      "noConnectablePagesDescription": "Bạn không phải là Admin của Page này",
       "bmLookupFailedTitle": "Có thể thiếu trang trong Business Manager",
       "bmLookupFailedDescription": "Hãy kết nối lại Messenger và cấp quyền Business Manager để liệt kê các trang được quản lý qua Business Manager.",
       "alreadyConnectedNote": "Trang này đã được kết nối",
-      "notAdminNote": "Cần quyền quản trị đầy đủ trên trang để kết nối",
+      "notAdminNote": "Bạn không phải là Admin của Page này",
       "tryAgain": "Kết nối lại"
     },
     "title": "Facebook Messenger",
@@ -3708,9 +3773,7 @@
       "startAnotherFlow": "Bắt đầu luồng khác",
       "notifyAdmins": "Thông báo quản trị viên",
       "transferConversationToHuman": "Chuyển cuộc trò chuyện cho người",
-      "sendMetaCapiEvent": "Gửi sự kiện Meta CAPI",
-      "trackAdsLead": "Theo dõi khách tiềm năng từ quảng cáo",
-      "trackAdsPurchase": "Theo dõi giao dịch mua từ quảng cáo"
+      "sendMetaCapiEvent": "Gửi sự kiện Meta CAPI"
     },
     "triggerGoesOff": "Trigger kích hoạt",
     "before": "Trước",
@@ -3739,11 +3802,11 @@
     "linkCopied": "Đã sao chép liên kết vào clipboard",
     "countExact": "{count} liên hệ",
     "countCapped": "{count}+ liên hệ",
-    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất."
   },
   "errorLogs": {
-    "title": "Nhật ký lỗi"
+    "title": "Nhật ký lỗi",
+    "unknownContact": "Liên hệ không xác định"
   },
   "auditLogs": {
     "title": "Nhật ký kiểm tra",
@@ -3785,8 +3848,7 @@
     "pageWarning": "Nội dung tin nhắn chứa từ khoá cho trang có thể dẫn đến gửi tin nhắn cho khách lặp vô hạn. Hãy huỷ kích hoạt từ khoá cho trang ngay lập tức nếu bạn gặp phải trường hợp này!"
   },
   "triggers": {
-    "title": "Kích hoạt",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Kích hoạt"
   },
   "appointments": {
     "title": "Cuộc hẹn",
@@ -3835,8 +3897,7 @@
     "title": "Menu cố định người dùng"
   },
   "webhooks": {
-    "title": "Webhooks",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhooks"
   },
   "reflinks": {
     "title": "Liên kết giới thiệu",
@@ -3995,12 +4056,10 @@
     "saturday": "Thứ Bảy",
     "sunday": "Chủ Nhật",
     "afterText": "Sau",
-    "title": "Chăm sóc",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "title": "Chăm sóc"
   },
   "tools": {
-    "title": "Công cụ",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Công cụ"
   },
   "users": {
     "title": "Người dùng"
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Kết nối"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Chỉ ghi nhận chuyển đổi cho các liên hệ có gán nhãn quảng cáo click-to-WhatsApp của WhatsApp hoặc giới thiệu quảng cáo Meta. Không ảnh hưởng đến các liên hệ khác."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Gần đây",
     "favourite": "Yêu thích",
     "upload": "Tải lên",
-    "done": "Xong",
+    "select": "Chọn",
+    "bulkSelect": "Chọn nhiều",
     "deleteFolder": "Xoá thư mục",
     "renameFolder": "Đổi tên thư mục",
     "noFiles": "Không tìm thấy tệp",

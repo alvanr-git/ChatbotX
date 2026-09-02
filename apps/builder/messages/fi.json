@@ -149,9 +149,11 @@
     "remove": "Poista",
     "restore": "Palauta",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Sinun täytyy olla työtilan pääylläpitäjä tehdäksesi tämän."
@@ -350,7 +352,9 @@
       "scheduled": "Ajastettu",
       "sent": "Lähetetty",
       "sending": "Lähetetään",
-      "cancelled": "Peruutettu"
+      "cancelled": "Peruutettu",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "Lähetetty",
@@ -437,7 +441,63 @@
       "noTemplate": "Ei mallia",
       "integration": "Integraatio"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "Kyllä",
@@ -1291,7 +1351,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Palveluntarjoaja"
+      "label": "Palveluntarjoaja",
+      "placeholder": "Valitse palveluntarjoaja"
     },
     "prompt": {
       "label": "Kehote",
@@ -2149,6 +2210,7 @@
       "sendFile": "Lähetä tiedosto",
       "sendGif": "Lähetä GIF",
       "sendImage": "Lähetä kuva",
+      "sendMultipleImages": "Useita kuvia",
       "sendMessage": "Lähetä viesti",
       "sendNode": "Käynnistä toinen solmu",
       "sendText": "Lähetä teksti",
@@ -2193,9 +2255,7 @@
       "export": "Vie",
       "importStarted": "Vuota tuodaan. Tarkista tuontihistoriasta tulokset.",
       "importJsonOnly": "Vain JSON-tiedostot",
-      "adsConversions": "Mainokset ja Meta Conversions",
-      "trackAdsLead": "Seuraa mainoksen liidiä",
-      "trackAdsPurchase": "Seuraa mainoksen ostoa"
+      "adsConversions": "Mainokset ja Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "Kokonaissumman on oltava 100 %.",
@@ -2232,6 +2292,10 @@
       "addSlide": "Lisää kortti",
       "removeSlide": "Poista kortti",
       "whatsappLinkButtonIgnored": "WhatsAppissa tämän kortin linkki ei toimi: linkkipainikkeen sisältävällä kortilla ei voi olla muita painikkeita. Se lähetetään sen sijaan vastauksena."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Poista kuva",
+      "selectImage": "Valitse kuvat"
     },
     "additionalSteps": "Lisävaiheet",
     "delayType": {
@@ -2303,8 +2367,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Kun painikkeita on liitetty, TikTok lähettää vain tämän viestin ensimmäiset 40 merkkiä — loput katkaistaan."
     },
-    "dataWasSaved": "Tiedot tallennettiin",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Tiedot tallennettiin"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "Facebook-sivuja ei löytynyt",
       "noPagesDescription": "Business Managerin sivut edellyttävät Business Manager -käyttöoikeutta yhdistämisen aikana. Yhdistä Messenger uudelleen ja myönnä kaikki pyydetyt oikeudet.",
+      "noConnectablePagesTitle": "Ei yhdistettävissä olevia sivuja",
+      "noConnectablePagesDescription": "Et ole tämän sivun ylläpitäjä",
       "bmLookupFailedTitle": "Business Manager -sivuja saattaa puuttua",
       "bmLookupFailedDescription": "Yhdistä Messenger uudelleen ja myönnä Business Manager -käyttöoikeus, jotta Business Managerin kautta hallinnoidut sivut voidaan näyttää.",
       "alreadyConnectedNote": "Tämä sivu on jo yhdistetty",
-      "notAdminNote": "Yhdistäminen edellyttää sivun täysiä ylläpitäjän oikeuksia",
+      "notAdminNote": "Et ole tämän sivun ylläpitäjä",
       "tryAgain": "Yritä yhdistää uudelleen"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "Käyttäjän pysyvät valikot"
   },
   "webhooks": {
-    "title": "Webhookit",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhookit"
   },
   "reflinks": {
     "title": "Aloituspisteiden linkit",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "Käynnistä toinen flow",
       "notifyAdmins": "Ilmoita ylläpitäjille",
       "transferConversationToHuman": "Siirrä keskustelu ihmiselle",
-      "sendMetaCapiEvent": "Lähetä Meta CAPI -tapahtuma",
-      "trackAdsLead": "Seuraa mainoksen liidiä",
-      "trackAdsPurchase": "Seuraa mainoksen ostoa"
+      "sendMetaCapiEvent": "Lähetä Meta CAPI -tapahtuma"
     },
     "triggerGoesOff": "Käynnistin aktivoituu",
     "before": "Ennen",
@@ -3806,7 +3868,8 @@
     "at": "Klo"
   },
   "errorLogs": {
-    "title": "Virhelokit"
+    "title": "Virhelokit",
+    "unknownContact": "Tuntematon yhteystieto"
   },
   "developerAccessToken": {
     "title": "API-käyttöoikeustunnus",
@@ -3826,8 +3889,7 @@
     "countCapped": "{count}+ yhteystietoa",
     "exportAllNotice": "Kaikki nykyistä suodatinta vastaavat yhteystiedot viedään.",
     "exportTakingLong": "Vienti kestää odotettua kauemmin",
-    "exportTakingLongDescription": "Vientiä käsitellään edelleen. Voit sulkea tämän valintaikkunan ja tarkistaa tilanteen muutaman minuutin kuluttua vientihistoriasta.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "Vientiä käsitellään edelleen. Voit sulkea tämän valintaikkunan ja tarkistaa tilanteen muutaman minuutin kuluttua vientihistoriasta."
   },
   "auditLogs": {
     "title": "Tarkastuslokit",
@@ -3869,8 +3931,7 @@
     "pageWarning": "Sivun avainsanan sisältävä viestisisältö voi johtaa viestien lähettämiseen asiakkaalle loputtomana silmukkana. Poista sivun avainsana käytöstä välittömästi, jos kohtaat tämän tilanteen!"
   },
   "triggers": {
-    "title": "Käynnistimet",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Käynnistimet"
   },
   "users": {
     "title": "Käyttäjät"
@@ -3959,12 +4020,10 @@
     "friday": "Perjantai",
     "saturday": "Lauantai",
     "sunday": "Sunnuntai",
-    "afterText": "Jälkeen",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "Jälkeen"
   },
   "tools": {
-    "title": "Työkalut",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Työkalut"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Yhdistä"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Tallentaa muunnoksen vain kontakteille, joilla on WhatsAppin click-to-WhatsApp- tai Metan mainosviittausattribuutio. Ei vaikuta muihin kontakteihin."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Viimeisimmät",
     "favourite": "Suosikki",
     "upload": "Lataa",
-    "done": "Valmis",
+    "select": "Valitse",
+    "bulkSelect": "Massavalinta",
     "deleteFolder": "Poista kansio",
     "renameFolder": "Nimeä kansio uudelleen",
     "noFiles": "Tiedostoja ei löytynyt",

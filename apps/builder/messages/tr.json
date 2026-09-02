@@ -149,9 +149,11 @@
     "remove": "Kaldır",
     "restore": "Geri Yükle",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Bunu yapmak için çalışma alanı süper yöneticisi olmanız gerekir."
@@ -350,7 +352,9 @@
       "scheduled": "Planlandı",
       "sent": "Gönderildi",
       "sending": "Gönderiliyor",
-      "cancelled": "İptal Edildi"
+      "cancelled": "İptal Edildi",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "Gönderildi",
@@ -437,7 +441,63 @@
       "noTemplate": "Şablon yok",
       "integration": "Entegrasyon"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "Evet",
@@ -1365,7 +1425,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Sağlayıcı"
+      "label": "Sağlayıcı",
+      "placeholder": "Sağlayıcı seçin"
     },
     "prompt": {
       "label": "İstem",
@@ -2223,6 +2284,7 @@
       "sendFile": "Dosya Gönder",
       "sendGif": "GIF Gönder",
       "sendImage": "Görsel Gönder",
+      "sendMultipleImages": "Birden Fazla Resim",
       "sendMessage": "Mesaj Gönder",
       "sendNode": "Başka Bir Düğüm Başlat",
       "sendText": "Metin Gönder",
@@ -2267,9 +2329,7 @@
       "export": "Dışa aktar",
       "importStarted": "Akış içe aktarılıyor. Sonuçlar için içe aktarma geçmişini kontrol edin.",
       "importJsonOnly": "Yalnızca JSON dosyaları",
-      "adsConversions": "Reklamlar ve Meta Conversions",
-      "trackAdsLead": "Reklam potansiyel müşterisini izle",
-      "trackAdsPurchase": "Reklam satın alımını izle"
+      "adsConversions": "Reklamlar ve Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "Toplam %100 olmalıdır.",
@@ -2306,6 +2366,10 @@
       "addSlide": "Kart ekle",
       "removeSlide": "Kartı kaldır",
       "whatsappLinkButtonIgnored": "WhatsApp'ta bu kartın bağlantısı çalışmayacaktır: bağlantı düğmesi olan bir kartta başka düğme bulunamaz. Bunun yerine yanıt olarak gönderilecektir."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Resmi kaldır",
+      "selectImage": "Görselleri seç"
     },
     "additionalSteps": "Ek adımlar",
     "delayType": {
@@ -2377,8 +2441,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Butonlar eklendiğinde TikTok bu mesajın yalnızca ilk 40 karakterini gönderir — geri kalanı kesilir."
     },
-    "dataWasSaved": "Veriler kaydedildi",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Veriler kaydedildi"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "Facebook Sayfası bulunamadı",
       "noPagesDescription": "Bir İşletme Yöneticisi içindeki sayfalar, bağlantı sırasında İşletme Yöneticisi erişimi gerektirir. Messenger'ı yeniden bağlayın ve istenen tüm izinleri verin.",
+      "noConnectablePagesTitle": "Bağlanabilecek Sayfa yok",
+      "noConnectablePagesDescription": "Bu Sayfanın yöneticisi değilsiniz",
       "bmLookupFailedTitle": "İşletme Yöneticisi sayfaları eksik olabilir",
       "bmLookupFailedDescription": "Bir İşletme Yöneticisi üzerinden yönetilen sayfaların listelenebilmesi için Messenger'ı yeniden bağlayın ve İşletme Yöneticisi erişimi verin.",
       "alreadyConnectedNote": "Bu sayfa zaten bağlı",
-      "notAdminNote": "Bağlanmak için sayfada tam yönetici izni gereklidir",
+      "notAdminNote": "Bu Sayfanın yöneticisi değilsiniz",
       "tryAgain": "Yeniden bağlanmayı dene"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "Kullanıcı Kalıcı Menüleri"
   },
   "webhooks": {
-    "title": "Webhook'lar",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhook'lar"
   },
   "reflinks": {
     "title": "Giriş Noktası Bağlantıları",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "Başka Bir Akış Başlat",
       "notifyAdmins": "Yöneticileri Bilgilendir",
       "transferConversationToHuman": "Görüşmeyi İnsana Aktar",
-      "sendMetaCapiEvent": "Meta CAPI Etkinliği Gönder",
-      "trackAdsLead": "Reklam potansiyel müşterisini izle",
-      "trackAdsPurchase": "Reklam satın alımını izle"
+      "sendMetaCapiEvent": "Meta CAPI Etkinliği Gönder"
     },
     "triggerGoesOff": "Tetikleyici devreye girer",
     "before": "Önce",
@@ -3806,7 +3868,8 @@
     "at": "Şu anda"
   },
   "errorLogs": {
-    "title": "Hata Günlükleri"
+    "title": "Hata Günlükleri",
+    "unknownContact": "Bilinmeyen kişi"
   },
   "developerAccessToken": {
     "title": "API Erişim Token'ı",
@@ -3826,8 +3889,7 @@
     "countCapped": "{count}+ kişi",
     "exportAllNotice": "Geçerli filtreyle eşleşen tüm kişiler dışa aktarılacaktır.",
     "exportTakingLong": "Dışa aktarma beklenenden uzun sürüyor",
-    "exportTakingLongDescription": "Dışa aktarma hâlâ işleniyor. Bu iletişim kutusunu kapatıp birkaç dakika sonra dışa aktarma geçmişinden tekrar kontrol edebilirsiniz.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "Dışa aktarma hâlâ işleniyor. Bu iletişim kutusunu kapatıp birkaç dakika sonra dışa aktarma geçmişinden tekrar kontrol edebilirsiniz."
   },
   "auditLogs": {
     "title": "Denetim Günlükleri",
@@ -3869,8 +3931,7 @@
     "pageWarning": "Sayfa anahtar kelimesi içeren mesaj içeriği, müşteriye sonsuz döngüde mesaj gönderilmesine neden olabilir. Bu durumla karşılaşırsanız Sayfa anahtar kelimesini hemen devre dışı bırakın!"
   },
   "triggers": {
-    "title": "Tetikleyiciler",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Tetikleyiciler"
   },
   "users": {
     "title": "Kullanıcılar"
@@ -3959,12 +4020,10 @@
     "friday": "Cuma",
     "saturday": "Cumartesi",
     "sunday": "Pazar",
-    "afterText": "Sonra",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "Sonra"
   },
   "tools": {
-    "title": "Araçlar",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Araçlar"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Bağlan"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Yalnızca WhatsApp click-to-WhatsApp reklamı veya Meta reklam yönlendirmesi ile ilişkilendirilmiş kişiler için dönüşüm kaydeder. Diğer kişiler için etkisi yoktur."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Son kullanılanlar",
     "favourite": "Favori",
     "upload": "Yükle",
-    "done": "Bitti",
+    "select": "Seç",
+    "bulkSelect": "Toplu seçim",
     "deleteFolder": "Klasörü sil",
     "renameFolder": "Klasörü yeniden adlandır",
     "noFiles": "Dosya bulunamadı",

@@ -149,9 +149,11 @@
     "remove": "Fjern",
     "restore": "Gendan",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Du skal være super admin for arbejdsområdet for at gøre dette."
@@ -350,7 +352,9 @@
       "scheduled": "Planlagt",
       "sent": "Sendt",
       "sending": "Sender",
-      "cancelled": "Annulleret"
+      "cancelled": "Annulleret",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "Sendt",
@@ -437,7 +441,63 @@
       "noTemplate": "Ingen skabelon",
       "integration": "Integration"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "Ja",
@@ -1291,7 +1351,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Udbyder"
+      "label": "Udbyder",
+      "placeholder": "Vælg udbyder"
     },
     "prompt": {
       "label": "Prompt",
@@ -2149,6 +2210,7 @@
       "sendFile": "Send Fil",
       "sendGif": "Send Gif",
       "sendImage": "Send Billede",
+      "sendMultipleImages": "Flere billeder",
       "sendMessage": "Send besked",
       "sendNode": "Start Another Node",
       "sendText": "Send Tekst",
@@ -2193,9 +2255,7 @@
       "export": "Eksporter",
       "importStarted": "Flowet importeres. Tjek importhistorikken for resultater.",
       "importJsonOnly": "Kun JSON-filer",
-      "adsConversions": "Annoncer og Meta Conversions",
-      "trackAdsLead": "Spor annonce-lead",
-      "trackAdsPurchase": "Spor annonce-køb"
+      "adsConversions": "Annoncer og Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "Den i alt sum must equal 100%.",
@@ -2232,6 +2292,10 @@
       "addSlide": "Tilføj kort",
       "removeSlide": "Fjern kort",
       "whatsappLinkButtonIgnored": "På WhatsApp virker dette korts link ikke: et kort med en linkknap kan ikke have andre knapper. Det sendes i stedet som et svar."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Fjern billede",
+      "selectImage": "Vælg billeder"
     },
     "additionalSteps": "Additional trin",
     "delayType": {
@@ -2303,8 +2367,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Når der er tilføjet knapper, sender TikTok kun de første 40 tegn af denne besked — resten bliver klippet væk."
     },
-    "dataWasSaved": "Data blev gemt",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Data blev gemt"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "Ingen Facebook Pages found",
       "noPagesDescription": "Pages inside a Business Manager require Business Manager access during forbindelse. Forbind igen Messenger og grant alle requested tilladelser.",
+      "noConnectablePagesTitle": "Ingen sider tilgængelige til tilslutning",
+      "noConnectablePagesDescription": "Du er ikke administrator for denne side",
       "bmLookupFailedTitle": "Business Manager pages may være missing",
       "bmLookupFailedDescription": "Forbind igen Messenger og grant Business Manager access so pages managed through a Business Manager kan være listed.",
       "alreadyConnectedNote": "Denne page er allerede forbundet",
-      "notAdminNote": "Full administrator permission på den page er påkrævet til forbind",
+      "notAdminNote": "Du er ikke administrator for denne side",
       "tryAgain": "Try reconnecting"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "Bruger Persistent Menus"
   },
   "webhooks": {
-    "title": "Webhooks",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhooks"
   },
   "reflinks": {
     "title": "Entry Point Links",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "Start Another Flow",
       "notifyAdmins": "Notify Administratorer",
       "transferConversationToHuman": "Transfer Samtale til Menneskelig",
-      "sendMetaCapiEvent": "Send Meta CAPI Event",
-      "trackAdsLead": "Spor annonce-lead",
-      "trackAdsPurchase": "Spor annonce-køb"
+      "sendMetaCapiEvent": "Send Meta CAPI Event"
     },
     "triggerGoesOff": "Udløser goes off",
     "before": "Før",
@@ -3806,7 +3868,8 @@
     "at": "På"
   },
   "errorLogs": {
-    "title": "Fejl Logfiler"
+    "title": "Fejl Logfiler",
+    "unknownContact": "Ukendt kontakt"
   },
   "developerAccessToken": {
     "title": "API Access Token",
@@ -3826,8 +3889,7 @@
     "countCapped": "{count}+ kontakter",
     "exportAllNotice": "Alle kontakter matching den current filter vil være exported.",
     "exportTakingLong": "Eksportér er taking longer than expected",
-    "exportTakingLongDescription": "Den eksportér er still processing. Du kan close denne dialog og check tilbage i a few minutter fra den eksportér historik.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "Den eksportér er still processing. Du kan close denne dialog og check tilbage i a few minutter fra den eksportér historik."
   },
   "auditLogs": {
     "title": "Audit Logfiler",
@@ -3869,8 +3931,7 @@
     "pageWarning": "Beskedindhold med et sidenøgleord kan medføre, at der sendes beskeder til kunden i en uendelig løkke. Deaktiver sidenøgleordet med det samme, hvis du oplever dette!"
   },
   "triggers": {
-    "title": "Udløsere",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Udløsere"
   },
   "users": {
     "title": "Brugere"
@@ -3959,12 +4020,10 @@
     "friday": "Friday",
     "saturday": "Saturday",
     "sunday": "Sunday",
-    "afterText": "Efter",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "Efter"
   },
   "tools": {
-    "title": "Værktøjer",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Værktøjer"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Forbind"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Registrerer kun en konvertering for kontakter med WhatsApp click-to-WhatsApp- eller Meta-annoncehenvisningsattribuering. Har ingen effekt for andre kontakter."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Seneste",
     "favourite": "Favorit",
     "upload": "Upload",
-    "done": "Færdig",
+    "select": "Vælg",
+    "bulkSelect": "Massevalg",
     "deleteFolder": "Slet mappe",
     "renameFolder": "Omdøb mappe",
     "noFiles": "Ingen filer fundet",

@@ -35,7 +35,7 @@ import { useFlowSelectOptions } from "../flows/provider/flow-hook"
 import { createAIFunctionAction } from "./actions/create-ai-function.action"
 import { generateAIFunctionAiAction } from "./actions/generate-ai-function-ai.action"
 import { updateAIFunctionAction } from "./actions/update-ai-function.action"
-import { createAIFunctionRequest } from "./schemas/action"
+import { createAIFunctionRequest } from "./schema/action"
 
 type AIFunctionsCreateProps = {
   workspaceId: string

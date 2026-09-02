@@ -153,9 +153,11 @@
     "viewAnalytics": "Visa analys",
     "wait": "Vänta",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Du måste vara superadministratör för arbetsytan för att göra detta."
@@ -551,7 +553,9 @@
       "cancelled": "Avbrutet",
       "scheduled": "Schemalagt",
       "sending": "Skickar",
-      "sent": "Skickat"
+      "sent": "Skickat",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "telegramAllContacts": {
       "description": "Använd den här meddelandetypen om du vill skicka ett utskick till dina Telegram-kontakter.",
@@ -570,7 +574,63 @@
       "description": "Kan innehålla kampanjer och skickas endast till användare som har skickat meddelanden till din bot under de senaste 24 timmarna.",
       "title": "Aktiva kontakter inom 24 timmar"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "channels": {
     "duplicated": {
@@ -842,8 +902,7 @@
     "exportTakingLong": "Exporten tar längre tid än väntat",
     "exportTakingLongDescription": "Exporten bearbetas fortfarande. Du kan stänga den här dialogrutan och kontrollera exporthistoriken igen om några minuter.",
     "linkCopied": "Länken har kopierats till urklipp",
-    "title": "Kontakter",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "title": "Kontakter"
   },
   "coupons": {
     "actions": {
@@ -977,7 +1036,8 @@
     "title": "E-postämnen"
   },
   "errorLogs": {
-    "title": "Felloggar"
+    "title": "Felloggar",
+    "unknownContact": "Okänd kontakt"
   },
   "extensionsMe": {
     "actions": {
@@ -2293,7 +2353,8 @@
       "placeholder": "Ange prompt"
     },
     "provider": {
-      "label": "Leverantör"
+      "label": "Leverantör",
+      "placeholder": "Välj leverantör"
     },
     "publishableKey": {
       "label": "Publicerbar nyckel"
@@ -2852,6 +2913,7 @@
       "sendGif": "Skicka GIF",
       "sendGridAddContact": "Lägg till kontakt i SendGrid",
       "sendImage": "Skicka bild",
+      "sendMultipleImages": "Flera bilder",
       "sendMessage": "Skicka meddelande",
       "sendNode": "Starta en annan nod",
       "sendTemplateMessage": "Mallmeddelande",
@@ -2894,14 +2956,16 @@
       "export": "Exportera",
       "importStarted": "Flödet importeras. Kontrollera importhistoriken för resultat.",
       "importJsonOnly": "Endast JSON-filer",
-      "adsConversions": "Annonser och Meta Conversions",
-      "trackAdsLead": "Spåra annonslead",
-      "trackAdsPurchase": "Spåra annonsköp"
+      "adsConversions": "Annonser och Meta Conversions"
     },
     "sendCarousel": {
       "addSlide": "Lägg till kort",
       "removeSlide": "Ta bort kort",
       "whatsappLinkButtonIgnored": "På WhatsApp fungerar inte det här kortets länk: ett kort med en länkknapp kan inte ha andra knappar. Det skickas som ett svar istället."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Ta bort bild",
+      "selectImage": "Välj bilder"
     },
     "additionalSteps": "Ytterligare steg",
     "aiAnalyzeImage": {
@@ -3030,8 +3094,7 @@
     "sendText": {
       "tiktokTitleTruncated": "När knappar är kopplade skickar TikTok bara de första 40 tecknen i det här meddelandet — resten klipps bort."
     },
-    "dataWasSaved": "Uppgifterna sparades",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Uppgifterna sparades"
   },
   "folders": {
     "heading": {
@@ -3619,9 +3682,11 @@
       "alreadyConnectedNote": "Den här sidan är redan ansluten",
       "bmLookupFailedDescription": "Återanslut Messenger och bevilja åtkomst till Business Manager så att sidor som hanteras där kan visas.",
       "bmLookupFailedTitle": "Business Manager-sidor kan saknas",
+      "noConnectablePagesDescription": "Du är inte administratör för den här sidan",
+      "noConnectablePagesTitle": "Inga sidor tillgängliga att ansluta",
       "noPagesDescription": "Sidor i Business Manager kräver åtkomst till Business Manager under anslutningen. Återanslut Messenger och bevilja alla begärda behörigheter.",
       "noPagesTitle": "Inga Facebook-sidor hittades",
-      "notAdminNote": "Fullständig administratörsbehörighet på sidan krävs för att ansluta",
+      "notAdminNote": "Du är inte administratör för den här sidan",
       "tryAgain": "Försök återansluta"
     },
     "tabs": {
@@ -4381,8 +4446,7 @@
       "exception": "Valideringsfel",
       "nameExists": "Sekvensnamnet finns redan"
     },
-    "wednesday": "Onsdag",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "wednesday": "Onsdag"
   },
   "settings": {
     "agents": {
@@ -4502,8 +4566,7 @@
     "title": "TikTok"
   },
   "tools": {
-    "title": "Verktyg",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Verktyg"
   },
   "trigger": {
     "actions": {
@@ -4514,9 +4577,7 @@
       "setCustomField": "Ange anpassat fält",
       "startAnotherFlow": "Starta ett annat flöde",
       "transferConversationToHuman": "Överför konversationen till en människa",
-      "sendMetaCapiEvent": "Skicka Meta CAPI-händelse",
-      "trackAdsLead": "Spåra annonslead",
-      "trackAdsPurchase": "Spåra annonsköp"
+      "sendMetaCapiEvent": "Skicka Meta CAPI-händelse"
     },
     "after": "Efter",
     "at": "Kl.",
@@ -4568,8 +4629,7 @@
     "when": "När detta händer"
   },
   "triggers": {
-    "title": "Utlösare",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Utlösare"
   },
   "unsubscribePage": {
     "description": "Du kommer inte längre att få e-post från den här avsändaren.",
@@ -4616,8 +4676,7 @@
     "workspaceUnavailable": "Den här arbetsytan är inte längre tillgänglig."
   },
   "webhooks": {
-    "title": "Webhookar",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhookar"
   },
   "whatsapp": {
     "accountHealths": {
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Anslut"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Registrerar bara en konvertering för kontakter med attribuering från en klicka-till-WhatsApp-annons eller Meta-annonshänvisning. Har ingen effekt för andra kontakter."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Senaste",
     "favourite": "Favorit",
     "upload": "Ladda upp",
-    "done": "Klar",
+    "select": "Välj",
+    "bulkSelect": "Massmarkering",
     "deleteFolder": "Ta bort mapp",
     "renameFolder": "Byt namn på mapp",
     "noFiles": "Inga filer hittades",

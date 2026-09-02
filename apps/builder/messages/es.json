@@ -149,9 +149,11 @@
     "remove": "Quitar",
     "restore": "Restaurar",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Debes ser superadministrador del espacio de trabajo para hacer esto."
@@ -350,7 +352,9 @@
       "scheduled": "Programada",
       "sent": "Enviado",
       "sending": "Enviando",
-      "cancelled": "Cancelada"
+      "cancelled": "Cancelada",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "Enviado",
@@ -437,7 +441,63 @@
       "noTemplate": "Sin plantilla",
       "integration": "Integración"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "Sí",
@@ -1365,7 +1425,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Proveedor"
+      "label": "Proveedor",
+      "placeholder": "Seleccionar proveedor"
     },
     "prompt": {
       "label": "Instrucción",
@@ -2223,6 +2284,7 @@
       "sendFile": "Enviar archivo",
       "sendGif": "Enviar Gif",
       "sendImage": "Enviar imagen",
+      "sendMultipleImages": "Varias imágenes",
       "sendMessage": "Enviar mensaje",
       "sendNode": "Iniciar Another Node",
       "sendText": "Enviar texto",
@@ -2267,9 +2329,7 @@
       "export": "Exportar",
       "importStarted": "El flujo se está importando. Consulta el historial de importaciones para ver los resultados.",
       "importJsonOnly": "Solo archivos JSON",
-      "adsConversions": "Anuncios y Meta Conversions",
-      "trackAdsLead": "Registrar cliente potencial de anuncios",
-      "trackAdsPurchase": "Registrar compra de anuncios"
+      "adsConversions": "Anuncios y Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "La suma total debe ser igual al 100 %.",
@@ -2306,6 +2366,10 @@
       "addSlide": "Añadir tarjeta",
       "removeSlide": "Eliminar tarjeta",
       "whatsappLinkButtonIgnored": "En WhatsApp, el enlace de esta tarjeta no funcionará: una tarjeta con un botón de enlace no puede tener otros botones. Se enviará como respuesta en su lugar."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Eliminar imagen",
+      "selectImage": "Seleccionar imágenes"
     },
     "additionalSteps": "Pasos adicionales",
     "delayType": {
@@ -2377,8 +2441,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Cuando se adjuntan botones, TikTok solo envía los primeros 40 caracteres de este mensaje; el resto se recortará."
     },
-    "dataWasSaved": "Datos guardados",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Datos guardados"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "No Facebook Páginas found",
       "noPagesDescription": "Páginas inside un Empresa Manager require Empresa Manager access during connection. ReConectar Messenger y grant todos requested permisos.",
+      "noConnectablePagesTitle": "No hay páginas disponibles para conectar",
+      "noConnectablePagesDescription": "No eres administrador de esta página",
       "bmLookupFailedTitle": "Empresa Manager páginas may be missing",
       "bmLookupFailedDescription": "ReConectar Messenger y grant Empresa Manager access so páginas managed through un Empresa Manager puede be listed.",
       "alreadyConnectedNote": "This página es already connected",
-      "notAdminNote": "Full admin permiso en el página es obligatorio un connect",
+      "notAdminNote": "No eres administrador de esta página",
       "tryAgain": "Intenta volver a conectar"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "Menús persistentes del usuario"
   },
   "webhooks": {
-    "title": "Webhooks",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhooks"
   },
   "reflinks": {
     "title": "Entry Point Enlaces",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "Start Another Flujo",
       "notifyAdmins": "Notificar a los administradores",
       "transferConversationToHuman": "Transfer Conversation un Human",
-      "sendMetaCapiEvent": "Enviar evento Meta CAPI",
-      "trackAdsLead": "Registrar cliente potencial de anuncios",
-      "trackAdsPurchase": "Registrar compra de anuncios"
+      "sendMetaCapiEvent": "Enviar evento Meta CAPI"
     },
     "triggerGoesOff": "Desencadenador goes off",
     "before": "Antes",
@@ -3806,7 +3868,8 @@
     "at": "A las"
   },
   "errorLogs": {
-    "title": "Registros de errores"
+    "title": "Registros de errores",
+    "unknownContact": "Contacto desconocido"
   },
   "developerAccessToken": {
     "title": "Token de acceso a la API",
@@ -3826,8 +3889,7 @@
     "countCapped": "{count}+ contactoos",
     "exportAllNotice": "Todos contactoos matching el current filter se be exported.",
     "exportTakingLong": "Export es taking longer than expected",
-    "exportTakingLongDescription": "The export es still processing. tú puede Cerrar este dialog y check back en un few minutos desde el export history.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "The export es still processing. tú puede Cerrar este dialog y check back en un few minutos desde el export history."
   },
   "auditLogs": {
     "title": "Registros de auditoría",
@@ -3869,8 +3931,7 @@
     "pageWarning": "El contenido de un mensaje con una palabra clave de Página puede provocar el envío de mensajes al cliente en un bucle infinito. ¡Desactiva la palabra clave de Página de inmediato si esto ocurre!"
   },
   "triggers": {
-    "title": "Desencadenadores",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Desencadenadores"
   },
   "users": {
     "title": "Usuarios"
@@ -3959,12 +4020,10 @@
     "friday": "Fridía",
     "saturday": "Saturdía",
     "sunday": "Sundía",
-    "afterText": "Después",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "Después"
   },
   "tools": {
-    "title": "Herramientas",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Herramientas"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Conectar"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Solo registra una conversión para contactos con atribución de anuncio click-to-WhatsApp de WhatsApp o referencia de anuncio de Meta. No tiene efecto en otros contactos."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Recientes",
     "favourite": "Favoritos",
     "upload": "Subir",
-    "done": "Listo",
+    "select": "Seleccionar",
+    "bulkSelect": "Selección múltiple",
     "deleteFolder": "Eliminar carpeta",
     "renameFolder": "Renombrar carpeta",
     "noFiles": "No se encontraron archivos",

@@ -664,7 +664,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "Provider"
+      "label": "Provider",
+      "placeholder": "Seleziona provider"
     },
     "prompt": {
       "label": "Prompt",
@@ -1578,9 +1579,11 @@
     "remove": "Rimuovi",
     "restore": "Ripristina",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "Devi essere super admin dello spazio di lavoro per farlo."
@@ -1779,7 +1782,9 @@
       "scheduled": "Pianificato",
       "sent": "Inviato",
       "sending": "Invio in corso",
-      "cancelled": "Annullato"
+      "cancelled": "Annullato",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "Inviato",
@@ -1866,7 +1871,63 @@
       "noTemplate": "Nessun modello",
       "integration": "Integrazione"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "Sì",
@@ -2149,6 +2210,7 @@
       "sendFile": "Invia file",
       "sendGif": "Invia GIF",
       "sendImage": "Invia immagine",
+      "sendMultipleImages": "Immagini multiple",
       "sendMessage": "Invia messaggio",
       "sendNode": "Avvia un altro nodo",
       "sendText": "Invia testo",
@@ -2193,9 +2255,7 @@
       "export": "Esporta",
       "importStarted": "Il flusso è in fase di importazione. Controlla la cronologia delle importazioni per i risultati.",
       "importJsonOnly": "Solo file JSON",
-      "adsConversions": "Annunci e Meta Conversions",
-      "trackAdsLead": "Traccia lead pubblicitario",
-      "trackAdsPurchase": "Traccia acquisto pubblicitario"
+      "adsConversions": "Annunci e Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "La somma totale deve essere pari al 100%.",
@@ -2232,6 +2292,10 @@
       "addSlide": "Aggiungi scheda",
       "removeSlide": "Rimuovi scheda",
       "whatsappLinkButtonIgnored": "Su WhatsApp, il link di questa scheda non funzionerà: una scheda con un pulsante di collegamento non può avere altri pulsanti. Verrà inviata come risposta."
+    },
+    "sendMultipleImages": {
+      "removeImage": "Rimuovi immagine",
+      "selectImage": "Seleziona immagini"
     },
     "additionalSteps": "Passaggi aggiuntivi",
     "delayType": {
@@ -2303,8 +2367,7 @@
     "sendText": {
       "tiktokTitleTruncated": "Quando sono presenti pulsanti, TikTok invia solo i primi 40 caratteri di questo messaggio: il resto verrà troncato."
     },
-    "dataWasSaved": "Dati salvati",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "Dati salvati"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "Nessuna Pagina Facebook trovata",
       "noPagesDescription": "Le Pagine in un Business Manager richiedono l'accesso a Business Manager durante la connessione. Ricollega Messenger e concedi tutte le autorizzazioni richieste.",
+      "noConnectablePagesTitle": "Nessuna Pagina disponibile da collegare",
+      "noConnectablePagesDescription": "Non sei amministratore di questa Pagina",
       "bmLookupFailedTitle": "Alcune Pagine di Business Manager potrebbero non essere disponibili",
       "bmLookupFailedDescription": "Ricollega Messenger e concedi l'accesso a Business Manager affinché possano essere elencate le Pagine gestite tramite Business Manager.",
       "alreadyConnectedNote": "Questa Pagina è già collegata",
-      "notAdminNote": "Per collegarsi è necessaria l'autorizzazione completa di amministratore della Pagina",
+      "notAdminNote": "Non sei amministratore di questa Pagina",
       "tryAgain": "Prova a ricollegarti"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "Menu permanenti degli utenti"
   },
   "webhooks": {
-    "title": "Webhook",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhook"
   },
   "reflinks": {
     "title": "Link dei punti di ingresso",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "Avvia un altro flusso",
       "notifyAdmins": "Notifica gli amministratori",
       "transferConversationToHuman": "Trasferisci la conversazione a un operatore",
-      "sendMetaCapiEvent": "Invia evento Meta CAPI",
-      "trackAdsLead": "Traccia lead pubblicitario",
-      "trackAdsPurchase": "Traccia acquisto pubblicitario"
+      "sendMetaCapiEvent": "Invia evento Meta CAPI"
     },
     "triggerGoesOff": "Il trigger si attiva",
     "before": "Prima",
@@ -3806,7 +3868,8 @@
     "at": "Alle"
   },
   "errorLogs": {
-    "title": "Registri degli errori"
+    "title": "Registri degli errori",
+    "unknownContact": "Contatto sconosciuto"
   },
   "developerAccessToken": {
     "title": "Token di accesso API",
@@ -3826,8 +3889,7 @@
     "countCapped": "{count}+ contatti",
     "exportAllNotice": "Verranno esportati tutti i contatti che corrispondono al filtro corrente.",
     "exportTakingLong": "L'esportazione sta richiedendo più tempo del previsto",
-    "exportTakingLongDescription": "L'esportazione è ancora in corso. Puoi chiudere questa finestra e ricontrollare tra qualche minuto nella cronologia delle esportazioni.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "L'esportazione è ancora in corso. Puoi chiudere questa finestra e ricontrollare tra qualche minuto nella cronologia delle esportazioni."
   },
   "auditLogs": {
     "title": "Registri di controllo",
@@ -3869,8 +3931,7 @@
     "pageWarning": "Il contenuto di un messaggio con una parola chiave Page può causare l'invio di messaggi al cliente in un ciclo infinito. Disattiva immediatamente la parola chiave Page se riscontri questa situazione!"
   },
   "triggers": {
-    "title": "Trigger",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "Trigger"
   },
   "users": {
     "title": "Utenti"
@@ -3959,12 +4020,10 @@
     "friday": "Venerdì",
     "saturday": "Sabato",
     "sunday": "Domenica",
-    "afterText": "Dopo",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "Dopo"
   },
   "tools": {
-    "title": "Strumenti",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "Strumenti"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "Connetti"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "Registra una conversione solo per i contatti con attribuzione a un annuncio click-to-WhatsApp o a un referral pubblicitario Meta. Non ha effetto sugli altri contatti."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "Recenti",
     "favourite": "Preferiti",
     "upload": "Carica",
-    "done": "Fatto",
+    "select": "Seleziona",
+    "bulkSelect": "Selezione multipla",
     "deleteFolder": "Elimina cartella",
     "renameFolder": "Rinomina cartella",
     "noFiles": "Nessun file trovato",

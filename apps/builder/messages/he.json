@@ -149,9 +149,11 @@
     "remove": "הסרה",
     "restore": "שחזור",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "עליכם להיות מנהל-על של סביבת העבודה כדי לבצע פעולה זו."
@@ -372,6 +374,7 @@
       "sendFile": "שליחת קובץ",
       "sendGif": "שליחת GIF",
       "sendImage": "שליחת תמונה",
+      "sendMultipleImages": "מספר תמונות",
       "sendMessage": "שליחת הודעה",
       "sendNode": "הפעלת צומת אחר",
       "sendText": "שליחת טקסט",
@@ -416,9 +419,7 @@
       "export": "ייצוא",
       "importStarted": "הזרימה בתהליך ייבוא. בדקו את היסטוריית הייבוא לתוצאות.",
       "importJsonOnly": "קבצי JSON בלבד",
-      "adsConversions": "מודעות ו-Meta Conversions",
-      "trackAdsLead": "מעקב אחר ליד ממודעות",
-      "trackAdsPurchase": "מעקב אחר רכישה ממודעות"
+      "adsConversions": "מודעות ו-Meta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "הסכום הכולל חייב להיות 100%.",
@@ -455,6 +456,10 @@
       "addSlide": "הוספת כרטיס",
       "removeSlide": "הסרת כרטיס",
       "whatsappLinkButtonIgnored": "בוואטסאפ, הקישור של כרטיס זה לא יעבוד: כרטיס עם כפתור קישור לא יכול לכלול כפתורים נוספים. הוא יישלח כתשובה במקום זאת."
+    },
+    "sendMultipleImages": {
+      "removeImage": "הסר תמונה",
+      "selectImage": "בחר תמונות"
     },
     "additionalSteps": "שלבים נוספים",
     "delayType": {
@@ -526,8 +531,7 @@
     "sendText": {
       "tiktokTitleTruncated": "כאשר מצורפים כפתורים, טיקטוק שולח רק את 40 התווים הראשונים של ההודעה הזו — השאר ייחתך."
     },
-    "dataWasSaved": "הנתונים נשמרו",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "הנתונים נשמרו"
   },
   "folders": {
     "heading": {
@@ -1292,10 +1296,12 @@
     "selectPage": {
       "noPagesTitle": "לא נמצאו דפי Facebook",
       "noPagesDescription": "דפים בתוך Business Manager דורשים גישה ל-Business Manager במהלך החיבור. חברו מחדש את Messenger והעניקו את כל ההרשאות המבוקשות.",
+      "noConnectablePagesTitle": "אין דפים זמינים לחיבור",
+      "noConnectablePagesDescription": "אינך מנהל של דף זה",
       "bmLookupFailedTitle": "ייתכן שחסרים דפי Business Manager",
       "bmLookupFailedDescription": "חברו מחדש את Messenger והעניקו גישה ל-Business Manager כדי שניתן יהיה להציג דפים המנוהלים דרכו.",
       "alreadyConnectedNote": "דף זה כבר מחובר",
-      "notAdminNote": "נדרשת הרשאת מנהל מלאה בדף כדי להתחבר",
+      "notAdminNote": "אינך מנהל של דף זה",
       "tryAgain": "ניסיון חיבור מחדש"
     },
     "title": "Facebook Messenger",
@@ -1886,8 +1892,7 @@
     "title": "תפריטי משתמש קבועים"
   },
   "webhooks": {
-    "title": "Webhooks",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhooks"
   },
   "reflinks": {
     "title": "קישורים לנקודות כניסה",
@@ -2015,9 +2020,7 @@
       "startAnotherFlow": "הפעלת תהליך אחר",
       "notifyAdmins": "יידוע מנהלי מערכת",
       "transferConversationToHuman": "העברת השיחה לנציג אנושי",
-      "sendMetaCapiEvent": "שליחת אירוע Meta CAPI",
-      "trackAdsLead": "מעקב אחר ליד ממודעות",
-      "trackAdsPurchase": "מעקב אחר רכישה ממודעות"
+      "sendMetaCapiEvent": "שליחת אירוע Meta CAPI"
     },
     "triggerGoesOff": "הגורם המפעיל מופעל",
     "before": "לפני",
@@ -2029,7 +2032,8 @@
     "at": "בשעה"
   },
   "errorLogs": {
-    "title": "יומני שגיאות"
+    "title": "יומני שגיאות",
+    "unknownContact": "איש קשר לא ידוע"
   },
   "developerAccessToken": {
     "title": "אסימון גישה ל-API",
@@ -2049,8 +2053,7 @@
     "countCapped": "{count}+ אנשי קשר",
     "exportAllNotice": "כל אנשי הקשר שתואמים למסנן הנוכחי ייוצאו.",
     "exportTakingLong": "הייצוא נמשך זמן רב מהצפוי",
-    "exportTakingLongDescription": "הייצוא עדיין בעיבוד. ניתן לסגור חלון זה ולבדוק שוב בעוד מספר דקות בהיסטוריית הייצוא.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "הייצוא עדיין בעיבוד. ניתן לסגור חלון זה ולבדוק שוב בעוד מספר דקות בהיסטוריית הייצוא."
   },
   "auditLogs": {
     "title": "יומני ביקורת",
@@ -2092,8 +2095,7 @@
     "pageWarning": "תוכן הודעה המכיל מילת מפתח לעמוד עלול לגרום לשליחת הודעות ללקוח בלופ אינסופי. השבת את מילת המפתח לעמוד באופן מיידי אם נתקלת במקרה זה!"
   },
   "triggers": {
-    "title": "גורמים מפעילים",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "גורמים מפעילים"
   },
   "users": {
     "title": "משתמשים"
@@ -2182,12 +2184,10 @@
     "friday": "יום שישי",
     "saturday": "שבת",
     "sunday": "יום ראשון",
-    "afterText": "אחרי",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "אחרי"
   },
   "tools": {
-    "title": "כלים",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "כלים"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -3892,7 +3892,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "ספק"
+      "label": "ספק",
+      "placeholder": "בחר ספק"
     },
     "prompt": {
       "label": "הנחיה",
@@ -4710,7 +4711,9 @@
       "scheduled": "מתוזמן",
       "sent": "נשלח",
       "sending": "נשלח כעת",
-      "cancelled": "בוטל"
+      "cancelled": "בוטל",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "נשלח",
@@ -4797,7 +4800,63 @@
       "noTemplate": "ללא תבנית",
       "integration": "שילוב"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "כן",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "חיבור"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "רושם המרה רק עבור אנשי קשר עם ייחוס למודעת click-to-WhatsApp או הפניית מודעה של Meta. אין השפעה על אנשי קשר אחרים."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "אחרונים",
     "favourite": "מועדפים",
     "upload": "העלאה",
-    "done": "סיום",
+    "select": "בחירה",
+    "bulkSelect": "בחירה מרובה",
     "deleteFolder": "מחיקת תיקייה",
     "renameFolder": "שינוי שם תיקייה",
     "noFiles": "לא נמצאו קבצים",

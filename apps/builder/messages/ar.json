@@ -149,9 +149,11 @@
     "remove": "إزالة",
     "restore": "استعادة",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "يجب أن تكون مسؤولًا فائقًا لمساحة العمل للقيام بذلك."
@@ -350,7 +352,9 @@
       "scheduled": "مجدول",
       "sent": "مُرسَل",
       "sending": "قيد الإرسال",
-      "cancelled": "ملغى"
+      "cancelled": "ملغى",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "مُرسَل",
@@ -437,7 +441,63 @@
       "noTemplate": "لا يوجد قالب",
       "integration": "التكامل"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "نعم",
@@ -1365,7 +1425,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "المزوّد"
+      "label": "المزوّد",
+      "placeholder": "اختر المزوّد"
     },
     "prompt": {
       "label": "الموجّه",
@@ -2223,6 +2284,7 @@
       "sendFile": "إرسال ملف",
       "sendGif": "إرسال صورة متحركة",
       "sendImage": "إرسال صورة",
+      "sendMultipleImages": "عدة صور",
       "sendMessage": "إرسال رسالة",
       "sendNode": "بدء عقدة أخرى",
       "sendText": "إرسال نص",
@@ -2267,9 +2329,7 @@
       "export": "تصدير",
       "importStarted": "جارٍ استيراد التدفق. يرجى مراجعة سجل الاستيراد للحصول على النتائج.",
       "importJsonOnly": "ملفات JSON فقط",
-      "adsConversions": "الإعلانات وتحويلات Meta",
-      "trackAdsLead": "تتبع عميل محتمل من الإعلانات",
-      "trackAdsPurchase": "تتبع عملية شراء من الإعلانات"
+      "adsConversions": "الإعلانات وتحويلات Meta"
     },
     "splitTraffic": {
       "balanceHint": "يجب أن يساوي مجموع النسب 100%.",
@@ -2306,6 +2366,10 @@
       "addSlide": "إضافة بطاقة",
       "removeSlide": "إزالة البطاقة",
       "whatsappLinkButtonIgnored": "في واتساب، لن يعمل رابط هذه البطاقة: لا يمكن أن تحتوي البطاقة التي تتضمن زر رابط على أزرار أخرى. سيتم إرسال الزر كزر رد بدلًا من ذلك."
+    },
+    "sendMultipleImages": {
+      "removeImage": "إزالة صورة",
+      "selectImage": "اختيار الصور"
     },
     "additionalSteps": "خطوات إضافية",
     "delayType": {
@@ -2377,8 +2441,7 @@
     "sendText": {
       "tiktokTitleTruncated": "عند إرفاق أزرار، يرسل TikTok أول 40 حرفًا فقط من هذه الرسالة، وسيتم قص الباقي."
     },
-    "dataWasSaved": "تم حفظ البيانات",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "تم حفظ البيانات"
   },
   "folders": {
     "heading": {
@@ -3095,10 +3158,12 @@
     "selectPage": {
       "noPagesTitle": "لم يتم العثور على صفحات Facebook",
       "noPagesDescription": "تتطلب الصفحات الموجودة داخل مدير الأعمال منح صلاحية الوصول إليه أثناء الاتصال. أعد ربط Messenger وامنح جميع الأذونات المطلوبة.",
+      "noConnectablePagesTitle": "لا توجد صفحات متاحة للربط",
+      "noConnectablePagesDescription": "أنت لست مسؤولاً عن هذه الصفحة",
       "bmLookupFailedTitle": "قد تكون بعض صفحات مدير الأعمال غير ظاهرة",
       "bmLookupFailedDescription": "أعد ربط Messenger وامنح صلاحية الوصول إلى مدير الأعمال حتى يمكن عرض الصفحات المُدارة من خلاله.",
       "alreadyConnectedNote": "هذه الصفحة مرتبطة بالفعل",
-      "notAdminNote": "يلزم امتلاك صلاحية مسؤول كاملة على الصفحة للربط",
+      "notAdminNote": "أنت لست مسؤولاً عن هذه الصفحة",
       "tryAgain": "محاولة إعادة الاتصال"
     },
     "title": "Facebook Messenger",
@@ -3663,8 +3728,7 @@
     "title": "القوائم الدائمة للمستخدمين"
   },
   "webhooks": {
-    "title": "خطافات الويب",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "خطافات الويب"
   },
   "reflinks": {
     "title": "روابط نقاط الدخول",
@@ -3792,9 +3856,7 @@
       "startAnotherFlow": "بدء مسار آخر",
       "notifyAdmins": "إشعار المسؤولين",
       "transferConversationToHuman": "نقل المحادثة إلى موظف",
-      "sendMetaCapiEvent": "إرسال حدث Meta CAPI",
-      "trackAdsLead": "تتبع عميل محتمل من الإعلانات",
-      "trackAdsPurchase": "تتبع عملية شراء من الإعلانات"
+      "sendMetaCapiEvent": "إرسال حدث Meta CAPI"
     },
     "triggerGoesOff": "يتم تشغيل المشغّل",
     "before": "قبل",
@@ -3806,7 +3868,8 @@
     "at": "عند"
   },
   "errorLogs": {
-    "title": "سجلات الأخطاء"
+    "title": "سجلات الأخطاء",
+    "unknownContact": "جهة اتصال غير معروفة"
   },
   "developerAccessToken": {
     "title": "رمز الوصول إلى ChatbotX API",
@@ -3826,8 +3889,7 @@
     "countCapped": "أكثر من {count} جهة اتصال",
     "exportAllNotice": "سيتم تصدير جميع جهات الاتصال المطابقة لعامل التصفية الحالي.",
     "exportTakingLong": "يستغرق التصدير وقتًا أطول من المتوقع",
-    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير.",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير."
   },
   "auditLogs": {
     "title": "سجلات التدقيق",
@@ -3869,8 +3931,7 @@
     "pageWarning": "قد يؤدي محتوى رسالة تحتوي على كلمة مفتاحية للصفحة إلى إرسال رسائل للعميل بشكل متكرر لا نهائي. قم بإلغاء تفعيل الكلمة المفتاحية للصفحة فورًا إذا واجهت هذه الحالة!"
   },
   "triggers": {
-    "title": "المشغّلات",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "المشغّلات"
   },
   "users": {
     "title": "المستخدمون"
@@ -3959,12 +4020,10 @@
     "friday": "الجمعة",
     "saturday": "السبت",
     "sunday": "الأحد",
-    "afterText": "بعد",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "بعد"
   },
   "tools": {
-    "title": "الأدوات",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "الأدوات"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "ربط"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "يسجّل التحويل فقط للمخاطبين الذين لديهم إسناد من إعلان WhatsApp للنقر للمحادثة أو إحالة إعلان من Meta. لا يوجد تأثير على المخاطبين الآخرين."
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "الأحدث",
     "favourite": "المفضلة",
     "upload": "رفع",
-    "done": "تم",
+    "select": "تحديد",
+    "bulkSelect": "تحديد متعدد",
     "deleteFolder": "حذف المجلد",
     "renameFolder": "إعادة تسمية المجلد",
     "noFiles": "لا توجد ملفات",

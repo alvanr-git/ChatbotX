@@ -149,9 +149,11 @@
     "remove": "削除",
     "restore": "復元",
     "loadMore": "Load more",
-    "checkDmsAndComments": "Check for DMs & Comments",
-    "checkingDmsAndComments": "Checking for new DMs and comments...",
-    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "errors": {
     "superAdminRequired": "この操作を行うには、ワークスペースのスーパー管理者である必要があります。"
@@ -350,7 +352,9 @@
       "scheduled": "予約済み",
       "sent": "送信済み",
       "sending": "送信中",
-      "cancelled": "キャンセル済み"
+      "cancelled": "キャンセル済み",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "stats": {
       "sent": "送信済み",
@@ -437,7 +441,63 @@
       "noTemplate": "テンプレートなし",
       "integration": "連携"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "condition": {
     "yes": "はい",
@@ -1291,7 +1351,8 @@
       "placeholder": "587"
     },
     "provider": {
-      "label": "プロバイダー"
+      "label": "プロバイダー",
+      "placeholder": "プロバイダーを選択"
     },
     "prompt": {
       "label": "プロンプト",
@@ -2149,6 +2210,7 @@
       "sendFile": "ファイルを送信",
       "sendGif": "GIFを送信",
       "sendImage": "画像を送信",
+      "sendMultipleImages": "複数画像",
       "sendMessage": "メッセージを送信",
       "sendNode": "別のノードを開始",
       "sendText": "テキストを送信",
@@ -2193,9 +2255,7 @@
       "export": "エクスポート",
       "importStarted": "フローをインポート中です。結果はインポート履歴でご確認ください。",
       "importJsonOnly": "JSONファイルのみ",
-      "adsConversions": "広告とMeta Conversions",
-      "trackAdsLead": "広告リードを記録",
-      "trackAdsPurchase": "広告購入を記録"
+      "adsConversions": "広告とMeta Conversions"
     },
     "splitTraffic": {
       "balanceHint": "合計は100%になる必要があります。",
@@ -2232,6 +2292,10 @@
       "addSlide": "スライドを追加",
       "removeSlide": "スライドを削除",
       "whatsappLinkButtonIgnored": "WhatsAppでは、このカードのリンクは機能しません。リンクボタンを含むカードには他のボタンを設定できません。代わりに返信として送信されます。"
+    },
+    "sendMultipleImages": {
+      "removeImage": "画像を削除",
+      "selectImage": "画像を選択"
     },
     "additionalSteps": "追加ステップ",
     "delayType": {
@@ -2303,8 +2367,7 @@
     "sendText": {
       "tiktokTitleTruncated": "ボタンを追加すると、TikTokはこのメッセージの最初の40文字までしか送信しません。残りは切り捨てられます。"
     },
-    "dataWasSaved": "データが保存されました",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "データが保存されました"
   },
   "folders": {
     "heading": {
@@ -3074,10 +3137,12 @@
     "selectPage": {
       "noPagesTitle": "Facebookページが見つかりません",
       "noPagesDescription": "ビジネスマネージャ内のページに接続するには、ビジネスマネージャへのアクセス権が必要です。Messengerを再接続し、要求されたすべての権限を許可してください。",
+      "noConnectablePagesTitle": "接続できるページがありません",
+      "noConnectablePagesDescription": "あなたはこのページの管理者ではありません",
       "bmLookupFailedTitle": "ビジネスマネージャのページが一部表示されていない可能性があります",
       "bmLookupFailedDescription": "Messengerを再接続し、ビジネスマネージャへのアクセスを許可すると、ビジネスマネージャで管理されているページを一覧表示できます。",
       "alreadyConnectedNote": "このページはすでに接続されています",
-      "notAdminNote": "接続するにはページの完全な管理者権限が必要です",
+      "notAdminNote": "あなたはこのページの管理者ではありません",
       "tryAgain": "再接続を試す"
     },
     "title": "Facebook Messenger",
@@ -3642,8 +3707,7 @@
     "title": "ユーザー固定メニュー"
   },
   "webhooks": {
-    "title": "Webhook",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhook"
   },
   "reflinks": {
     "title": "エントリーポイントリンク",
@@ -3771,9 +3835,7 @@
       "startAnotherFlow": "別のフローを開始",
       "notifyAdmins": "管理者に通知",
       "transferConversationToHuman": "会話を担当者に転送",
-      "sendMetaCapiEvent": "Meta CAPI イベントを送信",
-      "trackAdsLead": "広告リードを記録",
-      "trackAdsPurchase": "広告購入を記録"
+      "sendMetaCapiEvent": "Meta CAPI イベントを送信"
     },
     "triggerGoesOff": "トリガーが実行される",
     "before": "前",
@@ -3785,7 +3847,8 @@
     "at": "時刻"
   },
   "errorLogs": {
-    "title": "エラーログ"
+    "title": "エラーログ",
+    "unknownContact": "不明な連絡先"
   },
   "developerAccessToken": {
     "title": "APIアクセストークン",
@@ -3805,8 +3868,7 @@
     "countCapped": "{count}件以上の連絡先",
     "exportAllNotice": "現在のフィルターに一致するすべての連絡先がエクスポートされます。",
     "exportTakingLong": "エクスポートに予想以上の時間がかかっています",
-    "exportTakingLongDescription": "エクスポートは引き続き処理中です。このダイアログを閉じ、数分後にエクスポート履歴から確認できます。",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "exportTakingLongDescription": "エクスポートは引き続き処理中です。このダイアログを閉じ、数分後にエクスポート履歴から確認できます。"
   },
   "auditLogs": {
     "title": "監査ログ",
@@ -3848,8 +3910,7 @@
     "pageWarning": "ページキーワードを含むメッセージの内容が、無限ループで顧客にメッセージを送信する原因となる可能性があります。この状況が発生した場合は、直ちにページキーワードを無効にしてください!"
   },
   "triggers": {
-    "title": "トリガー",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "トリガー"
   },
   "users": {
     "title": "ユーザー"
@@ -3938,12 +3999,10 @@
     "friday": "金曜日",
     "saturday": "土曜日",
     "sunday": "日曜日",
-    "afterText": "後",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "afterText": "後"
   },
   "tools": {
-    "title": "ツール",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "ツール"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -5370,9 +5429,6 @@
     "whatsapp": {
       "connect": "連携"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "WhatsApp のクリックして WhatsApp 広告、または Meta 広告リファラルの帰属があるコンタクトに対してのみコンバージョンを記録します。他のコンタクトには影響しません。"
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "最近",
     "favourite": "お気に入り",
     "upload": "アップロード",
-    "done": "完了",
+    "select": "選択",
+    "bulkSelect": "一括選択",
     "deleteFolder": "フォルダを削除",
     "renameFolder": "フォルダ名を変更",
     "noFiles": "ファイルが見つかりません",

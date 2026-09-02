@@ -29,9 +29,6 @@
     "backToSignIn": "返回登录",
     "billing": "帐务",
     "blockContact": "封锁联系人",
-    "checkDmsAndComments": "检查私信与评论",
-    "checkingDmsAndComments": "正在检查新的私信和评论...",
-    "checkDmsAndCommentsError": "检查新的私信和评论失败。",
     "cancel": "取消",
     "chooseChannel": "选择频道",
     "chooseSubaction": "选择子操作",
@@ -155,7 +152,12 @@
     "view": "查看",
     "viewAnalytics": "查看分析",
     "wait": "等等",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "saveAsDraft": "Save as draft",
+    "schedule": "Schedule",
+    "moveToDraft": "Move to draft",
+    "stop": "Stop",
+    "resume": "Resume"
   },
   "activeCampaign": {
     "automations": {
@@ -737,7 +739,9 @@
       "cancelled": "已取消",
       "scheduled": "已安排",
       "sending": "正在发送",
-      "sent": "已发送"
+      "sent": "已发送",
+      "draft": "Draft",
+      "failed": "Failed"
     },
     "telegramAllContacts": {
       "description": "如果您想向您的Telegram 联系人发送广播，请使用此消息类型。",
@@ -756,7 +760,63 @@
       "description": "可能包含促销消息，并且只会发送给过去 24 小时内向您的机器人发送消息的用户。",
       "title": "24 小时内活跃联系人"
     },
-    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
+    "filters": {
+      "all": "All"
+    },
+    "views": {
+      "table": "Table",
+      "calendar": "Calendar"
+    },
+    "panel": {
+      "collapse": "Collapse panel",
+      "expand": "Expand panel"
+    },
+    "empty": {
+      "title": "No broadcasts yet",
+      "description": "Create your first broadcast to reach your contacts.",
+      "filteredTitle": "No broadcasts match",
+      "filteredDescription": "Try another status or clear the search."
+    },
+    "scheduleDialog": {
+      "title": "Schedule broadcast",
+      "description": "Choose when \"{name}\" should be sent."
+    },
+    "deleteDialog": {
+      "title": "{count, plural, one {Delete broadcast} other {Delete broadcasts}}",
+      "description": "{count, plural, one {\"{name}\" will be removed. Its data is deleted in the background.} other {# broadcasts will be removed. Their data is deleted in the background.}}",
+      "partial": "{deleted} of {requested} deleted — the rest changed status"
+    },
+    "calendar": {
+      "today": "Today",
+      "apply": "Apply",
+      "more": "+{count} more",
+      "ranges": {
+        "month": "Month",
+        "week": "Week",
+        "day": "Day",
+        "custom": "Custom"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "emptyDay": "No broadcasts on this day",
+      "emptyRange": "No broadcasts in this range",
+      "jumpToDate": "Jump to date"
+    },
+    "fields": {
+      "id": "ID"
+    },
+    "moveToDraftDialog": {
+      "title": "Move to draft",
+      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+    },
+    "stopDialog": {
+      "title": "Stop broadcast",
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+    },
+    "resumeDialog": {
+      "title": "Resume broadcast",
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+    }
   },
   "channels": {
     "duplicated": {
@@ -1028,8 +1088,7 @@
     "exportTakingLong": "导出花费的时间比预期长",
     "exportTakingLongDescription": "导出仍在处理中。您可以关闭此对话框，并在几分钟后返回查看导出历史记录。",
     "linkCopied": "链接已拷贝到剪贴板",
-    "title": "联系人",
-    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
+    "title": "联系人"
   },
   "coupons": {
     "actions": {
@@ -1166,7 +1225,8 @@
     "title": "电子邮件主题"
   },
   "errorLogs": {
-    "title": "错误日志"
+    "title": "错误日志",
+    "unknownContact": "未知联系人"
   },
   "errors": {
     "superAdminRequired": "您必须是工作区超级管理员才能执行此操作。"
@@ -2296,7 +2356,8 @@
       "placeholder": "输入提示"
     },
     "provider": {
-      "label": "提供商"
+      "label": "提供商",
+      "placeholder": "选择提供商"
     },
     "publishableKey": {
       "label": "可发布密钥"
@@ -2855,6 +2916,7 @@
       "sendGif": "发送 GIF",
       "sendGridAddContact": "将联系人添加到 SendGrid",
       "sendImage": "发送影像",
+      "sendMultipleImages": "多张图片",
       "sendMessage": "发送消息",
       "sendNode": "启动另一个节点",
       "sendTemplateMessage": "范本消息",
@@ -2897,9 +2959,7 @@
       "export": "导出",
       "importStarted": "流程正在导入中，请稍后查看导入记录以获取结果。",
       "importJsonOnly": "仅限 JSON 文件",
-      "adsConversions": "广告与 Meta Conversions",
-      "trackAdsLead": "跟踪广告线索",
-      "trackAdsPurchase": "跟踪广告购买"
+      "adsConversions": "广告与 Meta Conversions"
     },
     "additionalSteps": "附加步骤",
     "aiAnalyzeImage": {
@@ -2970,6 +3030,10 @@
       "removeSlide": "移除幻灯片",
       "whatsappLinkButtonIgnored": "在WhatsApp上，此卡片的链接不起作用：带有链接按钮的卡片不能有其他按钮。它将作为回复发送。"
     },
+    "sendMultipleImages": {
+      "removeImage": "删除图片",
+      "selectImage": "选择图片"
+    },
     "setCustomField": {
       "temporalHint": "将其留空以保存目前日期/时间。"
     },
@@ -3033,8 +3097,7 @@
     "sendText": {
       "tiktokTitleTruncated": "附加按钮后，TikTok 只会发送这条消息的前 40 个字符——其余部分将被截断。"
     },
-    "dataWasSaved": "数据已保存",
-    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
+    "dataWasSaved": "数据已保存"
   },
   "folders": {
     "heading": {
@@ -3619,9 +3682,11 @@
       "alreadyConnectedNote": "该页面已连接",
       "bmLookupFailedDescription": "重新连接Messenger 并授予商务管理平台访问权限，以便可以列出通过商务管理平台管理的页面。",
       "bmLookupFailedTitle": "业务管理平台页面可能遗失",
+      "noConnectablePagesDescription": "您不是此页面的管理员",
+      "noConnectablePagesTitle": "没有可连接的页面",
       "noPagesDescription": "商务管理平台内的页面需要在连接期间访问商务管理平台。重新连接Messenger并授予所有请求的权限。",
       "noPagesTitle": "找不到Facebook 页面",
-      "notAdminNote": "需要页面的完全管理员权限才能连接",
+      "notAdminNote": "您不是此页面的管理员",
       "tryAgain": "尝试重新连接"
     },
     "tabs": {
@@ -4381,8 +4446,7 @@
       "exception": "验证异常",
       "nameExists": "串行名称已存在"
     },
-    "wednesday": "星期三",
-    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
+    "wednesday": "星期三"
   },
   "settings": {
     "agents": {
@@ -4502,8 +4566,7 @@
     "title": "TikTok"
   },
   "tools": {
-    "title": "工具",
-    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
+    "title": "工具"
   },
   "trigger": {
     "actions": {
@@ -4514,9 +4577,7 @@
       "sendMetaCapiEvent": "发送 Meta CAPI 事件",
       "setCustomField": "设置自订字段",
       "startAnotherFlow": "开始另一个流程",
-      "transferConversationToHuman": "将对话转移给人类",
-      "trackAdsLead": "跟踪广告线索",
-      "trackAdsPurchase": "跟踪广告购买"
+      "transferConversationToHuman": "将对话转移给人类"
     },
     "after": "之后",
     "at": "在",
@@ -4568,8 +4629,7 @@
     "when": "当发生这种情况时"
   },
   "triggers": {
-    "title": "触发器",
-    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
+    "title": "触发器"
   },
   "unsubscribePage": {
     "description": "您将不会再收到来自该寄件者的电子邮件。",
@@ -4616,8 +4676,7 @@
     "workspaceUnavailable": "此工作区不再可用。"
   },
   "webhooks": {
-    "title": "Webhook",
-    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
+    "title": "Webhook"
   },
   "whatsapp": {
     "accountHealths": {
@@ -5092,9 +5151,6 @@
     "whatsapp": {
       "connect": "连接"
     },
-    "trackAdsFlowStep": {
-      "helpNote": "仅为具有 WhatsApp 点击进入 WhatsApp 广告或 Meta 广告引荐归因的联系人记录转化。对其他联系人没有影响。"
-    },
     "limitedDataUse": {
       "label": "Limited Data Use (US privacy)",
       "description": "Restrict Meta's use of event data for users in applicable US states. Meta auto-detects the user's location from this event; no location data is sent by ChatbotX."
@@ -5513,7 +5569,8 @@
     "recent": "最近",
     "favourite": "收藏",
     "upload": "上传",
-    "done": "完成",
+    "select": "选择",
+    "bulkSelect": "批量选择",
     "deleteFolder": "删除文件夹",
     "renameFolder": "重命名文件夹",
     "noFiles": "未找到文件",
