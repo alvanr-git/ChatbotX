@@ -1,6 +1,7 @@
 "use client"
 
 import { DataTable } from "@chatbotx.io/ui/components/data-table/data-table"
+import { DataTableRowCard } from "@chatbotx.io/ui/components/data-table/data-table-row-card"
 import { DataTableToolbar } from "@chatbotx.io/ui/components/data-table/data-table-toolbar"
 import { buttonVariants } from "@chatbotx.io/ui/components/ui/button"
 import {
@@ -72,7 +73,10 @@ export function FlowsTable({
         <CardDescription>{t("flows.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <DataTable table={table}>
+        <DataTable
+          mobileCard={(row) => <DataTableRowCard row={row} />}
+          table={table}
+        >
           <DataTableToolbar table={table}>
             <FlowsTableToolbarActions
               setRowAction={setRowAction}

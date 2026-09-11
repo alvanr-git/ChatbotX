@@ -12,9 +12,9 @@ import {
 } from "@chatbotx.io/ui/components/ui/card"
 import { cn } from "@chatbotx.io/ui/lib/utils"
 import { useTranslations } from "next-intl"
-import { MessagingAdsBox } from "@/features/ads-campaign/components/messaging-ads-box"
 import { CapiConnectedCard } from "@/features/meta-conversions/components/capi-connected-card"
 import { CapiMethodChooser } from "@/features/meta-conversions/components/capi-method-chooser"
+import { CapiTestEventCard } from "@/features/meta-conversions/components/capi-test-event-card"
 import {
   type CapiConnectionState,
   getCapiConnectionState,
@@ -29,7 +29,7 @@ import { connectWhatsappCustomCapiAction } from "../actions/connect-custom-capi.
 import { disconnectWhatsappCapiAction } from "../actions/disconnect-capi.action"
 import { provisionWhatsappCapiDatasetAction } from "../actions/provision-capi-dataset.action"
 import { setWhatsappCapiDatasetAction } from "../actions/set-capi-dataset.action"
-import { WhatsappAutomaticEventsCard } from "./whatsapp-automatic-events-card"
+import { WhatsappReconnectButton } from "./whatsapp-reconnect-button"
 
 type WhatsappCapiTabProps = {
   integrationWhatsapp: Pick<
@@ -39,19 +39,21 @@ type WhatsappCapiTabProps = {
     | "displayPhoneNumber"
     | "wabaId"
     | "hasCapiScope"
+    | "isCoexist"
     | "datasetId"
+    | "capiTestEventCode"
   >
   hasManualCapiAccessToken: boolean
   capiDisconnected: boolean
   credentialAvailable: boolean
   whatsappCredentialPublic: WhatsappCredentialPublic | null
   oauthCallbackUrl: string
-  messagingAdsConnectionState: { connected: boolean; reconnectNeeded: boolean }
 }
 
 const statusDescriptionKey = {
   ready: "metaConversions.statusDescriptions.ready",
   notConnected: "metaConversions.statusDescriptions.notConnected",
+  missingPermission: "metaConversions.statusDescriptions.missingPermission",
   unverified: "metaConversions.statusDescriptions.unverified",
   unsupported: "metaConversions.statusDescriptions.unsupported",
 } as const satisfies Record<CapiStatus, string>
@@ -60,10 +62,16 @@ function renderConnectionContent({
   connectionState,
   integrationWhatsapp,
   workspaceId,
+  notice,
+  whatsappCredentialPublic,
+  oauthCallbackUrl,
 }: {
   connectionState: CapiConnectionState
   integrationWhatsapp: WhatsappCapiTabProps["integrationWhatsapp"]
   workspaceId: string
+  notice: string
+  whatsappCredentialPublic: WhatsappCredentialPublic | null
+  oauthCallbackUrl: string
 }) {
   if (connectionState === "disconnected") {
     return (
@@ -81,12 +89,38 @@ function renderConnectionContent({
     )
   }
   return (
-    <CapiConnectedCard
-      datasetId={integrationWhatsapp.datasetId}
-      disconnectAction={disconnectWhatsappCapiAction}
-      integrationId={integrationWhatsapp.id}
-      workspaceId={workspaceId}
-    />
+    <>
+      <CapiConnectedCard
+        datasetId={integrationWhatsapp.datasetId}
+        disconnectAction={disconnectWhatsappCapiAction}
+        integrationId={integrationWhatsapp.id}
+        notice={connectionState === "awaitingScope" ? notice : undefined}
+        workspaceId={workspaceId}
+      />
+      {/* Sending needs the Meta scope or a manual token. While the scope is
+          still missing, a test would only be skipped — so instead of the test
+          card, offer the reconnect that re-requests
+          `whatsapp_business_manage_events` (the scope CAPI sending needs). */}
+      {connectionState === "awaitingScope" ? (
+        <div>
+          <WhatsappReconnectButton
+            integrationWhatsappId={integrationWhatsapp.id}
+            isCoexist={integrationWhatsapp.isCoexist}
+            oauthCallbackUrl={oauthCallbackUrl}
+            settings={whatsappCredentialPublic}
+            workspaceId={workspaceId}
+          />
+        </div>
+      ) : (
+        <CapiTestEventCard
+          channel="whatsapp"
+          datasetId={integrationWhatsapp.datasetId}
+          integrationId={integrationWhatsapp.id}
+          testEventCode={integrationWhatsapp.capiTestEventCode}
+          workspaceId={workspaceId}
+        />
+      )}
+    </>
   )
 }
 
@@ -97,7 +131,6 @@ export function WhatsappCapiTab({
   credentialAvailable,
   whatsappCredentialPublic,
   oauthCallbackUrl,
-  messagingAdsConnectionState,
 }: WhatsappCapiTabProps) {
   const t = useTranslations()
   const workspaceId = useWorkspaceId()
@@ -108,7 +141,8 @@ export function WhatsappCapiTab({
     hasDatasetId: Boolean(integrationWhatsapp.datasetId),
   })
   const status = getCapiStatus({
-    hasCapiScope: !capiDisconnected && integrationWhatsapp.hasCapiScope,
+    hasCapiScope: integrationWhatsapp.hasCapiScope,
+    capiDisconnected,
     hasManualCapiAccessToken,
     hasDatasetId: Boolean(integrationWhatsapp.datasetId),
     credentialAvailable,
@@ -139,24 +173,15 @@ export function WhatsappCapiTab({
             connectionState,
             integrationWhatsapp,
             workspaceId,
+            notice: t("metaConversions.statusDescriptions.missingPermission"),
+            whatsappCredentialPublic,
+            oauthCallbackUrl,
           })}
           <p className="text-muted-foreground text-xs">
             {t("metaConversions.flowStep.whatsappNote")}
           </p>
         </CardContent>
       </Card>
-      <WhatsappAutomaticEventsCard
-        integrationWhatsapp={integrationWhatsapp}
-        oauthCallbackUrl={oauthCallbackUrl}
-        whatsappCredentialPublic={whatsappCredentialPublic}
-        workspaceId={workspaceId}
-      />
-      <MessagingAdsBox
-        channel="whatsapp"
-        initialConnectionState={messagingAdsConnectionState}
-        integrationId={integrationWhatsapp.id}
-        workspaceId={workspaceId}
-      />
     </div>
   )
 }

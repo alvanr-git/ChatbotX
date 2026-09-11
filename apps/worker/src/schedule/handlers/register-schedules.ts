@@ -227,6 +227,20 @@ export const registerSchedules = async () => {
   )
 
   await scheduleQueue.upsertJobScheduler(
+    ScheduleJobData.scanContactScans,
+    {
+      pattern: "* * * * *",
+    },
+    {
+      name: ScheduleJobData.scanContactScans,
+      data: {
+        type: ScheduleJobData.scanContactScans,
+        data: {},
+      },
+    },
+  )
+
+  await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.reconcileMetaCatalogSyncs,
     {
       pattern: "* * * * *",
@@ -270,6 +284,22 @@ export const registerSchedules = async () => {
     },
   )
 
+  // Same "retention applies to every edition" reasoning as `purgeErrorLogs`
+  // above; offset 15 minutes so the two chunked deletes do not contend.
+  await scheduleQueue.upsertJobScheduler(
+    ScheduleJobData.purgeCommentAutomationEvents,
+    {
+      pattern: "15 3 * * *",
+    },
+    {
+      name: ScheduleJobData.purgeCommentAutomationEvents,
+      data: {
+        type: ScheduleJobData.purgeCommentAutomationEvents,
+        data: {},
+      },
+    },
+  )
+
   await scheduleQueue.upsertJobScheduler(
     ScheduleJobData.purgeWhatsappSignupSessions,
     {
@@ -293,6 +323,23 @@ export const registerSchedules = async () => {
       name: ScheduleJobData.purgeWorkspaces,
       data: {
         type: ScheduleJobData.purgeWorkspaces,
+        data: {},
+      },
+    },
+  )
+
+  // Access is already gated by comparing `supportAccessUntil > now()` on
+  // every read, so this cron only tidies the stale timestamp for
+  // display/reporting hygiene — daily is plenty.
+  await scheduleQueue.upsertJobScheduler(
+    ScheduleJobData.clearExpiredSupportAccess,
+    {
+      pattern: "0 3 * * *",
+    },
+    {
+      name: ScheduleJobData.clearExpiredSupportAccess,
+      data: {
+        type: ScheduleJobData.clearExpiredSupportAccess,
         data: {},
       },
     },

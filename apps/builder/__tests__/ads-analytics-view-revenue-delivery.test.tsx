@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { CapiDeliverySummary } from "@chatbotx.io/business"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, type ReactNode } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
@@ -24,15 +25,14 @@ vi.mock("next-safe-action/hooks", () => ({
   useAction: () => ({ execute: vi.fn(), isPending: false }),
 }))
 
-vi.mock("swr", () => ({
-  default: () => ({ data: undefined, error: undefined, isLoading: false }),
-}))
-
 vi.mock("@/lib/orpc/orpc", () => ({
   client: {
     integrationFacebookAdsAPI: {
-      listAdAccounts: vi.fn(),
-      listCustomAudiences: vi.fn(),
+      listAdAccounts: vi.fn().mockResolvedValue({ data: [] }),
+      listCustomAudiences: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    adsAPI: {
+      listChannelAdAccounts: vi.fn().mockResolvedValue({ data: [] }),
     },
   },
 }))
@@ -168,9 +168,13 @@ const range = {
 describe("AdsAnalyticsView revenue and delivery", () => {
   let container: HTMLDivElement
   let root: Root
+  let queryClient: QueryClient
 
   beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
     container = document.createElement("div")
     document.body.append(container)
     root = createRoot(container)
@@ -183,29 +187,42 @@ describe("AdsAnalyticsView revenue and delivery", () => {
     container.remove()
   })
 
-  test("renders revenue, ROAS, and delivery status details", async () => {
+  // Renamed and narrowed: revenue/ROAS/delivery are
+  // TEMPORARILY HIDDEN (conversion tracking unfinished). When they come back,
+  // restore the name and these assertions:
+  //   expect(container.textContent).toContain("ads.analytics.revenue")
+  //   expect(container.textContent).toContain("ads.analytics.roas")
+  //   expect(container.textContent).toContain("2.50x")
+  //   expect(container.textContent).toContain("ads.analytics.delivery.title")
+  //   expect(container.textContent).toContain("ads.analytics.delivery.sent")
+  //   expect(container.textContent).toContain("ads.analytics.delivery.skippedNoScope")
+  //   expect(container.textContent).toContain("ads.analytics.delivery.noScopeWarning")
+  //   expect(container.textContent).toContain("ads.analytics.delivery.reconnectCta")
+  //   expect(Array.from(container.querySelectorAll("a")).some((anchor) =>
+  //     anchor.href.includes("/whatsapps/iw-1/ads"))).toBe(true)
+  //   expect(container.textContent).not.toContain("ads.analytics.delivery.skippedRegion")
+  test("renders the Insights-sourced spend metrics", async () => {
     await act(async () => {
       root.render(
-        <AdsAnalyticsView
-          channel="whatsapp"
-          channelIntegrations={[]}
-          promises={Promise.resolve([
-            analyticsData,
-            deliverySummary,
-            timeseries,
-          ])}
-          range={range}
-          selectedChannelIntegrationId="iw-1"
-          workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
-          workspaceId="ws-1"
-        />,
+        <QueryClientProvider client={queryClient}>
+          <AdsAnalyticsView
+            channel="whatsapp"
+            channelIntegrations={[]}
+            promises={Promise.resolve([
+              analyticsData,
+              deliverySummary,
+              timeseries,
+            ])}
+            range={range}
+            selectedChannelIntegrationId="iw-1"
+            workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
+            workspaceId="ws-1"
+          />
+        </QueryClientProvider>,
       )
       await Promise.resolve()
     })
 
-    expect(container.textContent).toContain("ads.analytics.revenue")
-    expect(container.textContent).toContain("ads.analytics.roas")
-    expect(container.textContent).toContain("2.50x")
     expect(container.textContent).toContain("ads.analytics.impressions")
     expect(container.textContent).toContain("5,000")
     expect(container.textContent).toContain("ads.analytics.clicks")
@@ -215,43 +232,31 @@ describe("AdsAnalyticsView revenue and delivery", () => {
     expect(container.textContent).toContain("4.00%")
     expect(container.textContent).toContain("ads.analytics.cpm")
     expect(container.textContent).toContain("ads.analytics.costPerConversation")
-    expect(container.textContent).toContain("ads.analytics.delivery.title")
-    expect(container.textContent).toContain("ads.analytics.delivery.sent")
-    expect(container.textContent).toContain(
-      "ads.analytics.delivery.skippedNoScope",
-    )
-    expect(container.textContent).toContain(
-      "ads.analytics.delivery.noScopeWarning",
-    )
-    expect(container.textContent).toContain(
-      "ads.analytics.delivery.reconnectCta",
-    )
-    expect(
-      Array.from(container.querySelectorAll("a")).some((anchor) =>
-        anchor.href.includes("/whatsapps/iw-1/ads"),
-      ),
-    ).toBe(true)
-    expect(container.textContent).not.toContain(
-      "ads.analytics.delivery.skippedRegion",
-    )
+    // Guards the hidden state itself: the delivery card must not render while
+    // the conversion-rule engine is unfinished. Delete this when restoring.
+    expect(container.textContent).not.toContain("ads.analytics.delivery.title")
   })
 
-  test("omits the reconnect CTA link in the aggregate (no account) view", async () => {
+  // TEMPORARILY HIDDEN (conversion tracking unfinished): the delivery card this
+  // exercises is commented out in AdsAnalyticsView. Un-skip when it returns.
+  test.skip("omits the reconnect CTA link in the aggregate (no account) view", async () => {
     await act(async () => {
       root.render(
-        <AdsAnalyticsView
-          channel="whatsapp"
-          channelIntegrations={[]}
-          promises={Promise.resolve([
-            analyticsData,
-            deliverySummary,
-            timeseries,
-          ])}
-          range={range}
-          selectedChannelIntegrationId={null}
-          workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
-          workspaceId="ws-1"
-        />,
+        <QueryClientProvider client={queryClient}>
+          <AdsAnalyticsView
+            channel="whatsapp"
+            channelIntegrations={[]}
+            promises={Promise.resolve([
+              analyticsData,
+              deliverySummary,
+              timeseries,
+            ])}
+            range={range}
+            selectedChannelIntegrationId={null}
+            workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
+            workspaceId="ws-1"
+          />
+        </QueryClientProvider>,
       )
       await Promise.resolve()
     })
@@ -264,22 +269,26 @@ describe("AdsAnalyticsView revenue and delivery", () => {
     )
   })
 
-  test("shows a messenger-channel reconnect CTA linked to the messenger ads settings page", async () => {
+  // TEMPORARILY HIDDEN (conversion tracking unfinished): the delivery card this
+  // exercises is commented out in AdsAnalyticsView. Un-skip when it returns.
+  test.skip("shows a messenger-channel reconnect CTA linked to the messenger ads settings page", async () => {
     await act(async () => {
       root.render(
-        <AdsAnalyticsView
-          channel="messenger"
-          channelIntegrations={[{ id: "msg-1", name: "My Page" }]}
-          promises={Promise.resolve([
-            analyticsData,
-            deliverySummary,
-            timeseries,
-          ])}
-          range={{ ...range, channelAccount: "msg-1" }}
-          selectedChannelIntegrationId="msg-1"
-          workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
-          workspaceId="ws-1"
-        />,
+        <QueryClientProvider client={queryClient}>
+          <AdsAnalyticsView
+            channel="messenger"
+            channelIntegrations={[{ id: "msg-1", name: "My Page" }]}
+            promises={Promise.resolve([
+              analyticsData,
+              deliverySummary,
+              timeseries,
+            ])}
+            range={{ ...range, channelAccount: "msg-1" }}
+            selectedChannelIntegrationId="msg-1"
+            workspaceCreatedAt={new Date("2024-01-01T00:00:00.000Z")}
+            workspaceId="ws-1"
+          />
+        </QueryClientProvider>,
       )
       await Promise.resolve()
     })

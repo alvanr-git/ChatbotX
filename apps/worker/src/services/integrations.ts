@@ -3,8 +3,9 @@ import {
   type IntegrationContext,
   workspaceService,
 } from "@chatbotx.io/business"
-import { db, findOrFail, sql } from "@chatbotx.io/database/client"
+import { findOrFail } from "@chatbotx.io/database/client"
 import type { IntegrationType } from "@chatbotx.io/database/partials"
+import { integrationLookupRepository } from "@chatbotx.io/database/repositories"
 import { inboxModel } from "@chatbotx.io/database/schema"
 import type {
   ContactInboxModel,
@@ -131,47 +132,30 @@ export const integrationService = {
         throw new Error(`Unsupported integration: ${integrationType}`)
     }
 
-    let result = await db.execute<{
-      id: string
-      auth: AuthValue
-      workspaceId: string
-      inboxId: string
-    }>(
-      integrationType === "instagram" || integrationType === "instagramFacebook"
-        ? sql`SELECT * FROM "IntegrationInstagram" WHERE "igId" = ${integrationIdentifier} OR "pageId" = ${integrationIdentifier} LIMIT 1`
-        : sql`SELECT * FROM ${sql.identifier(modelName)} WHERE ${sql.identifier(columnName)} = ${integrationIdentifier} LIMIT 1`,
-    )
+    const row = await integrationLookupRepository.findAuthByIdentifier({
+      modelName,
+      columnName,
+      identifier: integrationIdentifier,
+    })
 
-    if (
-      !result.rows[0] &&
-      (integrationType === "instagram" ||
-        integrationType === "instagramFacebook") &&
-      (integrationIdentifier === "0" || integrationIdentifier === "test")
-    ) {
-      result = await db.execute<{
-        id: string
-        auth: AuthValue
-        workspaceId: string
-        inboxId: string
-      }>(sql`SELECT * FROM "IntegrationInstagram" LIMIT 1`)
-    }
-
-    if (!result.rows[0]) {
+    if (!row) {
       throw new IntegrationNotFoundError(integrationType, integrationIdentifier)
     }
 
+    const integrationRow = row as IntegrationRow & { workspaceId: string }
+
     const workspace = await workspaceService.findById({
-      id: result.rows[0].workspaceId,
+      id: integrationRow.workspaceId,
     })
 
     const inbox = await findOrFail({
       table: inboxModel,
-      where: { id: result.rows[0].inboxId },
+      where: { id: integrationRow.inboxId },
       message: "Inbox not found",
     })
 
     return {
-      integrationRow: result.rows[0],
+      integrationRow,
       workspace,
       inbox,
     }
@@ -217,15 +201,12 @@ export const integrationService = {
         )
     }
 
-    const result = await db.execute<{
-      id: string
-      auth: AuthValue
-      inboxId: string
-    }>(
-      sql`SELECT * FROM ${sql.identifier(integrationTable)} WHERE "inboxId" = ${contactInbox.inboxId} LIMIT 1`,
-    )
+    const row = await integrationLookupRepository.findAuthByInboxId({
+      modelName: integrationTable,
+      inboxId: contactInbox.inboxId,
+    })
 
-    if (!result.rows[0]) {
+    if (!row) {
       throw new ChannelError(
         `Unable to find integration auth for channel: ${contactInbox.channel}`,
         ChannelErrorCategory.AUTH_FAILED,
@@ -233,7 +214,7 @@ export const integrationService = {
       )
     }
 
-    return result.rows[0]
+    return row as IntegrationRow
   },
 }
 

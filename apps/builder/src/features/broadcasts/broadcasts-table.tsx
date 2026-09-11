@@ -2,6 +2,7 @@
 
 import { DataTable } from "@chatbotx.io/ui/components/data-table/data-table"
 import { DataTableColumnHeader } from "@chatbotx.io/ui/components/data-table/data-table-column-header"
+import { DataTableRowCard } from "@chatbotx.io/ui/components/data-table/data-table-row-card"
 import { Button } from "@chatbotx.io/ui/components/ui/button"
 import { Checkbox } from "@chatbotx.io/ui/components/ui/checkbox"
 import {
@@ -27,6 +28,7 @@ import { useCopyToClipboard } from "usehooks-ts"
 import type { listBroadcasts } from "@/features/broadcasts/queries"
 import { useWorkspaceId } from "@/hooks/routing"
 import { BroadcastDetailDialog } from "./broadcast-detail-dialog"
+import { CloneBroadcastDialog } from "./clone-broadcast-dialog"
 import { BroadcastStatsCell } from "./components/broadcast-stats-cell"
 import { BroadcastStatusBadge } from "./components/broadcast-status-badge"
 import { BroadcastsEmptyState } from "./components/broadcasts-empty-state"
@@ -418,7 +420,10 @@ export function BroadcastsTable({ promises, filtered }: BroadcastsTableProps) {
         <BroadcastsEmptyState filtered={filtered} />
       ) : (
         <div className="flex flex-col gap-4 p-6">
-          <DataTable table={table}>
+          <DataTable
+            mobileCard={(row) => <DataTableRowCard row={row} />}
+            table={table}
+          >
             <div className="flex items-center justify-end p-1">
               <BroadcastsTableToolbarActions
                 table={table}
@@ -445,6 +450,15 @@ export function BroadcastsTable({ promises, filtered }: BroadcastsTableProps) {
           router.refresh()
         }}
         open={rowAction?.variant === "resend"}
+      />
+
+      <CloneBroadcastDialog
+        broadcast={rowAction?.row.original ?? null}
+        onOpenChange={() => setRowAction(null)}
+        onSuccess={() => {
+          router.refresh()
+        }}
+        open={rowAction?.variant === "clone"}
       />
 
       <ScheduleBroadcastDialog

@@ -42,11 +42,6 @@ export const router = {
       default: m.broadcastAPIs,
     })),
   ),
-  channelApiAPIs: lazy(() =>
-    import("@/features/integration-api/api").then((m) => ({
-      default: m.channelApiAPIs,
-    })),
-  ),
   conversationsAPI: lazy(() =>
     import("@/features/conversations/api").then((m) => ({
       default: m.conversationsAPI,
@@ -84,6 +79,11 @@ export const router = {
   contactsAPIs: lazy(() =>
     import("@/features/contacts/api").then((m) => ({
       default: m.contactsAPIs,
+    })),
+  ),
+  contactScanAPIs: lazy(() =>
+    import("@/features/contact-scan/api").then((m) => ({
+      default: m.contactScanAPIs,
     })),
   ),
   botFieldAPIs: lazy(() =>
@@ -233,16 +233,6 @@ export const router = {
       default: m.personasAPIs,
     })),
   ),
-  errorLogsAPI: lazy(() =>
-    import("@/features/error-logs/api").then((m) => ({
-      default: m.errorLogsAPI,
-    })),
-  ),
-  externalWebhooksAPI: lazy(() =>
-    import("@/features/external-webhooks/api").then((m) => ({
-      default: m.externalWebhooksAPI,
-    })),
-  ),
   workspacesAPI: lazy(() =>
     import("@/features/workspaces/api").then((m) => ({
       default: m.workspacesAPI,
@@ -274,26 +264,10 @@ export const router = {
   refLinksAPI: lazy(() =>
     import("@/features/reflinks/api").then((m) => ({ default: m.refLinksAPI })),
   ),
-  keywordsAPI: lazy(() =>
-    import("@/features/automated-response/api").then((m) => ({
-      default: m.keywordsAPI,
-    })),
-  ),
-  integrationsAPI: lazy(() =>
-    import("@/features/integrations/api").then((m) => ({
-      default: m.integrationsAPI,
-    })),
-  ),
-  triggersAPI: lazy(() =>
-    import("@/features/triggers/api").then((m) => ({ default: m.triggersAPI })),
-  ),
   userPersistentMenusAPI: lazy(() =>
     import("@/features/user-persistent-menus/api").then((m) => ({
       default: m.userPersistentMenusAPI,
     })),
-  ),
-  webhooksAPI: lazy(() =>
-    import("@/features/webhooks/api").then((m) => ({ default: m.webhooksAPI })),
   ),
   templatesAPI: lazy(() =>
     import("@/features/templates/api").then((m) => ({
@@ -301,6 +275,18 @@ export const router = {
     })),
   ),
   analyticsRoutes: authorizedAPI
+    // `workspaceAuthorizedMidddleware` (middlewares/auth.ts) takes an
+    // `(input) => input.workspaceId` mapper. Every other call site applies it
+    // to a single procedure whose `.input()` is already declared, so the
+    // mapper typechecks against a known input type. Here it's applied to the
+    // whole `analyticsRoutes` router before `.router()`, where oRPC has no
+    // single input type to infer from — `input` is `unknown`. The mapper is
+    // correct at runtime because every internal analytics route declares
+    // `workspaceId` in its own `.input()`. Real fix: per-procedure `.use()`
+    // across all 30 internal routes (orthogonal refactor, doubles this PR's
+    // blast radius) — deferred. The new public analytics router
+    // (features/analytics/api/public.ts) is independently typed and needs no
+    // such suppression.
     // @ts-expect-error
     .use(workspaceAuthorizedMidddleware, (input) => input.workspaceId)
     .router(analyticsRoutes),

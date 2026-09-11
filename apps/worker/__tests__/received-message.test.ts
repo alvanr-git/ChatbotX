@@ -8,9 +8,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest"
 const {
   mockCreateOrUpdate,
   mockCreateOrUpdateWithAttachments,
+  mockFindLastByConversation,
   mockCreateMessageRepository,
-  mockDbUpdate,
-  mockFindOrFail,
   mockFindContactInbox,
   mockRunChannelHandler,
   mockBroadcast,
@@ -22,15 +21,13 @@ const {
   mockConversationFindOrCreate,
   mockAutomatedResponseEnqueueFlowAction,
   mockIntegrationQueueAdd,
-  mockDbSet,
-  mockDbTransaction,
-  mockDbCount,
   mockCreateNewContactWithMac,
   mockWorkspaceFind,
   mockQuotaIncrement,
   mockContactUpdate,
   mockUpdateTracking,
   mockInvalidateTracking,
+  mockRecordInboundActivity,
   mockWorkspaceIsActiveNow,
   mockAppointmentCancelByToken,
   mockParseAppointmentCancelPostback,
@@ -43,37 +40,25 @@ const {
   mockRecordProfileRefreshFailure,
   mockResolveIntegrationContextFromContactInbox,
 } = vi.hoisted(() => {
-  const mockDbSet = vi.fn()
-  const updateChain = { set: mockDbSet, where: vi.fn() }
-  updateChain.set.mockReturnValue(updateChain)
-  updateChain.where.mockResolvedValue(undefined)
-  const mockDbUpdate = vi.fn().mockReturnValue(updateChain)
-  const mockDbTransaction = vi
-    .fn()
-    .mockImplementation((fn: (tx: unknown) => unknown) =>
-      fn({ update: mockDbUpdate }),
-    )
-  const mockDbCount = vi.fn().mockResolvedValue(1)
-
   const mockFindContactInbox = vi.fn()
-  const mockFindOrFail = vi.fn()
 
   const mockRunChannelHandler = vi.fn()
 
   const mockCreateOrUpdate = vi.fn()
   const mockCreateOrUpdateWithAttachments = vi.fn()
+  const mockFindLastByConversation = vi.fn().mockResolvedValue([])
   const mockCreateMessageRepository = vi.fn().mockResolvedValue({
     createOrUpdate: mockCreateOrUpdate,
     createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+    findLastByConversation: mockFindLastByConversation,
   })
 
   return {
     mockCreateOrUpdate,
     mockCreateOrUpdateWithAttachments,
+    mockFindLastByConversation,
     mockCreateMessageRepository,
-    mockDbUpdate,
     mockFindContactInbox,
-    mockFindOrFail,
     mockRunChannelHandler,
     mockBroadcast: vi.fn(),
     mockEmit: vi.fn().mockResolvedValue(undefined),
@@ -89,9 +74,6 @@ const {
       .fn()
       .mockResolvedValue(undefined),
     mockIntegrationQueueAdd: vi.fn().mockResolvedValue(undefined),
-    mockDbSet,
-    mockDbTransaction,
-    mockDbCount,
     mockCreateNewContactWithMac: vi.fn(),
     mockWorkspaceFind: vi.fn().mockResolvedValue(null),
     mockWorkspaceIsActiveNow: vi.fn().mockReturnValue(true),
@@ -100,6 +82,16 @@ const {
       .fn()
       .mockResolvedValue({ cacheTags: ["contacts:contact-1:contact-inboxes"] }),
     mockInvalidateTracking: vi.fn().mockResolvedValue(undefined),
+    // `conversationService.recordInboundActivity` now owns the transaction
+    // that used to be `contactInboxService.updateTracking` + a raw
+    // `db.transaction`/`db.update` on Conversation.lastActivityAt (see
+    // `persistNewMessageSideEffects`/`recordInboundActivity` in
+    // packages/business/src/conversation/service.ts). Default resolves a
+    // tracking invalidation handle so `contactInboxService.invalidateTracking`
+    // is exercised the same way the real code path does.
+    mockRecordInboundActivity: vi
+      .fn()
+      .mockResolvedValue({ cacheTags: ["contacts:contact-1:contact-inboxes"] }),
     mockAppointmentCancelByToken: vi.fn().mockResolvedValue({
       cancellable: true,
     }),
@@ -138,6 +130,9 @@ const {
 
 vi.mock("@chatbotx.io/database/repositories", () => ({
   createMessageRepository: mockCreateMessageRepository,
+  contactInboxRepository: {
+    findWithContact: mockFindContactInbox,
+  },
 }))
 
 vi.mock("@chatbotx.io/automated-response", () => ({
@@ -147,16 +142,6 @@ vi.mock("@chatbotx.io/automated-response", () => ({
 }))
 
 vi.mock("@chatbotx.io/database/client", () => ({
-  db: {
-    update: mockDbUpdate,
-    query: {
-      contactInboxModel: { findFirst: mockFindContactInbox },
-    },
-    $count: mockDbCount,
-    transaction: mockDbTransaction,
-  },
-  eq: vi.fn((col: unknown, val: unknown) => ({ __eq: [col, val] })),
-  findOrFail: mockFindOrFail,
   isUniqueViolationError: mockIsUniqueViolationError,
 }))
 
@@ -235,7 +220,10 @@ vi.mock("@chatbotx.io/business", () => ({
     unblockIfBlocked: mockContactUnblockIfBlocked,
     update: mockContactUpdate,
   },
-  conversationService: { findOrCreate: mockConversationFindOrCreate },
+  conversationService: {
+    findOrCreate: mockConversationFindOrCreate,
+    recordInboundActivity: mockRecordInboundActivity,
+  },
   workspaceService: {
     find: mockWorkspaceFind,
     findById: vi.fn().mockResolvedValue({
@@ -331,6 +319,7 @@ vi.mock("@chatbotx.io/worker-config", () => ({
   isNoRedisEnv: () => true,
   ChatJobAction: {
     sendChatMessage: "sendChatMessage",
+    checkOutboundAutomatedResponse: "checkOutboundAutomatedResponse",
   },
   chatQueue: {
     add: mockChatQueueAdd,
@@ -532,7 +521,6 @@ describe("receiveMessage — message repository branch", () => {
       ...fakeContactInbox,
       contact: fakeContact,
     })
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
 
     vi.mocked(
@@ -549,6 +537,7 @@ describe("receiveMessage — message repository branch", () => {
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -646,21 +635,25 @@ describe("receiveMessage — message repository branch", () => {
 
     await receiveMessage(baseProps)
 
-    expect(mockUpdateTracking).toHaveBeenCalledWith({
-      tx: expect.any(Object),
+    // `recordInboundActivity` owns the transaction that used to be a
+    // standalone `contactInboxService.updateTracking` call plus a raw
+    // `db.update(conversationModel).set({ lastActivityAt })` — both are now
+    // internal to the service, so assert the equivalent arguments were
+    // passed to it (same ids, same tracking values, same activity time).
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
       contactInboxId: "ci-1",
       contactId: "contact-1",
-      workspaceId: "ws-1",
-      data: {
+      tracking: {
         firstInteractionAt: fakeCreatedMessage.createdAt,
         lastMessageAt: fakeCreatedMessage.createdAt,
         lastIncomingMessageAt: fakeCreatedMessage.createdAt,
         lastUserInput: "hello",
         lastUserInputType: "text",
       },
-    })
-    expect(mockDbSet).toHaveBeenCalledWith({
-      lastActivityAt: fakeCreatedMessage.createdAt,
+      contactLocation: null,
+      at: fakeCreatedMessage.createdAt,
     })
   })
 
@@ -740,22 +733,21 @@ describe("receiveMessage — message repository branch", () => {
     await receiveMessage(baseProps)
 
     expect(mockContactUnblockIfBlocked).not.toHaveBeenCalled()
-    expect(mockUpdateTracking).toHaveBeenCalledWith({
-      tx: expect.any(Object),
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
       contactInboxId: "ci-1",
       contactId: "contact-1",
-      workspaceId: "ws-1",
-      data: {
+      tracking: {
         firstInteractionAt: fakeCreatedMessage.createdAt,
         lastMessageAt: fakeCreatedMessage.createdAt,
       },
+      contactLocation: null,
+      at: fakeCreatedMessage.createdAt,
     })
-    expect(mockDbSet).toHaveBeenCalledWith({
-      lastActivityAt: fakeCreatedMessage.createdAt,
-    })
-    expect(mockUpdateTracking).not.toHaveBeenCalledWith(
+    expect(mockRecordInboundActivity).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        tracking: expect.objectContaining({
           lastIncomingMessageAt: expect.any(Date),
         }),
       }),
@@ -823,7 +815,7 @@ describe("receiveMessage — message repository branch", () => {
 
     await receiveMessage(baseProps)
 
-    expect(mockDbUpdate).not.toHaveBeenCalled()
+    expect(mockRecordInboundActivity).not.toHaveBeenCalled()
     expect(mockUpdateTracking).not.toHaveBeenCalled()
   })
 
@@ -937,9 +929,9 @@ describe("receiveMessage — message repository branch", () => {
     expect(mockCreateOrUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ text: "Xem sản phẩm" }),
     )
-    expect(mockUpdateTracking).toHaveBeenCalledWith(
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ lastBtnTitle: "Xem sản phẩm" }),
+        tracking: expect.objectContaining({ lastBtnTitle: "Xem sản phẩm" }),
       }),
     )
     expect(mockAutomatedResponseEnqueueFlowAction).toHaveBeenCalledWith({
@@ -1121,7 +1113,6 @@ describe("receiveMessage — new contact MAC gate", () => {
     vi.clearAllMocks()
     // No existing contact inbox → new-contact creation path.
     mockFindContactInbox.mockResolvedValue(undefined)
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
     mockWorkspaceFind.mockResolvedValue({ ownerId: "owner-1" })
     vi.mocked(
@@ -1144,6 +1135,7 @@ describe("receiveMessage — new contact MAC gate", () => {
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -1618,13 +1610,18 @@ describe("receiveMessage — new contact MAC gate", () => {
 
     await receiveMessage(baseProps)
 
-    expect(mockUpdateTracking).toHaveBeenCalledTimes(1)
-    expect(mockUpdateTracking).toHaveBeenCalledWith({
-      tx: expect.any(Object),
+    // The location write is now internal to `recordInboundActivity` (see
+    // `packages/business/src/conversation/service.ts`), which persists the
+    // tracking fields AND `Contact.location` in one transaction — assert the
+    // equivalent arguments were passed to it, rather than reaching into the
+    // service's own internal `contactService.update` call.
+    expect(mockRecordInboundActivity).toHaveBeenCalledTimes(1)
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
       contactInboxId: "ci-new",
       contactId: "contact-new",
-      workspaceId: "ws-1",
-      data: {
+      tracking: {
         firstInteractionAt: fakeCreatedMessage.createdAt,
         lastMessageAt: fakeCreatedMessage.createdAt,
         lastIncomingMessageAt: fakeCreatedMessage.createdAt,
@@ -1636,12 +1633,9 @@ describe("receiveMessage — new contact MAC gate", () => {
         },
         lastBtnTitle: "Choose plan",
       },
+      contactLocation: { latitude: 10.75, longitude: 106.66 },
+      at: fakeCreatedMessage.createdAt,
     })
-    expect(mockContactUpdate).toHaveBeenCalledWith(
-      { workspaceId: "ws-1", id: "contact-new" },
-      { location: { latitude: 10.75, longitude: 106.66 } },
-      expect.any(Object),
-    )
   })
 
   test("does not persist location from outgoing channel echoes", async () => {
@@ -1679,6 +1673,9 @@ describe("receiveMessage — new contact MAC gate", () => {
     await receiveMessage(baseProps)
 
     expect(mockContactUpdate).not.toHaveBeenCalled()
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ contactLocation: null }),
+    )
   })
 })
 
@@ -1693,7 +1690,6 @@ describe("receiveMessage — referral-only events", () => {
       ...fakeContactInbox,
       contact: fakeContact,
     })
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
 
     vi.mocked(
@@ -1830,7 +1826,6 @@ describe("receiveMessage — existing contact profile refresh (post-save)", () =
       ...fakeContactInbox,
       contact: fakeContact,
     })
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
 
     vi.mocked(
@@ -1847,6 +1842,7 @@ describe("receiveMessage — existing contact profile refresh (post-save)", () =
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -2711,7 +2707,6 @@ describe("contact source taxonomy", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFindContactInbox.mockResolvedValue(undefined)
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
     mockWorkspaceFind.mockResolvedValue({ ownerId: "owner-1" })
     vi.mocked(
@@ -2724,6 +2719,7 @@ describe("contact source taxonomy", () => {
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -2773,19 +2769,20 @@ describe("contact source taxonomy", () => {
 
     const rows = await runCapturedNewContactCreate()
     expect(rows).toContainEqual(expect.objectContaining({ source: "comments" }))
-    expect(mockUpdateTracking).toHaveBeenCalledWith({
-      tx: expect.any(Object),
+    expect(mockRecordInboundActivity).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
       contactInboxId: "ci-new",
       contactId: "contact-new",
-      workspaceId: "ws-1",
-      data: {
+      tracking: {
         firstInteractionAt: fakeCreatedMessage.createdAt,
         lastMessageAt: fakeCreatedMessage.createdAt,
         lastCommentMessageId: fakeCreatedMessage.id,
         lastCommentMessageAt: fakeCreatedMessage.createdAt,
       },
+      contactLocation: undefined,
+      at: fakeCreatedMessage.createdAt,
     })
-    expect(mockDbCount).not.toHaveBeenCalled()
     expect(
       vi
         .mocked(allIntegrations.messenger?.runAction)
@@ -2801,7 +2798,6 @@ describe("contact source taxonomy", () => {
 describe("receiveMessage — BSUID resolver chain (D3)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
     vi.mocked(
       integrationService.identifyInboxAndIntegrationAuthFromIdentifier,
@@ -2816,6 +2812,7 @@ describe("receiveMessage — BSUID resolver chain (D3)", () => {
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -2921,7 +2918,6 @@ describe("receiveMessage — BSUID resolver chain (D3)", () => {
 describe("receiveMessage — new BSUID-keyed contact creation (D2/D8/§8.1)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFindOrFail.mockResolvedValue(fakeConversation)
     mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
     mockWorkspaceFind.mockResolvedValue({ ownerId: "owner-1" })
     vi.mocked(
@@ -2937,6 +2933,7 @@ describe("receiveMessage — new BSUID-keyed contact creation (D2/D8/§8.1)", ()
     mockCreateMessageRepository.mockResolvedValue({
       createOrUpdate: mockCreateOrUpdate,
       createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
     })
     mockCreateOrUpdate.mockResolvedValue({
       message: fakeCreatedMessage,
@@ -3101,5 +3098,154 @@ describe("receiveMessage — new BSUID-keyed contact creation (D2/D8/§8.1)", ()
     await expect(
       receiveMessage({ ...baseProps, integrationType: "whatsapp" }),
     ).rejects.toThrow("connection reset")
+  })
+})
+
+describe("receiveMessage — outbound automated response on message echoes", () => {
+  const echoMessage = {
+    ...baseIncomingMessage,
+    sourceId: "echo-src-1",
+    messageType: "outgoing" as const,
+    text: "shipping info",
+    attachments: [],
+  }
+
+  const echoCreatedMessage = {
+    ...fakeCreatedMessage,
+    id: "msg-echo",
+    sourceId: "echo-src-1",
+    messageType: "outgoing",
+    senderType: "user",
+    text: "shipping info",
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    mockFindContactInbox.mockResolvedValue({
+      ...fakeContactInbox,
+      contact: fakeContact,
+    })
+    mockConversationFindOrCreate.mockResolvedValue(fakeConversation)
+
+    vi.mocked(
+      integrationService.identifyInboxAndIntegrationAuthFromIdentifier,
+    ).mockResolvedValue({
+      inbox: fakeInbox,
+      integrationRow: fakeIntegrationRow,
+    } as never)
+
+    mockBuildContext.mockResolvedValue({ workspaceId: "ws-1" })
+    mockresolveTenantSettings.mockResolvedValue({
+      storageUrl: "https://files.example.test",
+    })
+    mockCreateMessageRepository.mockResolvedValue({
+      createOrUpdate: mockCreateOrUpdate,
+      createOrUpdateWithAttachments: mockCreateOrUpdateWithAttachments,
+      findLastByConversation: mockFindLastByConversation,
+    })
+    mockCreateOrUpdate.mockResolvedValue({
+      message: echoCreatedMessage,
+      isNew: true,
+    })
+    mockFindLastByConversation.mockResolvedValue([])
+    mockParseAppointmentCancelPostback.mockReturnValue(null)
+    mockWorkspaceIsActiveNow.mockReturnValue(true)
+    mockRunChannelHandler.mockResolvedValue({
+      message: echoMessage,
+      contact: { sourceId: "psid-123", firstName: "Test" },
+      postbackAction: null,
+      quickReplyAction: null,
+      ref: null,
+    })
+  })
+
+  const outboundCheckCalls = () =>
+    mockChatQueueAdd.mock.calls.filter(
+      ([action]) => action === "checkOutboundAutomatedResponse",
+    )
+
+  test("enqueues the check for an echo of a human agent's own reply", async () => {
+    await receiveMessage(baseProps)
+
+    expect(mockFindLastByConversation).toHaveBeenCalledWith(
+      "conv-1",
+      expect.objectContaining({
+        messageTypes: ["outgoing"],
+        workspaceId: "ws-1",
+      }),
+    )
+    expect(outboundCheckCalls()).toHaveLength(1)
+    expect(outboundCheckCalls()[0]?.[1]).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          message: { id: "msg-echo", text: "shipping info" },
+        }),
+      }),
+    )
+  })
+
+  test("skips the check when the echo duplicates a message ChatbotX itself sent", async () => {
+    // A sourceId dedupe miss: our own row is already there, so the echo was
+    // inserted a second time. Running keyword automation over it would let an
+    // outbound rule match the bot's own reply.
+    mockFindLastByConversation.mockResolvedValue([
+      { id: "msg-bot-send", text: "shipping info" },
+    ])
+
+    await receiveMessage(baseProps)
+
+    expect(outboundCheckCalls()).toHaveLength(0)
+  })
+
+  test("does not treat the echo's own row as a duplicate of itself", async () => {
+    mockFindLastByConversation.mockResolvedValue([
+      { id: "msg-echo", text: "shipping info" },
+      { id: "msg-other", text: "something else" },
+    ])
+
+    await receiveMessage(baseProps)
+
+    expect(outboundCheckCalls()).toHaveLength(1)
+  })
+
+  test("fails closed when the self-send lookup throws", async () => {
+    mockFindLastByConversation.mockRejectedValue(new Error("shard down"))
+
+    await receiveMessage(baseProps)
+
+    expect(outboundCheckCalls()).toHaveLength(0)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ conversationId: "conv-1" }),
+      "Skipped outbound automated response check after an error",
+    )
+  })
+
+  test("does not run for inbound messages", async () => {
+    mockRunChannelHandler.mockResolvedValue({
+      message: { ...baseIncomingMessage, attachments: [] },
+      contact: { sourceId: "psid-123", firstName: "Test" },
+      postbackAction: null,
+      quickReplyAction: null,
+      ref: null,
+    })
+    mockCreateOrUpdate.mockResolvedValue({
+      message: fakeCreatedMessage,
+      isNew: true,
+    })
+
+    await receiveMessage(baseProps)
+
+    expect(mockFindLastByConversation).not.toHaveBeenCalled()
+    expect(outboundCheckCalls()).toHaveLength(0)
+  })
+
+  test("does not run for an inactive workspace", async () => {
+    mockWorkspaceIsActiveNow.mockReturnValue(false)
+
+    await receiveMessage(baseProps)
+
+    expect(mockFindLastByConversation).not.toHaveBeenCalled()
+    expect(outboundCheckCalls()).toHaveLength(0)
   })
 })

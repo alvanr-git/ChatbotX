@@ -2,10 +2,10 @@ import {
   integrationWhatsappService,
   metaConversionsService,
   platformCredentialService,
+  resolveCapiScopeStateForChannel,
   workspaceService,
 } from "@chatbotx.io/business"
 import { notFound } from "next/navigation"
-import { checkMessagingAdsConnectionState } from "@/features/ads-campaign/queries"
 import { WhatsappCapiTab } from "@/features/integration-whatsapp/components/whatsapp-capi-tab"
 import { hasWhatsappCapiScope } from "@/features/integration-whatsapp/libs/capi-scope"
 import { WHATSAPP_OAUTH_CALLBACK_PATH } from "@/features/integration-whatsapp/libs/embedded-signup"
@@ -22,16 +22,10 @@ export default async function WhatsappAdsPage(props: {
   }
 
   const { workspaceId, id } = data
-  const [workspace, integrationWhatsapp, messagingAdsConnectionState] =
-    await Promise.all([
-      workspaceService.findById({ id: workspaceId }),
-      integrationWhatsappService.findByIdForWorkspace({ id, workspaceId }),
-      checkMessagingAdsConnectionState({
-        workspaceId,
-        channel: "whatsapp",
-        integrationId: id,
-      }),
-    ])
+  const [workspace, integrationWhatsapp] = await Promise.all([
+    workspaceService.findById({ id: workspaceId }),
+    integrationWhatsappService.findByIdForWorkspace({ id, workspaceId }),
+  ])
   if (!integrationWhatsapp) {
     return notFound()
   }
@@ -65,6 +59,7 @@ export default async function WhatsappAdsPage(props: {
       : integrationWhatsapp
 
   const resolved = refreshed ?? integrationWhatsapp
+  const scopeState = await resolveCapiScopeStateForChannel("whatsapp", resolved)
   const oauthCallbackOrigin =
     await resolveProviderOriginForCredential(whatsappCredential)
 
@@ -78,10 +73,11 @@ export default async function WhatsappAdsPage(props: {
         name: resolved.name,
         displayPhoneNumber: resolved.displayPhoneNumber,
         wabaId: resolved.wabaId,
-        hasCapiScope: resolved.hasCapiScope,
+        hasCapiScope: scopeState.hasCapiScope,
+        isCoexist: resolved.isCoexist,
         datasetId: resolved.datasetId,
+        capiTestEventCode: resolved.capiTestEventCode,
       }}
-      messagingAdsConnectionState={messagingAdsConnectionState}
       oauthCallbackUrl={new URL(
         WHATSAPP_OAUTH_CALLBACK_PATH,
         oauthCallbackOrigin,

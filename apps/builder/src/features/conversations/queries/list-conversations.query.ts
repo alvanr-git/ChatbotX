@@ -8,12 +8,7 @@ import type { ContactInboxModel, InboxModel } from "@chatbotx.io/database/types"
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import { endOfHour } from "date-fns"
 import z from "zod"
-import { canViewContactEmailAndPhone } from "@/features/contacts/permissions"
 import type { ListConversationsRequest } from "@/features/conversations/schema/query"
-import {
-  assertCurrentUserCanAccessChatbot,
-  getCurrentUserAndTargetWorkspace,
-} from "@/lib/auth/utils"
 import { decodeCursor, encodeCursor } from "@/lib/pagination"
 import type {
   ConversationContactInboxResource,
@@ -48,9 +43,9 @@ type ConversationCursor = z.infer<typeof conversationCursorSchema>
 
 export const listConversations = async (
   data: ListConversationsRequest,
+  access: { includeEmailAndPhone: boolean },
 ): Promise<ListConversationsResponse> => {
   const { workspaceId, ...input } = data
-  await assertCurrentUserCanAccessChatbot(workspaceId)
 
   const limit = input.perPage ?? DEFAULT_PER_PAGE
   const cursor = input.cursor
@@ -58,17 +53,11 @@ export const listConversations = async (
     : null
 
   // Inbox keyword search must not become an email/phone oracle for agents who
-  // lack the emailAndPhone permission — resolve visibility from the member's
-  // permissions (independent of Contacts-section access) and thread it through.
-  const userAndWorkspace = await getCurrentUserAndTargetWorkspace(workspaceId)
-  const includeEmailAndPhone = userAndWorkspace
-    ? canViewContactEmailAndPhone(
-        userAndWorkspace.targetWorkspaceMember.permissions,
-      )
-    : false
-
+  // lack the emailAndPhone permission — the caller resolves visibility (from
+  // the member's permissions for the private path, or `true` for workspace
+  // tokens, which are workspace-level not member-scoped) and threads it through.
   const where = buildConversationWhere(workspaceId, input, cursor, {
-    includeEmailAndPhone,
+    includeEmailAndPhone: access.includeEmailAndPhone,
   })
 
   const conversations = await conversationService.findManyQuery({
@@ -155,8 +144,6 @@ export const listConversations = async (
 export const findConversation = async (
   input: FindConversationRequest,
 ): Promise<FindConversationResponse> => {
-  await assertCurrentUserCanAccessChatbot(input.workspaceId)
-
   const conversation = await conversationService.findWithFullRelations({
     where: input,
   })

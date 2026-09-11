@@ -18,6 +18,7 @@ import {
   errorStateDefaultFn,
   FieldOperationType,
   FieldReferenceKind,
+  metaCapiEventFieldsSchema,
   parseFieldReference,
   type SpreadsheetClearRowSchema,
   type SpreadsheetColumnFilterSchema,
@@ -31,14 +32,21 @@ import {
   spreadsheetStepVersions,
   stepTypes,
   successStateDefaultFn,
+  withMetaCapiEventRefinements,
 } from "@chatbotx.io/flow-config"
 import baseLogger from "@chatbotx.io/logger"
 import { createId } from "@chatbotx.io/utils"
+import { resolveContactVariablesDeep } from "@chatbotx.io/variables"
 import {
   IntegrationJobAction,
   integrationQueue,
 } from "@chatbotx.io/worker-config"
 import type { ExecuteStepProps } from "../../integration/handlers/flow"
+import {
+  describeCapiInputValidationError,
+  enqueueCapiEvent,
+  reportCapiInputFailure,
+} from "../../integration/handlers/meta-conversions/capi-input-error"
 import {
   clearSpreadsheetRow,
   getSpreadsheetRandomRow,
@@ -48,6 +56,17 @@ import {
 } from "../../integration/handlers/spreadsheet-handler"
 import type { ActionExecutionContext } from "../types"
 import { resolveActionContactInbox } from "./resolve-action-contact-inbox"
+
+// The trigger action's stored shape is validated with the same field-set
+// schema the flow step and the builder trigger-action form use,
+// layered with the exact same cross-field refinements the flow step's
+// `sendMetaCapiEventSchema` applies (Purchase requires value+currency; the
+// event name must belong to the action source's catalog) — so an invalid
+// stored/edited action is caught here, before `enqueueEvent` is ever called,
+// not surfaced as a business-layer `ZodError` deep inside it.
+const metaCapiTriggerActionSchema = withMetaCapiEventRefinements(
+  metaCapiEventFieldsSchema,
+)
 
 export class ActionExecutor {
   async execute(context: ActionExecutionContext): Promise<void> {
@@ -283,48 +302,16 @@ export class ActionExecutor {
 
       case triggerActions.enum.assignConversation: {
         const assignedId = action.assignedId as string
-        let assignedUserId: string | null = null
-        let assignedInboxTeamId: string | null = null
-
-        if (assignedId.startsWith("u_")) {
-          const userId = assignedId.slice(2)
-          const workspaceMember = await db.query.workspaceMemberModel.findFirst(
-            {
-              where: {
-                userId,
-                workspaceId: conversation.workspaceId,
-              },
-            },
-          )
-          if (workspaceMember) {
-            assignedUserId = userId
-          }
-        } else if (assignedId.startsWith("t_")) {
-          const inboxTeamId = assignedId.slice(2)
-          const inboxTeam = await db.query.inboxTeamModel.findFirst({
-            where: {
-              id: inboxTeamId,
-              workspaceId: conversation.workspaceId,
-            },
-          })
-          if (inboxTeam) {
-            assignedInboxTeamId = inboxTeamId
-          }
-        }
-
-        if (assignedUserId || assignedInboxTeamId) {
-          await conversationService.updateAssignment({
-            workspaceId: conversation.workspaceId,
-            conversations: [conversation],
-            assignedUserId,
-            assignedInboxTeamId,
-            triggerContext: {
-              triggerSource: "worker",
-              triggerHandler: "actionExecutor.assignConversation",
-              triggerType: "trigger_action",
-            },
-          })
-        }
+        await conversationService.assignOneOrSkip({
+          workspaceId: conversation.workspaceId,
+          conversation,
+          assignedId,
+          triggerContext: {
+            triggerSource: "worker",
+            triggerHandler: "actionExecutor.assignConversation",
+            triggerType: "trigger_action",
+          },
+        })
         break
       }
 
@@ -402,36 +389,59 @@ export class ActionExecutor {
           break
         }
 
-        const value =
-          typeof action.value === "string" ? action.value : undefined
-        const currency =
-          typeof action.currency === "string" ? action.currency : undefined
-        const contentCategory =
-          typeof action.contentCategory === "string"
-            ? action.contentCategory
-            : undefined
-        const contentName =
-          typeof action.contentName === "string"
-            ? action.contentName
-            : undefined
+        const parsedAction = metaCapiTriggerActionSchema.safeParse(action)
+        if (!parsedAction.success) {
+          const detail = describeCapiInputValidationError(parsedAction.error)
+          baseLogger.warn(
+            `Invalid Meta CAPI trigger action for trigger ${triggerId}: ${detail}`,
+          )
+          await reportCapiInputFailure({
+            workspaceId,
+            contactId,
+            message: `Invalid Meta CAPI trigger action (trigger ${triggerId}):\n${detail}`,
+          })
+          break
+        }
 
-        await metaConversionsService.enqueueLeadEvent({
-          workspaceId,
-          channel: capiChannel.data,
-          contactInboxId: contactInbox.id,
-          inboxId: contactInbox.inboxId,
-          source: "triggerAction",
-          sourceKey: metaConversionsService.buildLeadSourceKey({
-            scope: "trigger",
-            scopeId: triggerId,
-            contactInboxId: contactInbox.id,
+        // Trigger executor passes `contactInbox.id` (a string), not the full
+        // model — `getContactInbox()` returns a narrow
+        // `ContactInboxWorkspaceRow` (id/channel/inboxId only), not a
+        // `ContactInboxModel`.
+        const resolvedFields = await resolveContactVariablesDeep(
+          contactId,
+          {
+            value: parsedAction.data.value,
+            currency: parsedAction.data.currency,
+            contentIds: parsedAction.data.contentIds,
+          },
+          { contactInbox: contactInbox.id, conversation },
+        )
+
+        await enqueueCapiEvent(
+          {
+            workspaceId,
             channel: capiChannel.data,
-          }),
-          value,
-          currency,
-          contentCategory,
-          contentName,
-        })
+            contactInboxId: contactInbox.id,
+            inboxId: contactInbox.inboxId,
+            source: "triggerAction",
+            sourceKey: metaConversionsService.buildSourceKey({
+              scope: "trigger",
+              scopeId: triggerId,
+              contactInboxId: contactInbox.id,
+              channel: capiChannel.data,
+              actionSource: parsedAction.data.actionSource,
+            }),
+            eventName: parsedAction.data.eventName,
+            actionSource: parsedAction.data.actionSource,
+            contentType: parsedAction.data.contentType,
+            contentIds: resolvedFields.contentIds,
+            value: resolvedFields.value,
+            currency: resolvedFields.currency,
+            contentCategory: parsedAction.data.contentCategory,
+            contentName: parsedAction.data.contentName,
+          },
+          { contactId, resolved: resolvedFields },
+        )
         break
       }
 
