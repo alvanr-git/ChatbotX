@@ -11,6 +11,7 @@ import {
   subscribePageToInstagramWebhook,
 } from "@chatbotx.io/integration-instagram-facebook"
 import { AuthType } from "@chatbotx.io/sdk"
+import { normalizeError } from "universal-error-normalizer"
 import type { ResolvedConnectSession } from "@/features/channel-connect/lib/resolve-connect-session"
 import {
   type ConnectCandidateLookup,
@@ -23,6 +24,7 @@ import { BRANDING_TITLE } from "@/features/integration-webchat/lib"
 import { updateWorkspaceLogo } from "@/features/workspaces/actions/upload-logo"
 import { FB_INSTAGRAM_FACEBOOK_PENDING_AUTH_COOKIE } from "@/lib/facebook-pending-auth"
 import { persistIntegrationUserInfo } from "@/lib/integration-user-info"
+import { logger } from "@/lib/log"
 import { isInstagramAccountConnected } from "./connect-account-shared"
 
 type InstagramFacebookSession = ResolvedConnectSession<"instagramFacebook">
@@ -67,11 +69,18 @@ async function subscribeAndPersistAccount({
   const { pendingAuth, workspace, platformOwnerId, brandingMenuEntry } = session
   const instagramSettings = session.credential.config
 
-  await subscribePageToInstagramWebhook({
-    pageId: account.pageId,
-    accessToken: account.pageAccessToken,
-    version: pendingAuth.version,
-  })
+  try {
+    await subscribePageToInstagramWebhook({
+      pageId: account.pageId,
+      accessToken: account.pageAccessToken,
+      version: pendingAuth.version,
+    })
+  } catch (error) {
+    logger.warn(
+      { err: normalizeError(error), pageId: account.pageId },
+      "Failed to subscribe page to Instagram webhook",
+    )
+  }
 
   const auth: InstagramAuthValue = {
     authType: AuthType.oauth2,

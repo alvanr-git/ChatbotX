@@ -96,8 +96,7 @@ async function getBusinessPages(
  * not in a Business Manager, missing permission, Graph error) falls back to
  * an empty list rather than blocking the direct-accounts result.
  */
-// biome-ignore lint/correctness/noUnusedVariables: BM page lookup is temporarily disabled in getUserPages
-async function getBusinessManagedPages(
+async function _getBusinessManagedPages(
   userAccessToken: string,
   version: string,
 ): Promise<{ pages: FacebookPage[]; failed: boolean }> {

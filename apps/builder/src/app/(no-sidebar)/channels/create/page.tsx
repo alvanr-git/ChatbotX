@@ -76,33 +76,42 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     return <CreateApiForm autoOpen={true} workspaceId={workspaceId} />
   }
 
-  const [whatsapp, messenger, instagram, instagramFacebook, zalo, tiktok] =
-    await Promise.all([
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "whatsapp",
-      }),
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "messenger",
-      }),
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "instagram",
-      }),
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "instagramFacebook",
-      }),
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "zalo",
-      }),
-      platformCredentialService.resolvePublicForUser({
-        userId: platformOwnerId,
-        type: "tiktok",
-      }),
-    ])
+  const [
+    whatsapp,
+    messenger,
+    instagram,
+    instagramFacebookCredential,
+    zalo,
+    tiktok,
+  ] = await Promise.all([
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "whatsapp",
+    }),
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "messenger",
+    }),
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "instagram",
+    }),
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "instagramFacebook",
+    }),
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "zalo",
+    }),
+    platformCredentialService.resolvePublicForUser({
+      userId: platformOwnerId,
+      type: "tiktok",
+    }),
+  ])
+
+  const instagramFacebook =
+    instagramFacebookCredential ?? instagram ?? messenger
 
   if (selectedChannel === "whatsapp" && whatsapp && isVisible("whatsapp")) {
     const oauthCallbackUrl = await buildProviderCallbackUrl(

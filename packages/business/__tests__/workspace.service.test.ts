@@ -251,51 +251,14 @@ describe("WorkspaceService.create — happy path", () => {
   })
 })
 
-describe("WorkspaceService.create — community workspace limit", () => {
-  test("creates the first workspace under the distributed lock", async () => {
+describe("WorkspaceService.create", () => {
+  test("creates workspaces without community count limits", async () => {
     isCommunity.mockReturnValue(true)
-    countWorkspaces.mockResolvedValue(0)
 
     const result = await workspaceService.create(createInput())
 
     expect(result).toEqual({ id: "ws-1", organizationId: "org-1" })
-    expect(runExclusive).toHaveBeenCalledTimes(1)
-    expect(runExclusive.mock.calls[0][0].key).toBe("workspace-limit:user-1")
-    expect(countWorkspaces).toHaveBeenCalledTimes(1)
-  })
-
-  test("throws workspaceLimitReached for the second workspace", async () => {
-    isCommunity.mockReturnValue(true)
-    countWorkspaces.mockResolvedValue(1)
-
-    await expect(workspaceService.create(createInput())).rejects.toMatchObject({
-      code: "workspaceLimitReached",
-    })
-    expect(insert).not.toHaveBeenCalled()
-    expect(quotaEnforcementService.tryConsume).not.toHaveBeenCalled()
-  })
-
-  test("keys the lock on data.ownerId when it differs from createdBy", async () => {
-    isCommunity.mockReturnValue(true)
-    countWorkspaces.mockResolvedValue(0)
-
-    await workspaceService.create({
-      data: { name: "WS", ownerId: "owner-9" } as never,
-      createdBy: "user-1",
-    })
-
-    expect(runExclusive.mock.calls[0][0].key).toBe("workspace-limit:owner-9")
-  })
-
-  test("skips the limit entirely off community", async () => {
-    isCommunity.mockReturnValue(false)
-
-    await workspaceService.create(createInput())
-    await workspaceService.create(createInput())
-
-    expect(runExclusive).not.toHaveBeenCalled()
-    expect(countWorkspaces).not.toHaveBeenCalled()
-    expect(quotaEnforcementService.tryConsume).toHaveBeenCalledTimes(2)
+    expect(quotaEnforcementService.tryConsume).toHaveBeenCalledTimes(1)
   })
 })
 

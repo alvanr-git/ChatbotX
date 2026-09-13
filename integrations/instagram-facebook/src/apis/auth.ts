@@ -1,3 +1,4 @@
+import { fetchAllCursorPages } from "@chatbotx.io/utils"
 import { DEFAULT_API_VERSION } from "../constants"
 import { rescue } from "../exception"
 import { instagramGraphClient } from "../lib/http-client"
@@ -171,22 +172,73 @@ export async function getUserInstagramAccounts(
   userAccessToken: string,
   version: string = DEFAULT_API_VERSION,
 ): Promise<InstagramAccount[]> {
-  const pagesEndpoint = `${version}/me/accounts`
+  const fields = "id,name,access_token,instagram_business_account"
 
-  const pagesRes = await rescue(pagesEndpoint, async () => {
-    const res: { data: FacebookPageWithIg[] } = await instagramGraphClient.get(
-      pagesEndpoint,
-      {
-        searchParams: {
-          fields: "id,name,access_token,instagram_business_account",
-          access_token: userAccessToken,
-        },
-      },
-    )
-    return res.data
-  })
+  // 1. Direct pages from /me/accounts with pagination
+  const directPagesEndpoint = `${version}/me/accounts`
+  const directPages = await rescue(directPagesEndpoint, async () =>
+    fetchAllCursorPages<FacebookPageWithIg>({
+      endpoint: directPagesEndpoint,
+      fields,
+      accessToken: userAccessToken,
+      get: (endpoint, options) => instagramGraphClient.get(endpoint, options),
+      limit: 100,
+      maxPages: 20,
+    }),
+  ).catch(() => [] as FacebookPageWithIg[])
 
-  const pagesWithIg = pagesRes.filter((page) => page.instagram_business_account)
+  // 2. Business Manager pages from /me/businesses (owned_pages & client_pages)
+  const bmPages: FacebookPageWithIg[] = []
+  try {
+    const businessesEndpoint = `${version}/me/businesses`
+    const businesses = await fetchAllCursorPages<{ id: string; name: string }>({
+      endpoint: businessesEndpoint,
+      fields: "id,name",
+      accessToken: userAccessToken,
+      get: (endpoint, options) => instagramGraphClient.get(endpoint, options),
+      limit: 100,
+      maxPages: 20,
+    })
+
+    for (const business of businesses) {
+      for (const edge of ["owned_pages", "client_pages"] as const) {
+        try {
+          const edgeEndpoint = `${version}/${business.id}/${edge}`
+          const pages = await fetchAllCursorPages<FacebookPageWithIg>({
+            endpoint: edgeEndpoint,
+            fields,
+            accessToken: userAccessToken,
+            get: (endpoint, options) =>
+              instagramGraphClient.get(endpoint, options),
+            limit: 100,
+            maxPages: 20,
+          })
+          bmPages.push(...pages)
+        } catch {
+          // Best effort for each business edge
+        }
+      }
+    }
+  } catch {
+    // Best effort for business manager lookup
+  }
+
+  // Merge direct and business manager pages by Page ID to avoid duplicates
+  const pageMap = new Map<string, FacebookPageWithIg>()
+  for (const page of directPages ?? []) {
+    if (page?.id) {
+      pageMap.set(page.id, page)
+    }
+  }
+  for (const page of bmPages) {
+    if (page?.id && !pageMap.has(page.id)) {
+      pageMap.set(page.id, page)
+    }
+  }
+
+  const pagesWithIg = Array.from(pageMap.values()).filter(
+    (page) => page?.instagram_business_account,
+  )
 
   const accounts: (InstagramAccount | null)[] = await Promise.all(
     pagesWithIg.map(async (page): Promise<InstagramAccount | null> => {
@@ -197,13 +249,14 @@ export async function getUserInstagramAccounts(
 
       const igEndpoint = `${version}/${igId}`
       try {
+        const pageToken = page.access_token || userAccessToken
         const igRes: InstagramUserResponse = await rescue(
           igEndpoint,
           async () =>
             instagramGraphClient.get<InstagramUserResponse>(igEndpoint, {
               searchParams: {
                 fields: "id,name,username,profile_picture_url",
-                access_token: page.access_token,
+                access_token: pageToken,
               },
             }),
         )
@@ -213,7 +266,7 @@ export async function getUserInstagramAccounts(
           username: igRes.username,
           profile_picture_url: igRes.profile_picture_url,
           pageId: page.id,
-          pageAccessToken: page.access_token,
+          pageAccessToken: pageToken,
         }
       } catch {
         return null
