@@ -210,7 +210,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     [
       ["whatsapp", whatsapp],
       ["messenger", messenger],
-      ["instagram", instagram],
+      ["instagram", instagram ?? instagramFacebook],
       ["zalo", zalo],
       ["tiktok", tiktok],
     ] as const
