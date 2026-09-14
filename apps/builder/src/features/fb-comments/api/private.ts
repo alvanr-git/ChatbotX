@@ -10,7 +10,6 @@ import {
 import type { ChannelType } from "@chatbotx.io/database/partials"
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import z from "zod"
-import { listInstagramFacebookMedia } from "@/features/ig-comments/queries/instagram-media"
 import { withWorkspaceIdSchema } from "@/features/workspaces/schema/resource"
 import { workspaceAuthorizedMidddleware } from "@/middlewares/auth"
 import { authorizedAPI } from "@/orpc"

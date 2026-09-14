@@ -37,7 +37,6 @@ import { zaloChannelsPublicRouter } from "@/features/integration-zalo/api/public
 import { integrationsPublicRouter } from "@/features/integrations/api/public"
 import { mediaLibraryPublicRouter } from "@/features/media-library/api/public"
 import { messagesPublicRouter } from "@/features/messages/api/public"
-import { minigamesPublicRouter } from "@/features/minigames/api/public"
 import { messengerPersonasPublicRouter } from "@/features/personas/api/public"
 import { productCategoriesPublicRouter } from "@/features/product-categories/api/public"
 import { productsPublicRouter } from "@/features/products/api/public"
@@ -90,7 +89,6 @@ export const publicRouter = {
   messages: messagesPublicRouter,
   messengerChannels: messengerChannelsPublicRouter,
   messengerPersonas: messengerPersonasPublicRouter,
-  minigames: minigamesPublicRouter,
   productCategories: productCategoriesPublicRouter,
   products: productsPublicRouter,
   qrCodes: qrCodesPublicRouter,
