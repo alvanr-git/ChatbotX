@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ads-analytics/date-range": "./src/ads-analytics/date-range.ts",
     "./ads-conversion/channel-fields": "./src/ads-conversion/channel-fields.ts",
     "./ads-conversion/schema": "./src/ads-conversion/schema.ts",
     "./audit": "./src/audit/index.ts",
@@ -21,6 +22,7 @@
     "./coupon": "./src/coupon/index.ts",
     "./dynamic-image": "./src/dynamic-image/index.ts",
     "./error-log": "./src/error-log/index.ts",
+    "./error-log-columns": "./src/error-log/columns.ts",
     "./get-user-data": "./src/get-user-data/index.ts",
     "./inbox/connect-outcome": "./src/inbox/connect-outcome.ts",
     "./inbox/connect-outcome-types": "./src/inbox/connect-outcome-types.ts",

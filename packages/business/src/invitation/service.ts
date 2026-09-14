@@ -1,6 +1,8 @@
 import { and, db, eq, gte } from "@chatbotx.io/database/client"
 import { invitationModel, userModel } from "@chatbotx.io/database/schema"
+import type { InvitationModel } from "@chatbotx.io/database/types"
 import { BaseService } from "../base.service"
+import { notFoundException } from "../errors"
 
 class InvitationService extends BaseService {
   async isEmailAllowed(email: string): Promise<boolean> {
@@ -33,6 +35,16 @@ class InvitationService extends BaseService {
       .limit(1)
 
     return Boolean(invitation)
+  }
+
+  async findByCodeOrFail(code: string): Promise<InvitationModel> {
+    const invitation = await db.query.invitationModel.findFirst({
+      where: { code },
+    })
+    if (!invitation) {
+      throw notFoundException("Invitation not found")
+    }
+    return invitation
   }
 }
 

@@ -1,13 +1,11 @@
 import { adsConversionEventRelations } from "./ads-conversion-event"
 import { adsConversionRuleRelations } from "./ads-conversion-rule"
 import { aiAgentRelations } from "./ai-agent"
-import { aiAssistantRelations } from "./ai-assistant"
 import { aiConversationSourceRelations } from "./ai-conversation-source"
 import { aiEmbeddingRelations } from "./ai-embedding"
 import { aiFileRelations } from "./ai-file"
 import { aiFunctionRelations } from "./ai-function"
 import { aiMCPServerRelations } from "./ai-mcp-server"
-import { aiTriggerRelations } from "./ai-trigger"
 import {
   analyticsBotMessageEventRelations,
   analyticsBroadcastEventRelations,
@@ -57,6 +55,7 @@ import { facebookLeadAdsAutomationRelations } from "./facebook-lead-ads-automati
 import { facebookLeadAdsLeadRelations } from "./facebook-lead-ads-lead"
 import { fbCommentAutomationRelations } from "./fb-comment-automation"
 import { fbCommentAutomationEventRelations } from "./fb-comment-automation-event"
+import { fbCommentAutomationMissRelations } from "./fb-comment-automation-miss"
 import { fbCommentAutomationReplyRelations } from "./fb-comment-automation-reply"
 import { fileRelations } from "./file"
 import { flowRelations } from "./flow"
@@ -142,7 +141,6 @@ import { workspaceMemberRelations } from "./workspace-member"
 
 export const relations = {
   ...integrationApiRelations,
-  ...aiTriggerRelations,
   ...adsConversionEventRelations,
   ...metaCapiEventRelations,
   ...messagingAdOperationRelations,
@@ -159,7 +157,6 @@ export const relations = {
   ...workspaceRelations,
   ...workspaceApiTokenRelations,
   ...aiAgentRelations,
-  ...aiAssistantRelations,
   ...aiConversationSourceRelations,
   ...aiFileRelations,
   ...flowRelations,
@@ -206,6 +203,7 @@ export const relations = {
   ...facebookLeadAdsLeadRelations,
   ...fbCommentAutomationRelations,
   ...fbCommentAutomationEventRelations,
+  ...fbCommentAutomationMissRelations,
   ...fbCommentAutomationReplyRelations,
   ...auditLogRelations,
   ...sessionRelations,

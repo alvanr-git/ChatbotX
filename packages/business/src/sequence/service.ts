@@ -1,3 +1,5 @@
+import { sequenceAnalyticsService } from "@chatbotx.io/analytics"
+import type { SequenceStepEventType } from "@chatbotx.io/analytics/schemas"
 import {
   and,
   db,
@@ -17,6 +19,11 @@ import type {
 import { getPaginationWithDefaults } from "@chatbotx.io/database/utils"
 import { createId } from "@chatbotx.io/utils"
 import { BaseService } from "../base.service"
+import {
+  mapStatsContactRow,
+  type StatsContactRow,
+} from "../contact-inbox/map-stats-contact-row"
+import { contactInboxService } from "../contact-inbox/service"
 import { notFoundException, validationException } from "../errors"
 import {
   handleStepCreationImpact,
@@ -197,6 +204,95 @@ class SequenceService extends BaseService {
     })
   }
 
+  /**
+   * One page of a sequence step's recipients for a given delivery event,
+   * with contact display fields attached — shared by callers of the
+   * "list sequence step contacts" route so the orchestration (analytics
+   * lookup → contact-inbox fetch → row shape) lives in one place instead of
+   * being copy-pasted per handler.
+   *
+   * Unlike `broadcastService.listContactsPage` there is no up-front
+   * existence/ownership assertion, because every read below is already
+   * workspace-scoped in SQL (`sequenceStatsRepository.getContacts` filters on
+   * `workspaceId`, and `contactInboxService.findManyByIds` requires one). A
+   * foreign or non-existent `sequenceId` therefore yields an empty page
+   * rather than another workspace's rows — it just does not 404.
+   *
+   * `total` is repository-computed over the same filter as the page
+   * (`sequenceStatsRepository.getContacts`), matching
+   * `broadcastService.listContactsPage` — no caller-supplied `total`, no
+   * fallback to a different aggregate.
+   *
+   * @remarks Behavior change from the pre-refactor per-handler
+   * implementation: a contact-inbox row with no conversation used to be
+   * dropped entirely (`if (!conversationId) return []`). This method keeps
+   * the row and reports `conversationId: ""` instead, matching how
+   * `broadcastService.listContactsPage` has always handled the same case.
+   * `data.length` can no longer silently fall short of `total` for this
+   * reason. The dialog UI already guards on truthiness
+   * (`stats-contacts-dialog.tsx`), so an empty `conversationId` renders as
+   * plain text rather than a broken inbox link — but the contact becomes
+   * selectable/taggable where it previously was not shown at all.
+   */
+  async listStepContactsPage(input: {
+    workspaceId: string
+    sequenceId: string
+    stepId: string
+    eventType: SequenceStepEventType
+    page: number
+    perPage: number
+  }): Promise<{
+    data: (StatsContactRow & { conversationId: string })[]
+    total: number
+    pageCount: number
+  }> {
+    const { workspaceId, sequenceId, stepId, eventType, page, perPage } = input
+
+    const { contactInboxIds, contactEventMap, total } =
+      await sequenceAnalyticsService.getContacts({
+        workspaceId,
+        sequenceId,
+        stepId,
+        eventType,
+        page,
+        perPage,
+      })
+    const pageCount = Math.ceil(total / perPage)
+
+    if (contactInboxIds.length === 0) {
+      return { data: [], total, pageCount }
+    }
+
+    const contactInboxes = await contactInboxService.findManyByIds({
+      workspaceId,
+      ids: contactInboxIds,
+    })
+    const contactMap = new Map(contactInboxes.map((c) => [c.id, c]))
+
+    const data = contactInboxIds
+      .map((contactInboxId) => {
+        const row = mapStatsContactRow(
+          contactInboxId,
+          contactEventMap.get(contactInboxId),
+          contactMap.get(contactInboxId),
+        )
+        if (!row) {
+          return null
+        }
+        return {
+          ...row,
+          conversationId:
+            contactMap.get(contactInboxId)?.conversation?.id ?? "",
+        }
+      })
+      .filter(
+        (row): row is StatsContactRow & { conversationId: string } =>
+          row !== null,
+      )
+
+    return { data, total, pageCount }
+  }
+
   async findWithSteps(input: { workspaceId: string; id: string }) {
     const sequence = await sequenceRepository.findWithSteps({
       id: input.id,
@@ -230,6 +326,8 @@ class SequenceService extends BaseService {
   async updateStep(input: {
     workspaceId: string
     stepId: string
+    /** See `deleteStep`'s `sequenceId` — same parent-assertion contract. */
+    sequenceId?: string
     data: SequenceStepPayloadInput
   }): Promise<{ previousOrder: number; step: SequenceStepModel }> {
     const step = await db.query.sequenceStepModel.findFirst({
@@ -249,6 +347,10 @@ class SequenceService extends BaseService {
       throw notFoundException("Step not found")
     }
 
+    if (input.sequenceId && step.sequenceId !== input.sequenceId) {
+      throw notFoundException("Step not found")
+    }
+
     const updateData = buildUpdateData(input.data)
 
     const [updated] = await db
@@ -263,6 +365,16 @@ class SequenceService extends BaseService {
   async deleteStep(input: {
     workspaceId: string
     stepId: string
+    /**
+     * Optional parent-sequence assertion. A caller whose URL names the
+     * parent (`DELETE /v1/sequences/{id}/steps/{stepId}`) must pass it, or
+     * the `{id}` segment is decorative: the step resolves by `stepId` alone,
+     * so a step belonging to a *different* sequence in the same workspace
+     * would be deleted while the URL claims otherwise. Omitted by callers
+     * that legitimately address a step without naming its parent (the
+     * builder's `deleteSequenceStepAction`).
+     */
+    sequenceId?: string
   }): Promise<void> {
     const step = await db.query.sequenceStepModel.findFirst({
       where: {
@@ -278,6 +390,10 @@ class SequenceService extends BaseService {
     }
 
     if (step.sequence.workspaceId !== input.workspaceId) {
+      throw notFoundException("Step not found")
+    }
+
+    if (input.sequenceId && step.sequenceId !== input.sequenceId) {
       throw notFoundException("Step not found")
     }
 
@@ -299,9 +415,13 @@ class SequenceService extends BaseService {
     data: SequenceStepPayloadInput
   }): Promise<{ stepId: string }> {
     if (input.stepId) {
+      // Pin the step to the sequence the caller named, so an update routed
+      // through `/v1/sequences/{id}/steps` cannot edit a step belonging to a
+      // different sequence in the same workspace.
       const { previousOrder, step } = await this.updateStep({
         workspaceId: input.workspaceId,
         stepId: input.stepId,
+        sequenceId: input.sequenceId,
         data: input.data,
       })
 

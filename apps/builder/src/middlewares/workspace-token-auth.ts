@@ -2,6 +2,7 @@ import {
   isWorkspaceScheduledForDeletion,
   workspaceApiTokenService,
 } from "@chatbotx.io/business"
+import { withAuditContext } from "@chatbotx.io/business/audit"
 import { ChatbotXException } from "@chatbotx.io/business/errors"
 import { hashToken } from "@chatbotx.io/business/workspace-api-token/credentials"
 import { ORPCError } from "@orpc/server"
@@ -102,14 +103,16 @@ export const workspaceTokenAuthMidddleware = base.middleware(
     }
 
     const method = procedure["~orpc"].route.method
+    const path = procedure["~orpc"].route.path
 
-    // Read-only tokens may only GET/HEAD — unlike the owner-quota gate below,
-    // DELETE is not exempt here: a read_only token must not be able to
-    // delete data. Checked before the owner-quota gate — no DB call needed
-    // to enforce this.
+    // Read-only tokens may only GET/HEAD (plus a narrow, explicit allowlist
+    // of POST-for-read routes — see `READ_ONLY_TOKEN_ALLOWED_POST_PATHS`) —
+    // unlike the owner-quota gate below, DELETE is not exempt here: a
+    // read_only token must not be able to delete data. Checked before the
+    // owner-quota gate — no DB call needed to enforce this.
     if (
       apiToken.permission === "read_only" &&
-      !isReadOnlyTokenAllowedMethod(method)
+      !isReadOnlyTokenAllowedMethod(method, path)
     ) {
       throw new ORPCError("FORBIDDEN", {
         message: "Read-only token cannot perform this operation",
@@ -131,11 +134,26 @@ export const workspaceTokenAuthMidddleware = base.middleware(
       isDefault: apiToken.isDefault,
     }
 
-    return await next({
-      context: {
-        workspace,
-        apiToken: requestApiToken,
+    // There is no synthetic token user, and `AuditService.record` hard-
+    // requires both userId and workspaceId — so the workspace owner is the
+    // only truthful principal to attribute a token-driven change to.
+    // `source` carries the token id so it stays distinguishable from the
+    // owner's own UI actions in the audit trail.
+    return await withAuditContext(
+      {
+        userId: workspace.ownerId,
+        workspaceId: workspace.id,
+        ipAddress: getGuestClientIp(context.headers),
+        userAgent: context.headers.get("user-agent") ?? undefined,
+        source: `api-token:${requestApiToken.id}`,
       },
-    })
+      () =>
+        next({
+          context: {
+            workspace,
+            apiToken: requestApiToken,
+          },
+        }),
+    )
   },
 )
