@@ -785,7 +785,8 @@ export const createChatStore = () => {
       if (
         !conversation?.sourceId ||
         (contactInbox?.channel !== "messenger" &&
-          contactInbox?.channel !== "instagram") ||
+          contactInbox?.channel !== "instagram" &&
+          contactInbox?.channel !== "threads") ||
         !contactInbox?.inboxId
       ) {
         set({ activePost: null })

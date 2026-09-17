@@ -47,6 +47,28 @@ export const TOOLS_CONFIG = [
     getLink: (id: string) => `/space/${id}/fb-comments`,
   },
   {
+    id: "facebook-lead-ads",
+    labelKey: "facebookLeadAdsAutomation.title",
+    descriptionKey: "facebookLeadAdsAutomation.description",
+    icon: SiFacebook,
+    getLink: (id: string) => `/space/${id}/fb-lead-ads`,
+  },
+  {
+    id: "facebook-marketing-messages",
+    labelKey: "facebookMarketingMessages.title",
+    descriptionKey: "facebookMarketingMessages.description",
+    icon: SiFacebook,
+    getLink: (id: string) => `/space/${id}/fb-marketing-messages`,
+  },
+  {
+    id: "click-to-message-ads",
+    labelKey: "clickToMessageAds.title",
+    descriptionKey: "clickToMessageAds.description",
+    icon: MegaphoneIcon,
+    permission: "superAdmin",
+    getLink: (id: string) => buildMessagingAdsToolPath({ workspaceId: id }),
+  },
+  {
     id: "instagram-comment",
     labelKey: "instagramCommentAutomation.title",
     descriptionKey: "instagramCommentAutomation.description",
@@ -60,21 +82,18 @@ export const TOOLS_CONFIG = [
     icon: SiInstagram,
     getLink: (id: string) => `/space/${id}/ig-stories`,
   },
-  {
-    id: "facebook-lead-ads",
-    labelKey: "facebookLeadAdsAutomation.title",
-    descriptionKey: "facebookLeadAdsAutomation.description",
-    icon: SiFacebook,
-    getLink: (id: string) => `/space/${id}/fb-lead-ads`,
-  },
-  {
-    id: "click-to-message-ads",
-    labelKey: "clickToMessageAds.title",
-    descriptionKey: "clickToMessageAds.description",
-    icon: MegaphoneIcon,
-    permission: "superAdmin",
-    getLink: (id: string) => buildMessagingAdsToolPath({ workspaceId: id }),
-  },
+  // Hidden until Meta approves the Threads API permissions for the platform
+  // app — same reason the `threads` channel is `creatable: false, manageable:
+  // false` in `CHANNEL_CAPABILITIES` (`packages/utils/src/channel.ts`). The
+  // `/space/<id>/threads-comments` routes stay reachable by direct URL;
+  // restore this entry (and the `SiThreads` import) once approved.
+  // {
+  //   id: "threads-comment",
+  //   labelKey: "threadsCommentAutomation.title",
+  //   descriptionKey: "threadsCommentAutomation.description",
+  //   icon: SiThreads,
+  //   getLink: (id: string) => `/space/${id}/threads-comments`,
+  // },
   {
     id: "reflinks",
     labelKey: "reflinks.title",
@@ -132,6 +151,20 @@ export const TOOLS_CONFIG = [
     getLink: (id: string) => `/space/${id}/products`,
   },
   {
+    id: "coupons",
+    labelKey: "coupons.title",
+    descriptionKey: "coupons.description",
+    icon: TicketPercentIcon,
+    getLink: (id: string) => `/space/${id}/topic-coupons`,
+  },
+  // {
+  //   id: "webhooks",
+  //   labelKey: "webhooks.title",
+  //   descriptionKey: "webhooks.description",
+  //   icon: UsersIcon,
+  //   getLink: (id: string) => `/space/${id}/webhooks`,
+  // },
+  {
     id: "places-near-me",
     labelKey: "placesNearMe.title",
     descriptionKey: "placesNearMe.description",
@@ -149,20 +182,6 @@ export const TOOLS_CONFIG = [
     descriptionKey: "botSimulator.description",
     icon: BotIcon,
   },
-  {
-    id: "coupons",
-    labelKey: "coupons.title",
-    descriptionKey: "coupons.description",
-    icon: TicketPercentIcon,
-    getLink: (id: string) => `/space/${id}/topic-coupons`,
-  },
-  // {
-  //   id: "webhooks",
-  //   labelKey: "webhooks.title",
-  //   descriptionKey: "webhooks.description",
-  //   icon: UsersIcon,
-  //   getLink: (id: string) => `/space/${id}/webhooks`,
-  // },
 ] as const
 
 type ToolsListProps = {

@@ -24,6 +24,7 @@ export const channelTypes = z.enum([
   "smtp",
   "telegram",
   "instagram",
+  "threads",
   "tiktok",
   "api",
 ])
@@ -129,41 +130,56 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapability> = {
     requiresCredential: true,
     order: 3,
   },
+  // Threads is fully implemented but hidden from the product UI until Meta
+  // approves the Threads API permissions for the platform app. `creatable:
+  // false` drops it from the create picker and the platform/reseller
+  // hidden-channels admin list; `manageable: false` drops its settings
+  // accordion row and makes `settings/channels/threads` 404 through
+  // `requireVisibleChannel`. This is a UI gate only (AGENTS.md invariant 18):
+  // webhooks, outbound send and any already-connected Threads inbox keep
+  // working. Flip both back to `true` once App Review is approved (and
+  // restore the `threads-comment` card in `features/tools/tools-list.tsx`).
+  threads: {
+    creatable: false,
+    manageable: false,
+    requiresCredential: true,
+    order: 4,
+  },
   tiktok: {
     creatable: true,
     manageable: true,
     requiresCredential: true,
-    order: 4,
+    order: 5,
   },
   telegram: {
     creatable: true,
     manageable: true,
     requiresCredential: false,
-    order: 5,
+    order: 6,
   },
   zalo: {
     creatable: true,
     manageable: true,
     requiresCredential: true,
-    order: 6,
+    order: 7,
   },
   webchat: {
     creatable: true,
     manageable: true,
     requiresCredential: false,
-    order: 7,
+    order: 8,
   },
   smtp: {
     creatable: false,
     manageable: true,
     requiresCredential: false,
-    order: 8,
+    order: 9,
   },
   api: {
     creatable: true,
     manageable: true,
     requiresCredential: false,
-    order: 9,
+    order: 10,
   },
   // Not a real connectable channel — the fallback icon/label for unknown
   // channel strings (see `InboxIcon`'s `isChannelType` guard). Never offered
@@ -172,7 +188,7 @@ export const CHANNEL_CAPABILITIES: Record<ChannelType, ChannelCapability> = {
     creatable: false,
     manageable: false,
     requiresCredential: false,
-    order: 10,
+    order: 11,
   },
 }
 

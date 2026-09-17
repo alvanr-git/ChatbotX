@@ -8,6 +8,7 @@ import { InstagramLoginSelect } from "@/features/integration-instagram/component
 import { generateInstagramRedirectUri } from "@/features/integration-instagram/libs/oauth"
 import { generateInstagramFacebookRedirectUri } from "@/features/integration-instagram/libs/oauth-facebook"
 import { TelegramConnect } from "@/features/integration-telegram/components/telegram-connect"
+import { generateThreadsRedirectUri } from "@/features/integration-threads/libs/oauth"
 import { generateTiktokRedirectUri } from "@/features/integration-tiktok/libs/tiktok"
 import { SimpleCreateWebchat } from "@/features/integration-webchat/simple-create-webchat"
 import WhatsappCreate from "@/features/integration-whatsapp/components/whatsapp-create"
@@ -81,31 +82,36 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     messenger,
     instagram,
     instagramFacebookCredential,
+    threads,
     zalo,
     tiktok,
   ] = await Promise.all([
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "whatsapp",
     }),
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "messenger",
     }),
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "instagram",
     }),
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "instagramFacebook",
     }),
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
+      type: "threads",
+    }),
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "zalo",
     }),
-    platformCredentialService.resolvePublicForUser({
-      userId: platformOwnerId,
+    platformCredentialService.resolveForOwner({
+      ownerId: platformOwnerId,
       type: "tiktok",
     }),
   ])
@@ -115,7 +121,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
 
   if (selectedChannel === "whatsapp" && whatsapp && isVisible("whatsapp")) {
     const oauthCallbackUrl = await buildProviderCallbackUrl(
-      { userId: platformOwnerId, ...whatsapp },
+      whatsapp,
       WHATSAPP_OAUTH_CALLBACK_PATH,
     )
     return (
@@ -143,17 +149,14 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     }
     if (instagramFacebook) {
       const redirectUri = await generateInstagramFacebookRedirectUri(
-        {
-          userId: platformOwnerId,
-          publicConfig: instagramFacebook.publicConfig,
-        },
+        instagramFacebook,
         workspaceId,
       )
       redirect(redirectUri)
     }
     if (instagram) {
       const redirectUri = await generateInstagramRedirectUri(
-        { userId: platformOwnerId, publicConfig: instagram.publicConfig },
+        instagram,
         workspaceId,
       )
       redirect(redirectUri)
@@ -167,7 +170,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     isVisible("instagram")
   ) {
     const redirectUri = await generateInstagramRedirectUri(
-      { userId: platformOwnerId, ...instagram },
+      instagram,
       workspaceId,
     )
     redirect(redirectUri)
@@ -182,25 +185,24 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     isVisible("instagram")
   ) {
     const redirectUri = await generateInstagramFacebookRedirectUri(
-      { userId: platformOwnerId, ...instagramFacebook },
+      instagramFacebook,
       workspaceId,
     )
+    redirect(redirectUri)
+  }
+
+  if (selectedChannel === "threads" && threads && isVisible("threads")) {
+    const redirectUri = await generateThreadsRedirectUri(threads, workspaceId)
     redirect(redirectUri)
   }
 
   if (selectedChannel === "zalo" && zalo && isVisible("zalo")) {
-    const redirectUri = await generateZaloRedirectUri(
-      { userId: platformOwnerId, ...zalo },
-      workspaceId,
-    )
+    const redirectUri = await generateZaloRedirectUri(zalo, workspaceId)
     redirect(redirectUri)
   }
 
   if (selectedChannel === "tiktok" && tiktok && isVisible("tiktok")) {
-    const redirectUri = await generateTiktokRedirectUri(
-      { userId: platformOwnerId, ...tiktok },
-      workspaceId,
-    )
+    const redirectUri = await generateTiktokRedirectUri(tiktok, workspaceId)
     redirect(redirectUri)
   }
 
@@ -211,6 +213,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
       ["whatsapp", whatsapp],
       ["messenger", messenger],
       ["instagram", instagram ?? instagramFacebook],
+      ["threads", threads],
       ["zalo", zalo],
       ["tiktok", tiktok],
     ] as const
