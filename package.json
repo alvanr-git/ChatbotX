@@ -3,6 +3,10 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
+    "build:changed": "turbo run build --filter=\"...[origin/main]\"",
+    "build:builder": "turbo run build --filter=\"builder...\"",
+    "build:worker": "turbo run build --filter=\"worker...\"",
+    "build:throttled": "turbo run build --concurrency=2",
     "dev": "turbo dev",
     "fix": "ultracite fix --unsafe",
     "lint": "pnpm check:agent-instructions && turbo run lint && ultracite check",
