@@ -47,6 +47,7 @@ import { useTranslations } from "next-intl"
 import { useAction } from "next-safe-action/hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { useInvalidateFlows } from "@/features/flows/provider/flow-hook"
 import { GetInboxUrlDialog } from "@/features/inboxes/components/get-inbox-url"
 import { publishFlowAction } from "../actions/publish-flow-action"
 import { revertToPublishedAction } from "../actions/revert-to-published-action"
@@ -89,6 +90,7 @@ export function FlowEditToolbar({
   const t = useTranslations()
   const router = useRouter()
   const lastBranchClearedCountRef = useRef(0)
+  const invalidateFlows = useInvalidateFlows()
 
   const [isValidating, setIsValidating] = useState<boolean>(false)
   const [action, setAction] = useState<
@@ -173,6 +175,7 @@ export function FlowEditToolbar({
         // "published & clean" (the Messenger Ads JSON action, the revert
         // button) update immediately instead of staying stale until reload.
         markSaved?.(getNodes(), getEdges())
+        invalidateFlows()
         router.refresh()
       },
     },
@@ -187,6 +190,7 @@ export function FlowEditToolbar({
           applyVersionToCanvas(data.nodes as Node[], data.edges as Edge[])
           toast.success(t("messages.revertToPublishedSuccess"))
           setAction(null)
+          invalidateFlows()
           router.refresh()
         }
       },

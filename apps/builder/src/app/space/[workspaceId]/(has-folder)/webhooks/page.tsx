@@ -1,3 +1,4 @@
+import { folderTypes } from "@chatbotx.io/database/partials"
 import {
   Card,
   CardContent,
@@ -10,6 +11,7 @@ import { notFound } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import type { SearchParams } from "nuqs/server"
 import { Suspense } from "react"
+import SharedFolderSlot from "@/features/folders/shared-folder-slot"
 import { getWebhooks } from "@/features/webhooks/queries"
 import { getWebhooksSearchParamsCache } from "@/features/webhooks/schema/get-webhook-schema"
 import { WebhooksTable } from "@/features/webhooks/webhooks-table"
@@ -43,6 +45,11 @@ export default async function WebhooksPage(props: {
         <CardDescription>{t("webhooks.description")}</CardDescription>
       </CardHeader>
       <CardContent>
+        <SharedFolderSlot
+          folderType={folderTypes.enum.webhook}
+          searchParams={props.searchParams}
+          workspaceId={workspaceId}
+        />
         <Suspense>
           <WebhooksTable
             folderId={search.folderId}

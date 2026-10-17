@@ -5,8 +5,6 @@ import { notFound, redirect } from "next/navigation"
 import InboxSelectCard from "@/features/inboxes/components/inbox-select-card"
 import { CreateApiForm } from "@/features/integration-api/components/create-api-form"
 import { InstagramLoginSelect } from "@/features/integration-instagram/components/instagram-login-select"
-import { generateInstagramRedirectUri } from "@/features/integration-instagram/libs/oauth"
-import { generateInstagramFacebookRedirectUri } from "@/features/integration-instagram/libs/oauth-facebook"
 import { TelegramConnect } from "@/features/integration-telegram/components/telegram-connect"
 import { generateThreadsRedirectUri } from "@/features/integration-threads/libs/oauth"
 import { generateTiktokRedirectUri } from "@/features/integration-tiktok/libs/tiktok"
@@ -22,6 +20,8 @@ import {
   CREATE_CHANNEL_ERROR_MESSAGE_KEYS,
   isCreateChannelErrorCode,
 } from "@/lib/workspace/create-first-workspace"
+import { filterPreviewChannels } from "@/lib/workspace/preview-channels"
+import { withWorkspaceQuery } from "@/lib/workspace/settings-paths"
 
 export const dynamic = "force-dynamic"
 
@@ -61,8 +61,11 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
   // hiding is a hint, never an access control. Never consulted by
   // webhooks/outbound send/`Inbox` itself, so an already-connected inbox of a
   // hidden channel keeps working unaffected.
-  const visibleChannels =
-    await tenantService.resolveVisibleChannels(platformOwnerId)
+  // `filterPreviewChannels` layers the pending-provider-approval allowlist
+  // (Threads) on top of that policy — same UI-only semantics.
+  const visibleChannels = await filterPreviewChannels(
+    await tenantService.resolveVisibleChannels(platformOwnerId),
+  )
   const isVisible = (channel: ChannelType) => visibleChannels.includes(channel)
 
   if (selectedChannel === "telegram" && isVisible("telegram")) {
@@ -134,32 +137,24 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
   }
 
   if (selectedChannel === "messenger" && messenger && isVisible("messenger")) {
-    // The Facebook SSO token reuse check needs to set a cookie on a hit, which
-    // a Server Component's render can't do — hand off to a Route Handler that
-    // re-checks reuse and either redirects to the Page picker (cookie set) or
-    // falls back to the full OAuth dialog. See that route's comment.
-    redirect(
-      `/channels/create/messenger${workspaceId ? `?workspaceId=${workspaceId}` : ""}`,
-    )
+    // The Facebook SSO token reuse check needs to mint a `ConnectSession`
+    // synchronously on a hit, which a Server Component's render can't do —
+    // hand off to a Route Handler that re-checks reuse and either redirects
+    // to the Page picker (session minted) or falls back to the full OAuth
+    // dialog. See that route's comment.
+    redirect(withWorkspaceQuery("/channels/create/messenger", workspaceId))
   }
 
-  if (selectedChannel === "instagram" && isVisible("instagram")) {
-    if (instagram && instagramFacebook) {
-      return <InstagramLoginSelect workspaceId={workspaceId} />
+  if (
+    selectedChannel === "instagram" &&
+    (instagram || instagramFacebook) &&
+    isVisible("instagram")
+  ) {
+    if (instagram && !instagramFacebook) {
+      redirect(withWorkspaceQuery("/channels/instagram", workspaceId))
     }
-    if (instagramFacebook) {
-      const redirectUri = await generateInstagramFacebookRedirectUri(
-        instagramFacebook,
-        workspaceId,
-      )
-      redirect(redirectUri)
-    }
-    if (instagram) {
-      const redirectUri = await generateInstagramRedirectUri(
-        instagram,
-        workspaceId,
-      )
-      redirect(redirectUri)
+    if (!instagram && instagramFacebook) {
+      redirect(withWorkspaceQuery("/channels/instagram-facebook", workspaceId))
     }
     return <InstagramLoginSelect workspaceId={workspaceId} />
   }
@@ -169,11 +164,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     instagram &&
     isVisible("instagram")
   ) {
-    const redirectUri = await generateInstagramRedirectUri(
-      instagram,
-      workspaceId,
-    )
-    redirect(redirectUri)
+    redirect(withWorkspaceQuery("/channels/instagram", workspaceId))
   }
 
   // `instagram-facebook` is a login-flavor route discriminator, not its own
@@ -184,11 +175,7 @@ export default async function CreateChannelPage(props: CreateChannelPageProps) {
     instagramFacebook &&
     isVisible("instagram")
   ) {
-    const redirectUri = await generateInstagramFacebookRedirectUri(
-      instagramFacebook,
-      workspaceId,
-    )
-    redirect(redirectUri)
+    redirect(withWorkspaceQuery("/channels/instagram-facebook", workspaceId))
   }
 
   if (selectedChannel === "threads" && threads && isVisible("threads")) {

@@ -1,5 +1,6 @@
 "use client"
 
+import { isLiveCommentAutomation } from "@chatbotx.io/database/partials"
 import { ComboboxField } from "@chatbotx.io/ui/components/form/combobox-field"
 import { InputField } from "@chatbotx.io/ui/components/form/input-field"
 import { RadioGroupField } from "@chatbotx.io/ui/components/form/radio-group-field"
@@ -20,12 +21,6 @@ import {
   FormMessage,
 } from "@chatbotx.io/ui/components/ui/form"
 import { TagsInputField } from "@chatbotx.io/ui/components/ui/muhammada86/tags-input-field"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@chatbotx.io/ui/components/ui/tooltip"
-import { InfoIcon } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
 import type { UseFormReturn } from "react-hook-form"
@@ -34,8 +29,15 @@ import { toast } from "sonner"
 import { TiptapEditorField } from "@/components/tiptap/tiptap-editor-field"
 import { useAIAgentSelectOptions } from "@/features/ai-agents/hooks/use-ai-agents"
 import { useFlowSelectOptions } from "@/features/flows/provider/flow-hook"
+import {
+  AutomationAccountField,
+  useAccountChoiceMissing,
+} from "@/features/shared/comment-automation/automation-account-field"
+import { ExcludeKeywordsField } from "@/features/shared/comment-automation/exclude-keywords-field"
 import { ReplyTextsField } from "@/features/shared/comment-automation/reply-texts-field"
+import { ReplyToField } from "@/features/shared/comment-automation/reply-to-field"
 import { useWorkspaceId } from "@/hooks/routing"
+import { useFbCommentPostsStore } from "../provider/fb-comment-posts-store-context"
 import type { CreateFbCommentRequest } from "../schema/action"
 import { SelectFacebookPostsDialog } from "./select-facebook-posts-dialog"
 
@@ -71,6 +73,18 @@ export function FbCommentForm({
 
   const postType = useWatch({ control: form.control, name: "post.type" })
   const postValue = useWatch({ control: form.control, name: "post.value" })
+  const inboxId = useWatch({ control: form.control, name: "inboxId" })
+  const accountChoiceMissing = useAccountChoiceMissing("messenger")
+  const publishedPosts = useFbCommentPostsStore((s) => s.publishedPosts)
+  const adsPosts = useFbCommentPostsStore((s) => s.adsPosts)
+  const reelsPosts = useFbCommentPostsStore((s) => s.reelsPosts)
+  const findPostOwner = (id: string) =>
+    [...publishedPosts, ...adsPosts, ...reelsPosts].find(
+      (post) => post.id === id,
+    )?.inboxId
+  // A Live automation answers every live broadcast, so there is no post to
+  // target — the card keeps only the replies.
+  const isLive = isLiveCommentAutomation({ type: postType })
 
   const privateReplyType = useWatch({
     control: form.control,
@@ -79,10 +93,6 @@ export function FbCommentForm({
   const publicReplyType = useWatch({
     control: form.control,
     name: "publicReply.type",
-  })
-  const includeKeywordsType = useWatch({
-    control: form.control,
-    name: "includeKeywords.type",
   })
   const replyAfterType = useWatch({
     control: form.control,
@@ -108,18 +118,6 @@ export function FbCommentForm({
     {
       label: t("facebookCommentAutomation.postType.specificPosts"),
       value: "postIds",
-    },
-  ]
-
-  const includeKeywordsTypeOptions = [
-    { label: t("facebookCommentAutomation.keywordsType.all"), value: "all" },
-    {
-      label: t("facebookCommentAutomation.keywordsType.equal"),
-      value: "equal",
-    },
-    {
-      label: t("facebookCommentAutomation.keywordsType.contain"),
-      value: "contain",
     },
   ]
 
@@ -203,20 +201,32 @@ export function FbCommentForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>{t("facebookCommentAutomation.card.targeting")}</CardTitle>
+          <CardTitle>
+            {isLive
+              ? t("commentAutomation.card.reply")
+              : t("facebookCommentAutomation.card.targeting")}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 space-y-4">
-          <RadioGroupField
-            description={t(
-              "facebookCommentAutomation.trackCommentsOnDescription",
-            )}
-            descriptionType="tooltip"
-            label={t("facebookCommentAutomation.trackCommentsOn")}
-            name="post.type"
-            options={postTypeOptions}
-            orientation="horizontal"
-            required
+          <AutomationAccountField
+            findTargetOwner={findPostOwner}
+            targetField="post"
+            type="messenger"
           />
+
+          {!isLive && (
+            <RadioGroupField
+              description={t(
+                "facebookCommentAutomation.trackCommentsOnDescription",
+              )}
+              descriptionType="tooltip"
+              label={t("facebookCommentAutomation.trackCommentsOn")}
+              name="post.type"
+              options={postTypeOptions}
+              orientation="horizontal"
+              required
+            />
+          )}
 
           {postType === "postIds" && (
             <>
@@ -229,6 +239,7 @@ export function FbCommentForm({
                 {postValue.length > 0 && ` (${postValue.length})`}
               </Button>
               <SelectFacebookPostsDialog
+                inboxId={inboxId}
                 onChange={(ids) =>
                   form.setValue("post.value", ids, { shouldValidate: true })
                 }
@@ -336,73 +347,28 @@ export function FbCommentForm({
           <CardTitle>{t("facebookCommentAutomation.card.filters")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-start gap-2">
-            <SelectField
-              description={t(
+          <ReplyToField
+            labels={{
+              type: t("facebookCommentAutomation.includeKeywordsType"),
+              typeDescription: t(
                 "facebookCommentAutomation.includeKeywordsTypeDescription",
-              )}
-              descriptionType="tooltip"
-              label={t("facebookCommentAutomation.includeKeywordsType")}
-              name="includeKeywords.type"
-              options={includeKeywordsTypeOptions}
-            />
-            {includeKeywordsType !== "all" && (
-              <div className="w-full">
-                <FormField
-                  control={form.control}
-                  name="includeKeywords.value"
-                  render={() => (
-                    <FormItem>
-                      <FormLabel>
-                        {t("facebookCommentAutomation.includeKeywords")}
-                      </FormLabel>
-                      <FormControl>
-                        <TagsInputField
-                          name="includeKeywords.value"
-                          placeholder={t(
-                            "facebookCommentAutomation.keywordsPlaceholder",
-                          )}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-          </div>
+              ),
+              keywords: t("facebookCommentAutomation.includeKeywords"),
+              keywordsPlaceholder: t(
+                "facebookCommentAutomation.keywordsPlaceholder",
+              ),
+              all: t("facebookCommentAutomation.keywordsType.all"),
+              equal: t("facebookCommentAutomation.keywordsType.equal"),
+              contain: t("facebookCommentAutomation.keywordsType.contain"),
+            }}
+          />
 
-          <FormField
-            control={form.control}
-            name="excludeKeywords"
-            render={() => (
-              <FormItem>
-                <FormLabel className="flex items-center gap-1">
-                  {t("facebookCommentAutomation.excludeKeywords")}
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <InfoIcon className="size-3.5 cursor-help text-muted-foreground" />
-                      }
-                    />
-                    <TooltipContent className="max-w-sm">
-                      {t(
-                        "facebookCommentAutomation.excludeKeywordsDescription",
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </FormLabel>
-                <FormControl>
-                  <TagsInputField
-                    name="excludeKeywords"
-                    placeholder={t(
-                      "facebookCommentAutomation.keywordsPlaceholder",
-                    )}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+          <ExcludeKeywordsField
+            description={t(
+              "facebookCommentAutomation.excludeKeywordsDescription",
             )}
+            label={t("facebookCommentAutomation.excludeKeywords")}
+            placeholder={t("facebookCommentAutomation.keywordsPlaceholder")}
           />
 
           <div className="space-y-3 border-t pt-4">
@@ -524,6 +490,16 @@ export function FbCommentForm({
             required
           />
           <SwitchField
+            label={t("commentAutomation.hideComments.hasGif")}
+            name="hideComments.hasGif"
+            required
+          />
+          <SwitchField
+            label={t("commentAutomation.hideComments.hasEmoji")}
+            name="hideComments.hasEmoji"
+            required
+          />
+          <SwitchField
             label={t("facebookCommentAutomation.hideComments.hasLink")}
             name="hideComments.hasLink"
             required
@@ -571,7 +547,9 @@ export function FbCommentForm({
           {t("actions.cancel")}
         </Button>
         <Button
-          disabled={!form.formState.isValid || isSubmitting}
+          disabled={
+            !form.formState.isValid || isSubmitting || accountChoiceMissing
+          }
           type="submit"
         >
           {submitLabel}

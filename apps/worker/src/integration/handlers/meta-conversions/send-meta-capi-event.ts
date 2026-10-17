@@ -1,16 +1,21 @@
 import {
+  buildChannelIdentity,
+  capiDatasetResourceType,
   capiEventRequiresCtwaClid,
   contactInboxService,
   contactService,
   hashContactUserData,
+  isCapiDisconnected,
   type MetaConversionsChannel,
   type MetaConversionsIntegrationByChannel,
   metaConversionsService,
   resolveCapiAccessTokenForChannel,
+  resolveContactMessagingId,
   withBlockedOwnerGuard,
   workspaceService,
 } from "@chatbotx.io/business"
 import { logProviderError } from "@chatbotx.io/business/error-log"
+import { isCapiScopeRequired } from "@chatbotx.io/business/meta-conversions/capi-scope-policy"
 import type { MetaCapiEventModel } from "@chatbotx.io/database/types"
 import {
   buildDatasetName,
@@ -26,11 +31,7 @@ import {
 } from "@chatbotx.io/utils/meta-capi"
 import type { IntegrationJobSendMetaCapiEvent } from "@chatbotx.io/worker-config"
 import { logger } from "../../../lib/logger"
-import {
-  datasetResourceType,
-  findEventIntegration,
-  refreshScopeCache,
-} from "./capi-scope-checkers"
+import { findEventIntegration, refreshScopeCache } from "./capi-scope-checkers"
 
 type SendMetaCapiEventData = IntegrationJobSendMetaCapiEvent["data"]
 
@@ -67,73 +68,6 @@ const sentStatus = {
   to: "sent",
 } as const
 
-// The only channel-aware code left in this file. Each builder returns
-// exactly the business-messaging identity keys Meta's endpoint requires for
-// that channel; everything else below (custom data, LDU, hashed user data)
-// is shared/channel-agnostic. Used only when
-// `metaCapiActionSourcePolicy[actionSource].usesMessagingIdentity` is true.
-type ChannelIdentityInput = {
-  sourceId: string
-  ctwaClid?: string | null
-}
-
-const channelIdentityBuilders = {
-  messenger: (
-    integration: MetaConversionsIntegrationByChannel["messenger"],
-    contactInbox: ChannelIdentityInput,
-  ) => ({
-    messagingChannel: "messenger" as const,
-    pageId: integration.pageId,
-    pageScopedUserId: contactInbox.sourceId,
-  }),
-  instagram: (
-    integration: MetaConversionsIntegrationByChannel["instagram"],
-    contactInbox: ChannelIdentityInput,
-  ) => ({
-    messagingChannel: "instagram" as const,
-    instagramBusinessAccountId: integration.igId,
-    igSid: contactInbox.sourceId,
-  }),
-  whatsapp: (
-    integration: MetaConversionsIntegrationByChannel["whatsapp"],
-    contactInbox: ChannelIdentityInput,
-  ) => {
-    if (!contactInbox.ctwaClid) {
-      // Defensive: the handler already gates on this via `skipped_no_identity`
-      // before calling `sendConversionEvent` — this should be unreachable.
-      throw new Error("Missing ctwa_clid for WhatsApp Meta CAPI event")
-    }
-    return {
-      messagingChannel: "whatsapp" as const,
-      wabaId: integration.wabaId,
-      ctwaClid: contactInbox.ctwaClid,
-    }
-  },
-} satisfies {
-  [TChannel in MetaConversionsChannel]: (
-    integration: MetaConversionsIntegrationByChannel[TChannel],
-    contactInbox: ChannelIdentityInput,
-  ) => Record<string, unknown>
-}
-
-// Indexing `channelIdentityBuilders` by a generic `TChannel` narrows the
-// integration parameter to the INTERSECTION of all three channels' shapes —
-// a shape no single value can satisfy structurally, even though the caller's
-// channel tag guarantees the match is safe at runtime. This is the ONE
-// documented cast in this file, mirroring `byMessagingChannel` in
-// `integrations/meta-conversions/src/apis/events.ts`.
-function buildChannelIdentity<TChannel extends MetaConversionsChannel>(
-  channel: TChannel,
-  integration: MetaConversionsIntegrationByChannel[TChannel],
-  contactInbox: ChannelIdentityInput,
-): ReturnType<(typeof channelIdentityBuilders)[TChannel]> {
-  const builder = channelIdentityBuilders[channel] as unknown as (
-    integration: MetaConversionsIntegrationByChannel[TChannel],
-    contactInbox: ChannelIdentityInput,
-  ) => ReturnType<(typeof channelIdentityBuilders)[TChannel]>
-  return builder(integration, contactInbox)
-}
-
 function buildEventPayload<TChannel extends MetaConversionsChannel>(input: {
   channel: TChannel
   accessToken: string
@@ -167,10 +101,14 @@ function buildEventPayload<TChannel extends MetaConversionsChannel>(input: {
   // source identifies them via hashed customer info only (`userData` below)
   // — `NonMessagingIdentity` on the integration side.
   const identity = policy.usesMessagingIdentity
-    ? buildChannelIdentity(input.channel, input.integration, {
-        sourceId: input.contactInboxSourceId,
-        ctwaClid: input.ctwaClid,
-      })
+    ? buildChannelIdentity(
+        input.channel,
+        input.integration,
+        resolveContactMessagingId(input.channel, {
+          sourceId: input.contactInboxSourceId,
+          ctwaClid: input.ctwaClid,
+        }),
+      )
     : {
         // Structurally safe even though TS can't derive it from the boolean
         // lookup: `usesMessagingIdentity` is true only for
@@ -266,10 +204,8 @@ export async function handleSendMetaCapiEvent(
       return
     }
 
-    // A user-intent disconnect blocks the send. Property guard, not a channel
-    // switch: `capiDisconnectedAt` exists on every connect-capable channel, and
-    // this stays correct if a channel ever lacks the column.
-    if ("capiDisconnectedAt" in integration && integration.capiDisconnectedAt) {
+    // A user-intent disconnect blocks the send.
+    if (isCapiDisconnected(integration)) {
       await metaConversionsService.updateCapiStatus({
         id: event.id,
         workspaceId: event.workspaceId,
@@ -387,8 +323,12 @@ export async function handleSendMetaCapiEvent(
         event.channel,
         integration,
       )
+      // Per-channel policy: a channel exempt from the scope requirement
+      // (WhatsApp) skips the scope refresh and the no-scope gate — Meta
+      // answers a send that truly lacks the permission.
+      const scopeRequired = isCapiScopeRequired(event.channel)
       const integrationForSend =
-        auth.source === "manual"
+        auth.source === "manual" || !scopeRequired
           ? integration
           : await refreshScopeCache(event.channel, integration)
 
@@ -401,7 +341,11 @@ export async function handleSendMetaCapiEvent(
         return
       }
 
-      if (auth.source !== "manual" && !integrationForSend.hasCapiScope) {
+      if (
+        auth.source !== "manual" &&
+        scopeRequired &&
+        !integrationForSend.hasCapiScope
+      ) {
         await metaConversionsService.updateCapiStatus({
           id: event.id,
           workspaceId: event.workspaceId,
@@ -435,7 +379,7 @@ export async function handleSendMetaCapiEvent(
               // System User token), so this stays channel-generic.
               provisionDataset: ({ accessToken, resourceId, resourceName }) =>
                 ensureDataset({
-                  resourceType: datasetResourceType(event.channel),
+                  resourceType: capiDatasetResourceType(event.channel),
                   resourceId,
                   accessToken,
                   datasetName: buildDatasetName(resourceName),

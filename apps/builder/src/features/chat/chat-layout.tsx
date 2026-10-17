@@ -19,6 +19,7 @@ import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
 import { useConversationIdParam } from "../conversations/hooks/use-conversation-id-param"
 import type { ConversationResource } from "../conversations/schema/resource"
+import { useCallPlaybackStore } from "../messages/store/call-playback-store"
 import {
   ContactDetailPane,
   ConversationListPane,
@@ -53,8 +54,35 @@ export const ChatLayout = (props: ChatLayoutProps) => {
 
   const [activeConversation, setActiveConversation] =
     useState<ConversationResource | null>(null)
-  const [isContactSheetOpen, setIsContactSheetOpen] = useState(false)
+  // The mobile contact sheet is bound to the conversation it was opened for:
+  // selecting a different thread closes it, while realtime `conversations`
+  // churn can never close it.
+  const [contactSheetConversationId, setContactSheetConversationId] = useState<
+    string | null
+  >(null)
+  if (
+    contactSheetConversationId !== null &&
+    contactSheetConversationId !== activeConversationId
+  ) {
+    // Reset during render (not in an effect) so returning to the original
+    // thread later does not reopen a sheet the user never reopened.
+    setContactSheetConversationId(null)
+  }
+  const isContactSheetOpen =
+    contactSheetConversationId !== null &&
+    contactSheetConversationId === activeConversationId
   const conversationIdParam = useConversationIdParam()
+
+  // The shared call-recording `<audio>` element (`callPlaybackStore`) is a
+  // module singleton with no lifecycle of its own — nothing else stops it
+  // when the inbox unmounts or the route changes, so a playing recording
+  // would otherwise keep audible after the user navigates away entirely.
+  useEffect(
+    () => () => {
+      useCallPlaybackStore.getState().reset()
+    },
+    [],
+  )
 
   // The inbox mounts three heavy, self-fetching panes. Choosing the layout in
   // CSS would mount all of them in both arrangements, so the choice is made in
@@ -84,10 +112,6 @@ export const ChatLayout = (props: ChatLayoutProps) => {
     } else {
       setActiveConversation(null)
     }
-    // Closes the mobile contact sheet left over from a previous conversation:
-    // without this, going back and selecting a different thread could reopen
-    // it bound to the wrong contact.
-    setIsContactSheetOpen(false)
   }, [activeConversationId, conversations])
 
   const paneState: PaneState = {
@@ -103,6 +127,16 @@ export const ChatLayout = (props: ChatLayoutProps) => {
         user goes back to the list, and the realtime socket must not go with it.
       */}
       <ChatRealtime />
+      {/*
+        The VoIP provider (single `useWhatsappVoipCall` peer/hook instance),
+        the call panel and `WhatsappCallInfoSheet` now
+        mount once at the workspace layout level, gated by
+        `callingEnabled`/`callHistoryEnabled` — see
+        `components/workspace-realtime-shell.tsx`. Every consumer here
+        (`ConversationListPane`'s rows render their own Answer/Reject
+        buttons) still reaches the same context because this pane tree is
+        rendered inside that shell's `{children}`.
+      */}
       {isMobile === undefined && (
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <Loader2Icon className="animate-spin" />
@@ -119,20 +153,28 @@ export const ChatLayout = (props: ChatLayoutProps) => {
                 conversationIdParam.clear()
                 setActiveConversationId(null)
               }}
-              onOpenContact={() => setIsContactSheetOpen(true)}
+              onOpenContact={() =>
+                setContactSheetConversationId(activeConversationId ?? null)
+              }
               workspaceId={workspaceId}
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <ConversationListPane
-                autoSelectFirstConversation={false}
                 canViewEmailAndPhone={canViewEmailAndPhone}
                 workspaceId={workspaceId}
               />
             </div>
           )}
 
-          <Sheet onOpenChange={setIsContactSheetOpen} open={isContactSheetOpen}>
+          <Sheet
+            onOpenChange={(open) =>
+              setContactSheetConversationId(
+                open ? (activeConversationId ?? null) : null,
+              )
+            }
+            open={isContactSheetOpen}
+          >
             <SheetContent
               className="w-[85vw] overflow-y-auto px-4 py-3 sm:max-w-sm"
               side="right"

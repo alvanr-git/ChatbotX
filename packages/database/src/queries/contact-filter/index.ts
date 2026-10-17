@@ -17,6 +17,7 @@ import {
 } from "../../schema"
 import { escapeLikePattern, likeContains } from "../../utils"
 import { buildBotFieldWhere } from "./bot-field-predicates"
+import { buildCommentedOnPostWhere } from "./commented-on-post"
 import { buildContinentWhere } from "./continent"
 import { parseConversationAssigneeValues } from "./conversation-assignee"
 import {
@@ -27,10 +28,12 @@ import {
 } from "./ctwa-retarget"
 import { buildCustomFieldWhere } from "./custom-field-predicates"
 import { contactInboxExists, existsWhere, joinTableExists } from "./exists"
+import { buildLeaderboardScoreWhere } from "./leaderboard-score"
 import {
   buildBooleanColumn,
   buildBooleanFromTimestamp,
   buildColumnWhere,
+  buildContactInboxTriStateBooleanWhere,
   buildDateColumnWhere,
   buildExistingContactWhere,
   buildExistsBooleanWhere,
@@ -69,7 +72,11 @@ export {
   pruneContactFilterFields,
   pruneEmailPhoneFilterConditions,
 } from "./permission"
-export { contactInboxInteractedWithin24hSQL } from "./predicates"
+export {
+  buildContactInboxScopeWhere,
+  type ContactInboxScope,
+  contactInboxInteractedWithin24hSQL,
+} from "./predicates"
 export {
   DEFAULT_FILTER_TIMEZONE,
   filterValueToUtcDayEndIso,
@@ -90,6 +97,7 @@ export {
 } from "./value-format"
 
 import { anyChannelAdConversationPredicate } from "../ad-referral"
+import { googleClickPredicate } from "../google-click"
 
 const hasWhereParts = (where: ContactWhere): boolean =>
   Object.keys(where).length > 0
@@ -506,6 +514,37 @@ function buildConditionWhere(
         value,
       )
 
+    case "followsBusinessOnInstagram":
+      return buildContactInboxTriStateBooleanWhere(
+        contactInboxModel.followsBusiness,
+        operator,
+        value,
+      )
+
+    case "businessFollowsUserOnInstagram":
+      return buildContactInboxTriStateBooleanWhere(
+        contactInboxModel.businessFollowsContact,
+        operator,
+        value,
+      )
+
+    case "verifiedAccountOnInstagram":
+      return buildContactInboxTriStateBooleanWhere(
+        contactInboxModel.accountVerified,
+        operator,
+        value,
+      )
+
+    case "followerCountOnInstagram":
+      return buildLatestContactInboxNumberWhere(
+        contactInboxModel.followerCount,
+        operator,
+        value,
+      )
+
+    case "commentedOnPost":
+      return buildCommentedOnPostWhere(operator, value, context.workspaceId)
+
     case "emailWasVerified":
       return buildBooleanColumn("emailVerified", operator, value)
 
@@ -536,6 +575,14 @@ function buildConditionWhere(
       return buildExistsBooleanWhere(
         contactInboxExists,
         anyChannelAdConversationPredicate(),
+        operator,
+        value,
+      )
+
+    case "fromGoogleAd":
+      return buildExistsBooleanWhere(
+        contactInboxExists,
+        googleClickPredicate(),
         operator,
         value,
       )
@@ -617,6 +664,13 @@ function buildConditionWhere(
 
     case "couponTopic":
       return buildCouponTopicWhere(condition.topicId, operator, value)
+
+    case "leaderboardScore":
+      return buildLeaderboardScoreWhere(
+        condition.leaderboardId,
+        operator,
+        value,
+      )
 
     case "conversationAssigned":
       return buildConversationAssignedWhere(operator, value)

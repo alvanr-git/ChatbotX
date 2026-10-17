@@ -1,13 +1,22 @@
 // @vitest-environment node
 
-import { validationException } from "@chatbotx.io/business/errors"
+import { broadcastPlanLimitException } from "@chatbotx.io/business/errors"
+import { TRIAL_BROADCAST_PLAN_POLICY } from "@chatbotx.io/database/partials"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const {
+  MockBroadcastValidationException,
   mockCreate,
   mockReturnValidationErrors,
   mockGetCurrentUserAndTargetWorkspace,
 } = vi.hoisted(() => ({
+  MockBroadcastValidationException: class MockBroadcastValidationException extends Error {
+    readonly field: string
+    constructor(message: string, field: string) {
+      super(message)
+      this.field = field
+    }
+  },
   mockCreate: vi.fn(),
   mockReturnValidationErrors: vi.fn((_schema: unknown, errs: unknown) => ({
     __validationError: errs,
@@ -27,6 +36,7 @@ vi.mock("@/lib/safe-action", () => {
 
 vi.mock("@chatbotx.io/business", () => ({
   broadcastService: { create: mockCreate },
+  BroadcastValidationException: MockBroadcastValidationException,
 }))
 
 vi.mock("next-safe-action", () => ({
@@ -67,7 +77,7 @@ const baseInput = {
 }
 
 const validationError = (field: string, message: string) =>
-  validationException(field, message)
+  new MockBroadcastValidationException(message, field)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -114,6 +124,51 @@ describe("createBroadcastAction — validation branches map to returnValidationE
       "Unsupported broadcast subaction",
     )
     expect(result).toMatchObject({ __validationError: expect.anything() })
+  })
+
+  test("recurrence — a repeat rule the service rejects is shown on its field", async () => {
+    mockCreate.mockRejectedValue(
+      validationError("recurrence", "The schedule has no upcoming run"),
+    )
+
+    const result = await callAction({
+      bindArgsParsedInputs: [WORKSPACE_ID],
+      parsedInput: baseInput,
+    })
+
+    const [, errors] = mockReturnValidationErrors.mock.calls[0] as [
+      unknown,
+      { recurrence: { _errors: string[] } },
+    ]
+    expect(errors.recurrence._errors).toContain(
+      "The schedule has no upcoming run",
+    )
+    expect(result).toMatchObject({ __validationError: expect.anything() })
+  })
+
+  test("a repeating broadcast's rule is passed to the service untouched", async () => {
+    mockCreate.mockResolvedValue({ id: "b-1" })
+    const recurrence = {
+      frequency: "daily",
+      interval: 1,
+      timeOfDay: "09:00",
+      timezone: "Asia/Ho_Chi_Minh",
+      startsOn: "2026-10-01",
+      end: { kind: "never" },
+    }
+
+    await callAction({
+      bindArgsParsedInputs: [WORKSPACE_ID],
+      parsedInput: { ...baseInput, schedulesType: "recurring", recurrence },
+    })
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: WORKSPACE_ID,
+        schedulesType: "recurring",
+        recurrence,
+      }),
+    )
   })
 
   test("flowId — neither flow nor template selected", async () => {
@@ -290,5 +345,20 @@ describe("createBroadcastAction — happy path", () => {
         parsedInput: { ...baseInput, flowId: "flow-1" },
       }),
     ).rejects.toThrow("boom")
+  })
+
+  test("returns a plan-limit outcome for the business exception", async () => {
+    const error = broadcastPlanLimitException("sendRate", {
+      policy: TRIAL_BROADCAST_PLAN_POLICY,
+      planName: "Trial",
+    })
+    mockCreate.mockRejectedValue(error)
+
+    await expect(
+      callAction({
+        bindArgsParsedInputs: [WORKSPACE_ID],
+        parsedInput: { ...baseInput, flowId: "flow-1" },
+      }),
+    ).resolves.toEqual({ outcome: "planLimit", limit: error.data })
   })
 })

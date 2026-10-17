@@ -95,6 +95,7 @@ vi.mock("@chatbotx.io/ai", () => ({
 
 vi.mock("@chatbotx.io/ai/server", () => ({
   aiContextService: { appendHistory: appendHistoryMock },
+  appendAIAgentActionToolProtocol: (p: string) => p,
   appendFabricationGuard: (p: string) => p,
   appendHandoffPolicy: (p: string) => p,
   appendKnowledgeBaseGuard: (p: string) => p,
@@ -588,6 +589,9 @@ describe("replyByAI — default reply flow fallback", () => {
     expect(sendMessageWithRenderMock).toHaveBeenCalledWith(
       baseProps.conversation.id,
       expect.stringContaining("I've found some data"),
+      expect.objectContaining({
+        triggerType: "bot_response_ai_agent_default_reply_flow",
+      }),
     )
   })
 
@@ -605,6 +609,9 @@ describe("replyByAI — default reply flow fallback", () => {
     expect(sendMessageWithRenderMock).toHaveBeenCalledWith(
       baseProps.conversation.id,
       expect.stringContaining("I've found some data"),
+      expect.objectContaining({
+        triggerType: "bot_response_ai_agent_default_reply_flow",
+      }),
     )
   })
 

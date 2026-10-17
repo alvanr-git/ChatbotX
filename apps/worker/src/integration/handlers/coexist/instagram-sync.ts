@@ -12,6 +12,7 @@ import {
 } from "@chatbotx.io/worker-config"
 import pLimit from "p-limit"
 import { logger } from "../../../lib/logger"
+import { enqueueProfileSnapshotJobs } from "../profile-snapshot/queue"
 import {
   applyCoexistActivityUpdates,
   bulkImportContacts,
@@ -154,7 +155,6 @@ const runInstagramCoexistPull = async <
       pageNumber += 1
 
       const activityUpdates: CoexistActivityUpdate[] = []
-      const attachmentIds: string[] = []
       let pageImportedContacts = 0
       let pageImportedMessages = 0
       let pageSkipped = 0
@@ -253,12 +253,25 @@ const runInstagramCoexistPull = async <
                   // conversation below and resolves the run to `partial`; decide
                   // whether large historical imports should be plan-gated.
                   const contactResult = await bulkImportContacts({
+                    captureProfileSnapshot: true,
                     inbox: context.inbox,
                     workspaceId,
                     contacts: [contact],
                   })
                   pageImportedContacts += contactResult.importedContacts
                   pageSkipped += contactResult.skippedContacts
+                  await enqueueProfileSnapshotJobs({
+                    contactInboxIds: [
+                      ...contactResult.newContactInboxIds.values(),
+                    ].map((link) => link.contactInboxId),
+                    inboxId: context.inbox.id,
+                    workspaceId,
+                  }).catch((err) => {
+                    logger.warn(
+                      { err, inboxId: context.inbox.id, workspaceId },
+                      "[coexist] Profile snapshot enqueue failed; recovery will retry",
+                    )
+                  })
                   if (contactResult.failureReason) {
                     currentError = contactResult.failureReason
                   }
@@ -303,8 +316,6 @@ const runInstagramCoexistPull = async <
 
                 pageImportedMessages += imported.importedMessages
                 pageSkipped += imported.skippedMessages
-                attachmentIds.push(...imported.insertedAttachmentIds)
-
                 const aiMarkerMessageId = context.integration
                   .coexistAiReadsSyncedHistory
                   ? null
@@ -357,30 +368,9 @@ const runInstagramCoexistPull = async <
       skippedTotal += pageSkipped
       failedTotal += pageFailed
 
-      if (attachmentIds.length > 0) {
-        await integrationQueue.addBulk(
-          attachmentIds.map((attachmentId) => ({
-            name: IntegrationJobAction.coexistAttachmentDownload,
-            data: {
-              type: IntegrationJobAction.coexistAttachmentDownload,
-              data: {
-                attachmentId,
-                workspaceId,
-                channel: "instagram" as const,
-                integrationId,
-              },
-            },
-            opts: {
-              jobId: `att-${attachmentId}`,
-              attempts: 5,
-              backoff: { type: "exponential", delay: 30_000 },
-              removeOnComplete: true,
-              removeOnFail: { count: 100 },
-            },
-          })),
-        )
-      }
-
+      // Attachment bytes hydrate lazily through the media proxy. The resume
+      // watermark therefore advances after message/attachment INSERT success,
+      // independently of any later download or mirror attempt.
       await coexistService.updateProgress({
         runId,
         fields: {

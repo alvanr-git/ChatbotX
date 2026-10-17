@@ -12,7 +12,7 @@ interface McpOperationMeta {
   destructiveHint?: boolean
   idempotentHint?: boolean
   readOnlyHint?: boolean
-  scope?: string
+  scope?: string | string[]
   visibility?: "default" | "hidden"
 }
 
@@ -30,6 +30,7 @@ interface OpenAPIOperation {
   }
   security?: Record<string, string[]>[]
   summary?: string
+  tags?: string[]
   "x-mcp"?: McpOperationMeta
 }
 
@@ -107,7 +108,8 @@ export interface DynamicTool {
   pathParamNames: string[]
   pathTemplate: string
   queryParamNames: string[]
-  scope?: string
+  scope?: string | string[]
+  tags: string[]
   visibility: "default" | "hidden"
 }
 
@@ -177,7 +179,10 @@ function buildToolDescription(
   )
   const requirements: string[] = []
   if (meta?.scope) {
-    requirements.push(`Requires token scope: ${meta.scope}.`)
+    const scopes = Array.isArray(meta.scope)
+      ? meta.scope.join(" or ")
+      : meta.scope
+    requirements.push(`Requires token scope: ${scopes}.`)
   }
   if (!annotations.readOnlyHint) {
     requirements.push("Requires a full (non read-only) token.")
@@ -330,6 +335,7 @@ function parseOperation(
     pathTemplate,
     queryParamNames,
     scope: meta?.scope,
+    tags: operation.tags ?? [],
     visibility: meta?.visibility === "default" ? "default" : "hidden",
   }
 }
@@ -480,8 +486,8 @@ function isVisibleForScope(
   }
 
   // `readOnlyHint` (method-inferred for GET, or explicit `x-mcp.readOnlyHint`
-  // for a POST that's a read in disguise, e.g. `contacts_search`) is the
-  // single source of truth here — no separate allowlist to keep in sync.
+  // for a POST that's actually a read in disguise) is the single source of
+  // truth here — no separate allowlist to keep in sync.
   if (
     introspection.permission === "read_only" &&
     !tool.annotations.readOnlyHint
@@ -495,7 +501,12 @@ function isVisibleForScope(
     return true
   }
 
-  return tool.scope !== undefined && introspection.scopes.includes(tool.scope)
+  if (tool.scope === undefined) {
+    return false
+  }
+  const requiredScopes = Array.isArray(tool.scope) ? tool.scope : [tool.scope]
+  const grantedScopes = introspection.scopes
+  return requiredScopes.some((scope) => grantedScopes.includes(scope))
 }
 
 /**

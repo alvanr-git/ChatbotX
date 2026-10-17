@@ -12,6 +12,7 @@ export const stepTypes = z.enum([
   "sendMultipleImages",
   "sendCard",
   "sendCarousel",
+  "sendViewCatalog",
   "sendVideo",
   "sendGif",
   "sendMessengerOtn",
@@ -40,7 +41,9 @@ export const stepTypes = z.enum([
   "questionnaires",
   "setUpCoupon",
   "markCouponUsed",
+  "changeGamificationScore",
   "condition",
+  "evaluateDecision",
 
   // Inbox Operations (I_)
   "disableBot",
@@ -48,11 +51,14 @@ export const stepTypes = z.enum([
   "assignConversation",
   "autoAssignConversation",
   "unassignConversation",
+  "markConversationAsUnread",
+  "markConversationAsRead",
   "followConversation",
   "unfollowConversation",
   "archiveConversation",
   "unarchiveConversation",
   "notifyAgent",
+  "threadControl",
 
   // AI/OpenAI Operations (A_)
   "aiGenerateText",
@@ -122,13 +128,17 @@ export const stepTypes = z.enum([
   // WhatsApp Template Message
   "sendWaTemplateMessage",
   "whatsappOptionList",
+  "whatsappCallButton",
+  "whatsappLocation",
   "whatsappFlow",
+  "sendProducts",
 
   "sendMessengerTemplateMessage",
 
   // Messenger Operations (N_)
   "facebookCustomAudience",
   "sendMetaCapiEvent",
+  "sendGoogleAdsConversion",
   "setMessengerUserPersistentMenu",
   "enableMessengerComposer",
   "disableMessengerComposer",

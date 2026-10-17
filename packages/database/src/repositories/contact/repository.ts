@@ -51,6 +51,8 @@ export const contactRepository = {
       with: PUBLIC_CONTACT_RELATIONS,
     })
   },
+  // Back-compat for the deprecated `contacts.findByCustomField` alias — use
+  // `contacts.list` with a `contactFilter` instead.
   async listPublicByCustomField(
     input: {
       where: Record<string, unknown>
@@ -74,12 +76,43 @@ export const contactRepository = {
       with: PUBLIC_CONTACT_RELATIONS,
     })
   },
-  listForTable(input: ContactListInput, tx: DatabaseClient = db) {
+  listWithInboxesAndConversation(
+    input: ContactListInput,
+    tx: DatabaseClient = db,
+  ) {
     return tx.query.contactModel.findMany({
       ...input,
       with: {
         contactInboxes: { with: { inbox: true } },
         conversation: { with: { assignedUser: true, assignedInboxTeam: true } },
+      },
+    })
+  },
+  listTableRows(input: ContactListInput, tx: DatabaseClient = db) {
+    return tx.query.contactModel.findMany({
+      ...input,
+      columns: {
+        id: true,
+        fullName: true,
+        avatar: true,
+        createdAt: true,
+      },
+      with: {
+        contactInboxes: {
+          columns: {
+            channel: true,
+            source: true,
+            contactLastReadAt: true,
+          },
+        },
+        conversation: {
+          columns: { id: true },
+          with: {
+            assignedUser: {
+              columns: { name: true, email: true },
+            },
+          },
+        },
       },
     })
   },
@@ -92,8 +125,6 @@ export const contactRepository = {
       with: {
         tags: true,
         contactCustomFields: { with: { customField: true } },
-        contactNotes: true,
-        contactsOnSequences: { with: { sequence: true } },
         conversation: true,
       },
     })
@@ -152,6 +183,42 @@ export const contactRepository = {
           )
       `)
     })
+  },
+  /**
+   * Move `Contact.createdAt` back to a known earlier time — one statement for
+   * the whole batch. Backdate-only: Postgres LEAST never moves the column
+   * forward, so replaying an overlapping coexist chunk is idempotent and a
+   * genuinely older creation time is kept. Workspace-scoped in the WHERE so a
+   * foreign contact id in the batch is a no-op rather than a cross-tenant write.
+   *
+   * Returns the ids whose `createdAt` actually moved. The `>` guard makes a
+   * replayed or already-correct contact a zero-write, and surfacing that lets
+   * the service skip cache invalidation for it.
+   */
+  async backdateCreatedAt(
+    rows: { contactId: string; workspaceId: string; createdAt: Date }[],
+    tx: DatabaseClient = db,
+  ): Promise<string[]> {
+    if (rows.length === 0) {
+      return []
+    }
+    const valueRows = rows.map(
+      (row) => sql`(
+        ${row.contactId}::int8,
+        ${row.workspaceId}::int8,
+        ${row.createdAt}::timestamptz
+      )`,
+    )
+    const result = await tx.execute<{ id: string }>(sql`
+      UPDATE "Contact" AS t
+      SET "createdAt" = LEAST(t."createdAt", u.created_ts)
+      FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS u(id, workspace_id, created_ts)
+      WHERE t."id" = u.id
+        AND t."workspaceId" = u.workspace_id
+        AND t."createdAt" > u.created_ts
+      RETURNING t."id"
+    `)
+    return result.rows.map((row) => row.id)
   },
   /**
    * Atomically transition contacts to blocked, scoped to one workspace.

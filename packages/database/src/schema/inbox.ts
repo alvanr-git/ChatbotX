@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   pgTable,
   text,
@@ -27,8 +28,13 @@ export const inboxModel = pgTable(
         onUpdate: "cascade",
       }),
     status: text().notNull().default("connected"),
+    markReadOnOutbound: boolean().notNull().default(false),
     disconnectedAt: timestamp(timestampConfig),
     disconnectReason: text().$type<InboxDisconnectReason>(),
+    // Last time conversation-routing traffic (standby, handover, context or a
+    // rejected send) was seen on this inbox. The inbox counts as multi-responder
+    // while this is within THREAD_CONTROL_INBOX_ACTIVE_MS; it decays on its own.
+    threadControlSeenAt: timestamp(timestampConfig),
   },
   (table) => [
     index("Inbox_workspaceId_idx").using(

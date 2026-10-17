@@ -14,9 +14,10 @@ const {
   mockLoadContext,
   mockListPage,
   mockClassifyError,
-  mockEnqueueContactAvatarJobs,
   mockLogProviderError,
+  mockLowQueueAddBulk,
   mockQueueAdd,
+  mockEnqueueProfileSnapshots,
 } = vi.hoisted(() => ({
   mockClaim: vi.fn(),
   mockFinish: vi.fn(),
@@ -31,9 +32,10 @@ const {
   mockLoadContext: vi.fn(),
   mockListPage: vi.fn(),
   mockClassifyError: vi.fn(),
-  mockEnqueueContactAvatarJobs: vi.fn(),
   mockLogProviderError: vi.fn(),
+  mockLowQueueAddBulk: vi.fn(),
   mockQueueAdd: vi.fn(),
+  mockEnqueueProfileSnapshots: vi.fn(),
 }))
 
 vi.mock("@chatbotx.io/business", () => ({
@@ -90,10 +92,7 @@ vi.mock("@chatbotx.io/worker-config", () => ({
     pageNumber: number
   }) => `contact-scan-${runId}-${attempts}-page-${pageNumber}`,
   integrationQueue: { add: mockQueueAdd },
-}))
-
-vi.mock("../src/integration/handlers/contact/enqueue-avatar-jobs", () => ({
-  enqueueContactAvatarJobs: mockEnqueueContactAvatarJobs,
+  lowQueue: { addBulk: mockLowQueueAddBulk },
 }))
 
 vi.mock("../src/integration/handlers/contact-scan/adapter", () => ({
@@ -105,7 +104,18 @@ vi.mock("../src/integration/handlers/contact-scan/adapter", () => ({
       listPage: mockListPage,
       classifyError: mockClassifyError,
     },
+    instagram: {
+      channel: "instagram",
+      provider: "instagram",
+      loadContext: mockLoadContext,
+      listPage: mockListPage,
+      classifyError: mockClassifyError,
+    },
   },
+}))
+
+vi.mock("../src/integration/handlers/profile-snapshot/queue", () => ({
+  enqueueProfileSnapshotJobs: mockEnqueueProfileSnapshots,
 }))
 
 const { runContactScan } = await import(
@@ -138,7 +148,9 @@ const baseRun = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-const context = { inbox: { id: "inbox-1", workspaceId: WORKSPACE_ID } }
+const context = {
+  inbox: { id: "inbox-1", workspaceId: WORKSPACE_ID, channel: "messenger" },
+}
 
 const emptyImportResult = {
   importedContacts: 0,
@@ -155,6 +167,7 @@ const entry = (sourceId: string, updatedAt: Date | null) => ({
 describe("runContactScan", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    context.inbox.channel = "messenger"
     mockFindWorkspace.mockResolvedValue({
       id: WORKSPACE_ID,
       ownerId: "owner-1",
@@ -168,12 +181,13 @@ describe("runContactScan", () => {
     mockReopenReleased.mockResolvedValue(1)
     mockBulkImportChannelContacts.mockResolvedValue(emptyImportResult)
     mockQueueAdd.mockResolvedValue(undefined)
+    mockEnqueueProfileSnapshots.mockResolvedValue(undefined)
     // Both are best-effort (`.catch(...)`-chained by the engine, FIX 1) —
     // default them to resolving Promises like the real services so a test
     // that doesn't care about them doesn't crash on `.catch` of a bare
     // `undefined` return.
     mockIncrementBy.mockResolvedValue(undefined)
-    mockEnqueueContactAvatarJobs.mockResolvedValue(undefined)
+    mockLowQueueAddBulk.mockResolvedValue(undefined)
   })
 
   it("claim lost → no-op, no provider call", async () => {
@@ -296,6 +310,7 @@ describe("runContactScan", () => {
       await runContactScan({ runId: RUN_ID, workspaceId: WORKSPACE_ID })
 
       expect(mockBulkImportChannelContacts).toHaveBeenCalledWith({
+        captureProfileSnapshot: false,
         inbox: context.inbox,
         workspaceId: WORKSPACE_ID,
         contacts: [{ sourceId: "in-window" }],
@@ -407,7 +422,7 @@ describe("runContactScan", () => {
       // continuing past the lost page.
       expect(mockListPage).toHaveBeenCalledTimes(1)
       expect(mockFinish).not.toHaveBeenCalled()
-      expect(mockEnqueueContactAvatarJobs).not.toHaveBeenCalled()
+      expect(mockLowQueueAddBulk).not.toHaveBeenCalled()
       expect(mockIncrementBy).not.toHaveBeenCalled()
     })
 
@@ -439,7 +454,7 @@ describe("runContactScan", () => {
       )
     })
 
-    it("an avatar-enqueue failure alone does not fail or retry the page", async () => {
+    it("does not eagerly enqueue avatars for newly imported contacts", async () => {
       mockClaim.mockResolvedValue(baseRun())
       mockListPage.mockResolvedValue({
         entries: [entry("a", new Date("2026-02-01T00:00:00Z"))],
@@ -451,45 +466,40 @@ describe("runContactScan", () => {
         contactInboxIds: new Map([["a", { contactInboxId: "ci-1" }]]),
         newContactInboxIds: new Map([["a", { contactInboxId: "ci-1" }]]),
       })
-      mockEnqueueContactAvatarJobs.mockRejectedValueOnce(
-        new Error("queue down"),
-      )
-
       await runContactScan({ runId: RUN_ID, workspaceId: WORKSPACE_ID })
 
+      expect(mockLowQueueAddBulk).not.toHaveBeenCalled()
       expect(mockResetForRetry).not.toHaveBeenCalled()
       expect(mockFinish).toHaveBeenCalledWith(
         expect.objectContaining({ status: "succeeded" }),
       )
     })
-  })
 
-  it("enqueues avatar jobs only for newly-created contacts (FIX 2 — not the full resolved map)", async () => {
-    mockClaim.mockResolvedValue(baseRun())
-    mockListPage.mockResolvedValue({
-      entries: [entry("a", new Date("2026-02-01T00:00:00Z"))],
-      after: undefined,
-    })
-    const contactInboxIds = new Map([
-      ["a", { contactInboxId: "ci-1" }],
-      ["b-existing", { contactInboxId: "ci-existing" }],
-    ])
-    const newContactInboxIds = new Map([["a", { contactInboxId: "ci-1" }]])
-    mockBulkImportChannelContacts.mockResolvedValue({
-      importedContacts: 1,
-      skippedContacts: 0,
-      contactInboxIds,
-      newContactInboxIds,
-    })
+    it("enqueues durable snapshot work only for newly imported Instagram contacts", async () => {
+      mockClaim.mockResolvedValue(baseRun({ channel: "instagram" }))
+      context.inbox.channel = "instagram"
+      mockListPage.mockResolvedValue({
+        entries: [entry("a", new Date("2026-02-01T00:00:00Z"))],
+        after: undefined,
+      })
+      mockBulkImportChannelContacts.mockResolvedValue({
+        importedContacts: 1,
+        skippedContacts: 0,
+        contactInboxIds: new Map([["a", { contactInboxId: "ci-1" }]]),
+        newContactInboxIds: new Map([["a", { contactInboxId: "ci-1" }]]),
+      })
 
-    await runContactScan({ runId: RUN_ID, workspaceId: WORKSPACE_ID })
+      await runContactScan({ runId: RUN_ID, workspaceId: WORKSPACE_ID })
 
-    expect(mockEnqueueContactAvatarJobs).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect(mockBulkImportChannelContacts).toHaveBeenCalledWith(
+        expect.objectContaining({ captureProfileSnapshot: true }),
+      )
+      expect(mockEnqueueProfileSnapshots).toHaveBeenCalledWith({
+        contactInboxIds: ["ci-1"],
+        inboxId: "inbox-1",
         workspaceId: WORKSPACE_ID,
-        contactInboxIds: newContactInboxIds,
-      }),
-    )
+      })
+    })
   })
 
   describe("quota increment", () => {

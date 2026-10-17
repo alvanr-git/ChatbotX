@@ -1,6 +1,6 @@
 import {
   defaultWorkerOptions,
-  getRedisConnection,
+  getQueueConnection,
   queueNames,
   ScheduleJobData,
   scheduleQueue,
@@ -18,10 +18,22 @@ import {
   scanDateTimeWebhooks,
 } from "../webhook/datetime-webhook-scanner"
 import { clearExpiredSupportAccess } from "./handlers/clear-expired-support-access"
+import { dispatchProfileSnapshots } from "./handlers/dispatch-profile-snapshots"
 import { enqueueBroadcast } from "./handlers/enqueue-broadcast"
+import { enqueueRecurringBroadcasts } from "./handlers/enqueue-recurring-broadcasts"
 import { finalizeBroadcasts } from "./handlers/finalize-broadcasts"
+import {
+  googleAdsHousekeeping,
+  googleAdsSyncSetups,
+} from "./handlers/google-ads-housekeeping"
+import {
+  finishOverdueLeaderboards,
+  maintainLeaderboardRankings,
+} from "./handlers/leaderboard-schedules"
+import { maintainLeaderboardPartitions } from "./handlers/maintain-leaderboard-partitions"
 import { maintainMacPartitions } from "./handlers/maintain-mac-partitions"
 import { pollInstagramComments } from "./handlers/poll-instagram-comments"
+import { materializeRecurringBroadcasts } from "./handlers/materialize-recurring-broadcasts"
 import { prepareBroadcast } from "./handlers/prepare-broadcast"
 import { processBroadcastContacts } from "./handlers/process-broadcast-contacts"
 import { purgeAutomationThrottle } from "./handlers/purge-automation-throttle"
@@ -29,17 +41,23 @@ import { purgeBroadcasts } from "./handlers/purge-broadcasts"
 import { purgeCoexistStaging } from "./handlers/purge-coexist-staging"
 import { purgeCommentAutomationEvents } from "./handlers/purge-comment-automation-events"
 import { purgeErrorLogs } from "./handlers/purge-error-logs"
+import { purgeExpiredCallRecordings } from "./handlers/purge-expired-call-recordings"
+import { purgeExpiredConnectSessions } from "./handlers/purge-expired-connect-sessions"
+import { purgeInboundWebhookRequests } from "./handlers/purge-inbound-webhook-requests"
 import { purgeWhatsappSignupSessions } from "./handlers/purge-whatsapp-signup-sessions"
 import { purgeWorkspaces } from "./handlers/purge-workspaces"
 import { reconcileBroadcasts } from "./handlers/reconcile-broadcasts"
 import { reconcileMetaCatalogSyncs } from "./handlers/reconcile-meta-catalog-syncs"
 import { reconcileTenants } from "./handlers/reconcile-tenants"
+import { redispatchInboundWebhookRequests } from "./handlers/redispatch-inbound-webhook-requests"
 import { refreshChannelTokens } from "./handlers/refresh-channel-tokens"
 import { registerSchedules } from "./handlers/register-schedules"
+import { scanAiHandoverBulkRuns } from "./handlers/scan-ai-handover-bulk-runs"
 import { scanAppointmentReminders } from "./handlers/scan-appointment-reminders"
 import { scanCoexistRuns } from "./handlers/scan-coexist-runs"
 import { scanContactScans } from "./handlers/scan-contact-scans"
 import { scanSmartDelay } from "./handlers/scan-smart-delay"
+import { sweepStaleWhatsappCalls } from "./handlers/sweep-stale-whatsapp-calls"
 import { syncUserQuota } from "./handlers/sync-user-quota"
 import { teardownExpiredTrial } from "./handlers/teardown-expired-trial"
 import { unsubscribeExpiredTrials } from "./handlers/unsubscribe-expired-trials"
@@ -72,6 +90,14 @@ async function startScheduleWorker() {
           switch (job.data.type) {
             case ScheduleJobData.enqueueBroadcast:
               await enqueueBroadcast()
+              return
+
+            case ScheduleJobData.enqueueRecurringBroadcasts:
+              await enqueueRecurringBroadcasts()
+              return
+
+            case ScheduleJobData.materializeRecurringBroadcasts:
+              await materializeRecurringBroadcasts(job.data.data.items)
               return
 
             case ScheduleJobData.prepareBroadcast:
@@ -130,12 +156,28 @@ async function startScheduleWorker() {
               await maintainMacPartitions()
               return
 
+            case ScheduleJobData.maintainLeaderboardPartitions:
+              await maintainLeaderboardPartitions()
+              return
+
+            case ScheduleJobData.finishOverdueLeaderboards:
+              await finishOverdueLeaderboards()
+              return
+
+            case ScheduleJobData.maintainLeaderboardRankings:
+              await maintainLeaderboardRankings()
+              return
+
             case ScheduleJobData.scanCoexistRuns:
               await scanCoexistRuns()
               return
 
             case ScheduleJobData.scanContactScans:
               await scanContactScans()
+              return
+
+            case ScheduleJobData.scanAiHandoverBulkRuns:
+              await scanAiHandoverBulkRuns()
               return
 
             case ScheduleJobData.reconcileMetaCatalogSyncs:
@@ -150,12 +192,28 @@ async function startScheduleWorker() {
               await purgeWhatsappSignupSessions()
               return
 
+            case ScheduleJobData.purgeExpiredConnectSessions:
+              await purgeExpiredConnectSessions()
+              return
+
             case ScheduleJobData.purgeWorkspaces:
               await purgeWorkspaces()
               return
 
             case ScheduleJobData.clearExpiredSupportAccess:
               await clearExpiredSupportAccess()
+              return
+
+            case ScheduleJobData.googleAdsHousekeeping:
+              await googleAdsHousekeeping()
+              return
+
+            case ScheduleJobData.googleAdsSyncSetups:
+              await googleAdsSyncSetups()
+              return
+
+            case ScheduleJobData.dispatchProfileSnapshots:
+              await dispatchProfileSnapshots()
               return
 
             case ScheduleJobData.purgeBroadcasts:
@@ -172,8 +230,26 @@ async function startScheduleWorker() {
               await purgeErrorLogs()
               return
 
+            // Not workspace-scoped (the jobs they enqueue are guarded in the
+            // default worker), so no `isBlockedJob` guard here either.
+            case ScheduleJobData.redispatchInboundWebhookRequests:
+              await redispatchInboundWebhookRequests()
+              return
+
+            case ScheduleJobData.purgeInboundWebhookRequests:
+              await purgeInboundWebhookRequests()
+              return
+
             case ScheduleJobData.purgeCommentAutomationEvents:
               await purgeCommentAutomationEvents()
+              return
+
+            case ScheduleJobData.purgeExpiredCallRecordings:
+              await purgeExpiredCallRecordings()
+              return
+
+            case ScheduleJobData.sweepStaleWhatsappCalls:
+              await sweepStaleWhatsappCalls()
               return
 
             case ScheduleJobData.refreshChannelTokens:
@@ -194,7 +270,7 @@ async function startScheduleWorker() {
         },
       ),
     {
-      connection: getRedisConnection(),
+      connection: getQueueConnection(queueNames.enum.schedule),
       ...defaultWorkerOptions,
     },
   )

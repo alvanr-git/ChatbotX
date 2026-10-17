@@ -10,6 +10,7 @@ import {
 } from "@chatbotx.io/business/contact-scan"
 import { logProviderError } from "@chatbotx.io/business/error-log"
 import { sanitizePublicText } from "@chatbotx.io/business/errors"
+import { supportsProfileSnapshot } from "@chatbotx.io/database/partials"
 import type { CoexistRunWriteGuard } from "@chatbotx.io/database/repositories"
 import { isContactScanChannel } from "@chatbotx.io/utils/channel"
 import {
@@ -24,7 +25,7 @@ import {
   resolveUsageThrottle,
   sleepForUsageThrottle,
 } from "../coexist/usage-throttle"
-import { enqueueContactAvatarJobs } from "../contact/enqueue-avatar-jobs"
+import { enqueueProfileSnapshotJobs } from "../profile-snapshot/queue"
 import type { ContactScanErrorClassification } from "./adapter"
 import { contactScanAdapters } from "./adapter"
 
@@ -285,6 +286,9 @@ export const runContactScan = async (
       if (filtered.itemsToProcess.length > 0) {
         try {
           pageResult = await bulkImportChannelContacts({
+            captureProfileSnapshot: supportsProfileSnapshot(
+              context.inbox.channel,
+            ),
             inbox: context.inbox,
             workspaceId,
             contacts: filtered.itemsToProcess.map((entry) => entry.contact),
@@ -309,9 +313,9 @@ export const runContactScan = async (
         }
       }
 
-      // Contacts for this page are already durably committed at this point —
-      // quota accounting and avatar backfill are both best-effort from here
-      // on and must never fail or skip the page.
+      // Contacts for this page are already durably committed at this point.
+      // Quota accounting is best-effort and must never fail or skip the page;
+      // avatars hydrate lazily through the media proxy when viewed.
       if (pageResult && pageResult.importedContacts > 0 && ownerId) {
         await quotaEnforcementService
           .incrementBy({
@@ -327,21 +331,20 @@ export const runContactScan = async (
           })
       }
 
-      if (pageResult) {
-        // Only genuinely NEW contacts need an avatar backfill (existing
-        // links were already backfilled, or intentionally have none, on a
-        // prior page/run). Per-contact jobs mirror coexist's parity
-        // behavior; a batched profile fetch (v1 fetched ~50 profiles per
-        // Graph batch request) is a recommended future optimization for very
-        // large scans — not implemented here.
-        await enqueueContactAvatarJobs({
+      if (
+        supportsProfileSnapshot(context.inbox.channel) &&
+        pageResult?.newContactInboxIds.size
+      ) {
+        await enqueueProfileSnapshotJobs({
+          contactInboxIds: [...pageResult.newContactInboxIds.values()].map(
+            (link) => link.contactInboxId,
+          ),
+          inboxId: context.inbox.id,
           workspaceId,
-          contactInboxIds: pageResult.newContactInboxIds,
-          logContext: { runId, pageNumber },
-        }).catch((error) => {
-          logger.error(
-            { err: error, runId, pageNumber },
-            "[contact-scan] avatar enqueue failed — continuing",
+        }).catch((err) => {
+          logger.warn(
+            { err, inboxId: context.inbox.id, workspaceId },
+            "[contact-scan] Profile snapshot enqueue failed; recovery will retry",
           )
         })
       }

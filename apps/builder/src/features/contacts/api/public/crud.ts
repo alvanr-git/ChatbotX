@@ -1,14 +1,22 @@
-import { contactService, importService, UNSCOPED } from "@chatbotx.io/business"
+import { contactService, UNSCOPED } from "@chatbotx.io/business"
+import { getAuditActor } from "@chatbotx.io/business/audit"
+import { importService } from "@chatbotx.io/business/import"
 import { contactSources, genderTypes } from "@chatbotx.io/database/partials"
 import { z } from "zod"
 import { mcpSpec } from "@/lib/orpc/mcp-annotations"
 import {
+  possibleErrorsOnCreatingContact,
   possibleErrorsOnCreatingResource,
   possibleErrorsOnFindingResource,
   possibleErrorsOnListingResource,
   possibleErrorsOnMutatingResource,
+  possibleErrorsOnStartingContactImport,
+  possibleErrorsOnUpsertingContact,
+  possibleErrorsOnWritingContactFields,
 } from "@/lib/orpc/orpc-error-helper"
+import { publicContactIdentifier } from "@/lib/public-api/contact-identifier"
 import { workspaceTokenAuthAPIForScope } from "@/orpc"
+import { resolveContactAvatars } from "../../queries/resolve-contact-avatars"
 import {
   createContactRequest,
   updateContactFieldRequest,
@@ -32,6 +40,13 @@ import {
 
 const workspaceTokenAuthAPI = workspaceTokenAuthAPIForScope("contacts")
 
+const pickAuditRequestInfo = (
+  actor: ReturnType<typeof getAuditActor>,
+): { ipAddress?: string; userAgent?: string } => ({
+  ipAddress: actor?.ipAddress,
+  userAgent: actor?.userAgent,
+})
+
 export const contactsCrudPublicRouter = {
   list: workspaceTokenAuthAPI
     .route({
@@ -39,7 +54,7 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts",
       summary: "List contacts",
       description:
-        "Use this to find contacts by keyword or filter before inspecting one with `contacts.get` or sending a message with `contacts.sendMessage`. Supports `include` and `withCount` to shape the response.",
+        "Use this to find contacts by name, keyword, or filter before inspecting one with `contacts.get` or sending a message with `contacts.sendMessage`. Supports `include` and `withCount` to shape the response. Call `contacts.listFilterFields` first to discover `contactFilter` fields, including custom fields.",
       tags: ["Contacts"],
       spec: mcpSpec({ visibility: "default" }),
     })
@@ -48,41 +63,56 @@ export const contactsCrudPublicRouter = {
     .errors(possibleErrorsOnListingResource)
     .handler(async ({ context, input }) => {
       const { include, withCount, ...rest } = input
-      return await contactService.list({
+      const result = await contactService.list({
         ...rest,
         workspaceId: context.workspace.id,
         scope: UNSCOPED,
         include,
         withCount,
       })
+      // Same avatar resolution as the builder list: a stored key or no-avatar
+      // sentinel becomes a usable URL.
+      return {
+        ...result,
+        data: await resolveContactAvatars(result.data, context.workspace.id, {
+          publicUrls: true,
+        }),
+      }
     }),
 
+  // Deprecated — use `contacts.list` instead (same filter shape, as a
+  // query-string request). Kept for backward compatibility with the
+  // pre-consolidation `/search` path; hidden from MCP/CLI tool listings.
   search: workspaceTokenAuthAPI
     .route({
       method: "POST",
       path: "/v1/contacts/search",
       summary: "Search contacts with filter body",
       description:
-        "Use this when a large or nested `contactFilter` cannot fit conveniently in query parameters. It returns the same contact data as `contacts.list`, including `include` and `withCount` options.",
+        "Deprecated — `contacts.list` accepts the identical `contactFilter` shape as a query-string request; this POST-with-body variant is kept only for callers that have not migrated.",
       tags: ["Contacts"],
-      // A POST that reads, not writes — `readOnlyHint: true` keeps it
-      // visible to a `read_only` token (`isVisibleForScope` in
-      // `apps/mcp-server/src/openapi-loader.ts`), which would otherwise
-      // hide every non-GET tool.
-      spec: mcpSpec({ visibility: "default", readOnlyHint: true }),
+      deprecated: true,
     })
     .input(listContactsPublicRequest)
     .output(listContactsResponse)
     .errors(possibleErrorsOnCreatingResource)
     .handler(async ({ context, input }) => {
       const { include, withCount, ...rest } = input
-      return await contactService.list({
+      const result = await contactService.list({
         ...rest,
         workspaceId: context.workspace.id,
         scope: UNSCOPED,
         include,
         withCount,
       })
+      // Same avatar resolution as the builder list: a stored key or no-avatar
+      // sentinel becomes a usable URL.
+      return {
+        ...result,
+        data: await resolveContactAvatars(result.data, context.workspace.id, {
+          publicUrls: true,
+        }),
+      }
     }),
 
   count: workspaceTokenAuthAPI
@@ -91,7 +121,7 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/count",
       summary: "Count contacts matching filter",
       description:
-        "Counts contacts matching the same filter shape as `contacts.list`/`contacts.search`, without paginating the rows.",
+        "Counts contacts matching the same filter shape as `contacts.list`, without paginating the rows.",
       tags: ["Contacts"],
     })
     .input(countContactsPublicRequest)
@@ -112,18 +142,13 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/{identifier}",
       summary: "Get contact",
       description:
-        "Use this after locating a prefixed id, email, or phone identifier to inspect one contact. Call `contacts.list` to search first, or use `contacts.sendMessage` to contact the result.",
+        "Use this to look up a contact by email, phone, or id after locating a prefixed identifier. Call `contacts.list` to search first, or use `contacts.sendMessage` to contact the result.",
       tags: ["Contacts"],
       spec: mcpSpec({ visibility: "default" }),
     })
     .input(
       z.object({
-        identifier: z
-          .string()
-          .min(1)
-          .describe(
-            "Contact identifier: the numeric contact id, an email address, or a phone number.",
-          ),
+        identifier: publicContactIdentifier,
       }),
     )
     .output(contactResponse)
@@ -133,10 +158,16 @@ export const contactsCrudPublicRouter = {
         identifier: input.identifier,
         workspaceId: context.workspace.id,
       })
-      return await contactService.findPublicContactOrFail({
+      const contact = await contactService.findPublicContactOrFail({
         id: contactId,
         workspaceId: context.workspace.id,
       })
+      const [resolved] = await resolveContactAvatars(
+        [contact],
+        context.workspace.id,
+        { publicUrls: true },
+      )
+      return resolved
     }),
 
   create: workspaceTokenAuthAPI
@@ -145,13 +176,13 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts",
       summary: "Create contact",
       description:
-        "Adds a workspace contact outside a channel conversation, with contact details for later messaging. Use `contacts.list` to check for an existing contact and `contacts.sendMessage` after creating one.",
+        "Adds a contact to the inbox given by `inboxId` and opens its conversation, so `contacts.sendMessage` works right after. Use `contacts.list` to check for an existing contact first.",
       tags: ["Contacts"],
       spec: mcpSpec({ visibility: "default" }),
     })
     .input(createContactRequest)
     .output(contactResponse)
-    .errors(possibleErrorsOnCreatingResource)
+    .errors(possibleErrorsOnCreatingContact)
     .handler(async ({ context, input }) => {
       const { contact } = await contactService.createWithInbox({
         workspaceId: context.workspace.id,
@@ -163,13 +194,17 @@ export const contactsCrudPublicRouter = {
       })
     }),
 
+  // Deprecated — use `contacts.list` with a `contactFilter` instead. Kept
+  // for backward compatibility with the pre-consolidation
+  // `/find-by-custom-field` path; hidden from MCP/CLI tool listings.
   findByCustomField: workspaceTokenAuthAPI
     .route({
       method: "GET",
       path: "/v1/contacts/find-by-custom-field",
       summary: "List contacts by custom field",
       description:
-        "Find contacts by custom field value. It will return maximum 100 contacts. The results are sorted by the last custom field value update for a contact.",
+        "Deprecated — `contacts.list` with a `contactFilter` covers every case this route did, including the `email`/`phone` custom-field values; this dedicated route is kept only for callers that have not migrated.",
+      deprecated: true,
       tags: ["Contacts"],
     })
     .input(publicListContactsByCustomFieldRequest)
@@ -189,13 +224,13 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/import",
       summary: "Import contacts from file",
       description:
-        "Starts an asynchronous bulk import of contacts from a previously uploaded file (`fileId`) into the given inbox. Returns an `importId` immediately; the import itself runs in the background, so newly imported contacts may not appear in `contacts.list` right away.",
+        "Starts an asynchronous bulk import of contacts from an uploaded CSV into an inbox. Flow: `contacts.getImportTemplate` for the format, `contacts.createImportUpload` to get a `fileId` and upload URL, upload the file, `contacts.peekImportHeaders` to read its columns, then call this with `channel`, `inboxId`, `fileId` and the column names: `phoneNumber`, `contactId` (a channel user id; required unless the channel is whatsapp), `email`, `firstName`, `lastName`, `sourceUserId` (WhatsApp BSUID). Optional: `fieldMapping` (up to 10 {column, customFieldId}), `tagId` for every contact, `countryCode` for phone normalization, `timezone`. Returns an `importId` immediately; track it with `contacts.getImport`. Only one import can run per workspace: while one is pending or processing this returns 409.",
       successStatus: 201,
       tags: ["Contacts"],
     })
     .input(importContactsRequest)
     .output(importContactsPublicResponse)
-    .errors(possibleErrorsOnCreatingResource)
+    .errors(possibleErrorsOnStartingContactImport)
     .handler(
       async ({ context, input }) =>
         await importService.startContactImport({
@@ -204,28 +239,60 @@ export const contactsCrudPublicRouter = {
           inboxId: input.inboxId,
           fileId: input.fileId,
           meta: buildContactImportMeta(input),
+          // The token path has no session user; the audit context (owner +
+          // token id) still carries the caller's IP and user agent.
+          actor: pickAuditRequestInfo(getAuditActor()),
         }),
     ),
 
   update: workspaceTokenAuthAPI
     .route({
-      method: "PUT",
+      method: "PATCH",
       path: "/v1/contacts/{identifier}",
       summary: "Update contact fields",
       description:
-        "Overwrites the given standard and/or custom fields on the contact identified by `identifier`; fields omitted from the body are left unchanged.",
+        "Overwrites the given standard and/or custom fields on the contact identified by `identifier`; fields omitted from the body are left unchanged. Keys that are not a standard field or a custom field id of this workspace are ignored.",
       successStatus: 204,
       tags: ["Contacts"],
     })
     .input(
       z
         .object({
-          identifier: z
-            .string()
-            .min(1)
-            .describe(
-              "Contact identifier: the numeric contact id, an email address, or a phone number.",
-            ),
+          identifier: publicContactIdentifier,
+        })
+        .and(updateContactFieldRequest),
+    )
+    .errors(possibleErrorsOnWritingContactFields)
+    .handler(async ({ context, input }) => {
+      const { identifier, ...fields } = input
+      const contactId = await contactService.resolveIdByIdentifier({
+        identifier,
+        workspaceId: context.workspace.id,
+      })
+      await contactService.updateFieldsAndCustomFields(
+        { workspaceId: context.workspace.id, id: contactId },
+        fields,
+      )
+    }),
+
+  // Deprecated — use `contacts.update` instead. Kept for backward
+  // compatibility with the pre-consolidation `PUT` method on this path;
+  // hidden from MCP/CLI tool listings.
+  updateLegacy: workspaceTokenAuthAPI
+    .route({
+      method: "PUT",
+      path: "/v1/contacts/{identifier}",
+      summary: "Update contact fields",
+      description:
+        "Deprecated — this route used PUT for the same merge-style update `contacts.update` (PATCH) performs today; omitted fields were always left unchanged on both.",
+      successStatus: 204,
+      deprecated: true,
+      tags: ["Contacts"],
+    })
+    .input(
+      z
+        .object({
+          identifier: publicContactIdentifier,
         })
         .and(updateContactFieldRequest),
     )
@@ -254,12 +321,7 @@ export const contactsCrudPublicRouter = {
     })
     .input(
       z.object({
-        identifier: z
-          .string()
-          .min(1)
-          .describe(
-            "Contact identifier: the numeric contact id, an email address, or a phone number.",
-          ),
+        identifier: publicContactIdentifier,
       }),
     )
     .errors(possibleErrorsOnMutatingResource)
@@ -281,18 +343,13 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/{identifier}/block",
       summary: "Block contact",
       description:
-        "Marks the contact identified by `identifier` as blocked, preventing further inbound messages from reaching the workspace. Use `contacts.unblock` to reverse this.",
+        "Marks the contact identified by `identifier` as blocked (sets `blockedAt`). It does not reject inbound messages: the next message the contact sends unblocks it automatically. Use `contacts.unblock` to clear it yourself.",
       successStatus: 204,
       tags: ["Contacts"],
     })
     .input(
       z.object({
-        identifier: z
-          .string()
-          .min(1)
-          .describe(
-            "Contact identifier: the numeric contact id, an email address, or a phone number.",
-          ),
+        identifier: publicContactIdentifier,
       }),
     )
     .errors(possibleErrorsOnMutatingResource)
@@ -313,18 +370,13 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/{identifier}/unblock",
       summary: "Unblock contact",
       description:
-        "Reverses `contacts.block` for the contact identified by `identifier`, allowing inbound messages again.",
+        "Clears the blocked mark (`blockedAt`) that `contacts.block` set on the contact identified by `identifier`.",
       successStatus: 204,
       tags: ["Contacts"],
     })
     .input(
       z.object({
-        identifier: z
-          .string()
-          .min(1)
-          .describe(
-            "Contact identifier: the numeric contact id, an email address, or a phone number.",
-          ),
+        identifier: publicContactIdentifier,
       }),
     )
     .errors(possibleErrorsOnMutatingResource)
@@ -345,17 +397,12 @@ export const contactsCrudPublicRouter = {
       path: "/v1/contacts/{identifier}/upsert",
       summary: "Upsert contact",
       description:
-        "Creates the contact identified by `identifier` if it doesn't exist yet, otherwise updates the given fields on the existing one.",
+        "Updates the given fields on the contact identified by `identifier`, or creates it when no contact matches. Only `email:` and `phone:` identifiers can create (an unknown `id:` returns 404), and a new contact is added to the workspace's webchat inbox (404 when there is none).",
       tags: ["Contacts"],
     })
     .input(
       z.object({
-        identifier: z
-          .string()
-          .min(1)
-          .describe(
-            "Contact identifier: the numeric contact id, an email address, or a phone number.",
-          ),
+        identifier: publicContactIdentifier,
         firstName: z
           .string()
           .trim()
@@ -389,7 +436,7 @@ export const contactsCrudPublicRouter = {
       }),
     )
     .output(contactResponse)
-    .errors(possibleErrorsOnCreatingResource)
+    .errors(possibleErrorsOnUpsertingContact)
     .handler(async ({ context, input }) => {
       const workspaceId = context.workspace.id
       const { identifier, avatar, ...fields } = input

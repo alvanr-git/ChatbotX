@@ -3,21 +3,26 @@ import {
   type DatabaseClient,
   db,
   eq,
+  exists,
   inArray,
+  isNull,
+  lt,
   or,
   type SQL,
   sql,
 } from "@chatbotx.io/database/client"
-import {
-  type ChannelType,
-  type ConversationAttributes,
-  dmConversationUsesSourceId,
+import type {
+  ConversationAttributes,
+  ConversationQuickReplyChallenge,
 } from "@chatbotx.io/database/partials"
 import {
+  assignTargetIfUnassigned,
+  assignUserIfUnassigned,
+  contactInboxOperationalColumns,
   createMessageRepository,
   getSafeSinceTime,
 } from "@chatbotx.io/database/repositories"
-import { conversationModel } from "@chatbotx.io/database/schema"
+import { conversationModel, inboxModel } from "@chatbotx.io/database/schema"
 import type {
   AttachmentModel,
   ContactCustomFieldModel,
@@ -42,18 +47,14 @@ import {
   emitConversationTransferredToHuman,
   emitConversationUnassigned,
 } from "@chatbotx.io/events"
-import {
-  type RealtimeEventConversationUpdatedChanges,
-  RealtimeEventType,
-} from "@chatbotx.io/partysocket-config"
+import { RealtimeEventType } from "@chatbotx.io/partysocket-config"
 import { withCache } from "@chatbotx.io/redis"
 import { createId } from "@chatbotx.io/utils"
 import {
-  ChatJobAction,
-  chatQueue,
   NotificationJobAction,
   notificationQueue,
 } from "@chatbotx.io/worker-config"
+import type { PgUpdateSetSource } from "drizzle-orm/pg-core"
 import { BaseService } from "../base.service"
 import { contactService } from "../contact"
 import type {
@@ -64,6 +65,9 @@ import { contactInboxService } from "../contact-inbox/service"
 import { inboxTeamService } from "../enterprise/inbox-team/service"
 import { ChatbotXException, notFoundException } from "../errors"
 import { logger } from "../logger"
+import { publishToWorkspaceParty } from "../platform/realtime-broadcast"
+import { smartDelayService } from "../smart-delay/service"
+import { threadControlService } from "../thread-control/service"
 import { workspaceMemberService } from "../workspace-member/service"
 
 export const BOT_DISABLE_DURATION_MS = 24 * 60 * 60 * 1000
@@ -124,6 +128,28 @@ export type ConversationWithContactInboxes = ConversationModel & {
   contactInboxes: ContactInboxModel[]
 }
 
+const quickReplyChallengeJson = () =>
+  sql`${conversationModel.additionalAttributes}->'challenge'`
+
+const isQuickReplyChallenge = () =>
+  sql`${quickReplyChallengeJson()}->>'type' = 'quickReply'`
+
+/**
+ * SET fragment that drops a quick-reply challenge and leaves every other
+ * challenge (e.g. Get User Data `type: "step"`) untouched. Reused by the
+ * handoff executor.
+ */
+const dropChallenge = () =>
+  sql`${conversationModel.additionalAttributes} - 'challenge'`
+
+const setChallenge = (
+  challenge: NonNullable<ConversationAttributes["challenge"]>,
+) =>
+  sql`jsonb_set(COALESCE(${conversationModel.additionalAttributes}, '{}'::jsonb), '{challenge}', ${JSON.stringify(challenge)}::jsonb, true)`
+
+export const sqlDropQuickReplyChallenge = () =>
+  sql`CASE WHEN ${isQuickReplyChallenge()} THEN ${dropChallenge()} ELSE ${conversationModel.additionalAttributes} END`
+
 class ConversationService extends BaseService {
   async markAgentReplied(input: { id: string; workspaceId: string; at: Date }) {
     await db
@@ -158,18 +184,16 @@ class ConversationService extends BaseService {
   async findDMByContact(props: {
     workspaceId: string
     contactId: string
-    channel?: ChannelType | null
     tx?: DatabaseClient
   }): Promise<ConversationModel | undefined> {
-    const { tx = db, workspaceId, contactId, channel } = props
-    // Read receipts always target the DM conversation (sourceId IS NULL). Only
-    // TikTok and Facebook comment conversations have a non-null sourceId.
-    const usesSourceId = dmConversationUsesSourceId(channel)
+    const { tx = db, workspaceId, contactId } = props
+    // The DM conversation is `sourceId IS NULL` on every channel; a non-null
+    // sourceId is a comment thread, keyed by the post id.
     return await tx.query.conversationModel.findFirst({
       where: {
         workspaceId,
         contactId,
-        sourceId: usesSourceId ? { isNotNull: true } : { isNull: true },
+        sourceId: { isNull: true },
       },
     })
   }
@@ -177,32 +201,24 @@ class ConversationService extends BaseService {
   async findDMByContactIds(props: {
     workspaceId: string
     contactIds: string[]
-    channel?: ChannelType | null
     tx?: DatabaseClient
   }): Promise<ConversationModel[]> {
-    const { tx = db, workspaceId, contactIds, channel } = props
+    const { tx = db, workspaceId, contactIds } = props
     const uniqueContactIds = Array.from(new Set(contactIds))
     if (uniqueContactIds.length === 0) {
       return []
     }
 
-    // Most channels store the DM conversation with a null sourceId. TikTok is
-    // the outlier: its DM is keyed by the channel's conversation_id held in
-    // sourceId, so it must be resolved with sourceId IS NOT NULL.
-    const usesSourceId = dmConversationUsesSourceId(channel)
-
-    const conversations = await tx.query.conversationModel.findMany({
+    // The DM conversation is `sourceId IS NULL` on every channel; a non-null
+    // sourceId is a comment thread, keyed by the post id. At most one row per
+    // contact, via the Conversation_contactId_dm_key unique index.
+    return await tx.query.conversationModel.findMany({
       where: {
         workspaceId,
         contactId: { in: uniqueContactIds },
-        sourceId: usesSourceId ? { isNotNull: true } : { isNull: true },
+        sourceId: { isNull: true },
       },
     })
-
-    // Both DM paths return at most one conversation per contact: the null-sourceId
-    // path via the Conversation_contactId_dm_key unique index, and TikTok's
-    // non-null path because a TikTok contact has a single conversation.
-    return conversations
   }
 
   /**
@@ -225,12 +241,7 @@ class ConversationService extends BaseService {
       return
     }
 
-    return await this.findDMByContact({
-      workspaceId,
-      contactId,
-      channel: contactInbox.channel as ChannelType,
-      tx,
-    })
+    return await this.findDMByContact({ workspaceId, contactId, tx })
   }
 
   async updateChallenge(props: {
@@ -240,8 +251,8 @@ class ConversationService extends BaseService {
   }): Promise<void> {
     const additionalAttributes =
       props.challenge === undefined
-        ? sql`${conversationModel.additionalAttributes} - 'challenge'`
-        : sql`jsonb_set(COALESCE(${conversationModel.additionalAttributes}, '{}'::jsonb), '{challenge}', ${JSON.stringify(props.challenge)}::jsonb, true)`
+        ? dropChallenge()
+        : setChallenge(props.challenge)
 
     const [row] = await db
       .update(conversationModel)
@@ -279,7 +290,7 @@ class ConversationService extends BaseService {
     const rows = await db
       .update(conversationModel)
       .set({
-        additionalAttributes: sql`${conversationModel.additionalAttributes} - 'challenge'`,
+        additionalAttributes: dropChallenge(),
       })
       .where(
         and(
@@ -310,7 +321,7 @@ class ConversationService extends BaseService {
     const rows = await db
       .update(conversationModel)
       .set({
-        additionalAttributes: sql`jsonb_set(COALESCE(${conversationModel.additionalAttributes}, '{}'::jsonb), '{challenge}', ${JSON.stringify(props.challenge)}::jsonb, true)`,
+        additionalAttributes: setChallenge(props.challenge),
       })
       .where(
         and(
@@ -324,14 +335,160 @@ class ConversationService extends BaseService {
     return rows.length > 0
   }
 
+  /**
+   * Clears a pending quick-reply retry. Never touches a Get User Data
+   * (`type: "step"`) challenge. Returns whether a row changed, so concurrent
+   * callers can tell who won. `attempts` makes it a compare-and-set on the
+   * current attempt count (mirrors `setQuickReplyChallengeAttempts`), so a
+   * stale caller cannot clear a freshly re-armed challenge.
+   */
+  async clearQuickReplyChallenge(props: {
+    tx?: DatabaseClient
+    workspaceId: string
+    conversationId: string
+    nodeId?: string
+    exceptFlowId?: string
+    attempts?: number
+  }): Promise<boolean> {
+    const { tx = db } = props
+    const challenge = quickReplyChallengeJson()
+    const rows = await tx
+      .update(conversationModel)
+      .set({ additionalAttributes: dropChallenge() })
+      .where(
+        and(
+          eq(conversationModel.workspaceId, props.workspaceId),
+          eq(conversationModel.id, props.conversationId),
+          isQuickReplyChallenge(),
+          props.nodeId
+            ? sql`${challenge}->'data'->>'nodeId' = ${props.nodeId}`
+            : undefined,
+          props.exceptFlowId
+            ? sql`${challenge}->'data'->>'flowId' <> ${props.exceptFlowId}`
+            : undefined,
+          props.attempts === undefined
+            ? undefined
+            : sql`(${challenge}->'data'->>'attempts')::int = ${props.attempts}`,
+        ),
+      )
+      .returning({ id: conversationModel.id })
+
+    return rows.length > 0
+  }
+
+  /**
+   * Writes a quick-reply retry challenge only while the bot is enabled, so a
+   * pause landing between the caller's `ensureActive` read and this write
+   * cannot leave a challenge on a handed-off conversation. Returns whether it
+   * was written.
+   */
+  async armQuickReplyChallenge(props: {
+    workspaceId: string
+    conversationId: string
+    challenge: ConversationQuickReplyChallenge
+  }): Promise<boolean> {
+    const rows = await db
+      .update(conversationModel)
+      .set({
+        additionalAttributes: setChallenge(props.challenge),
+      })
+      .where(
+        and(
+          eq(conversationModel.workspaceId, props.workspaceId),
+          eq(conversationModel.id, props.conversationId),
+          eq(conversationModel.botEnabled, true),
+        ),
+      )
+      .returning({ id: conversationModel.id })
+
+    return rows.length > 0
+  }
+
+  /** Compare-and-set on `attempts`: only one concurrent retry wins. */
+  async setQuickReplyChallengeAttempts(props: {
+    tx?: DatabaseClient
+    workspaceId: string
+    conversationId: string
+    nodeId: string
+    fromAttempts: number
+    toAttempts: number
+  }): Promise<boolean> {
+    const { tx = db } = props
+    const challenge = quickReplyChallengeJson()
+    const rows = await tx
+      .update(conversationModel)
+      .set({
+        additionalAttributes: sql`jsonb_set(${conversationModel.additionalAttributes}, '{challenge,data,attempts}', to_jsonb(${props.toAttempts}::int), false)`,
+      })
+      .where(
+        and(
+          eq(conversationModel.workspaceId, props.workspaceId),
+          eq(conversationModel.id, props.conversationId),
+          isQuickReplyChallenge(),
+          sql`${challenge}->'data'->>'nodeId' = ${props.nodeId}`,
+          sql`(${challenge}->'data'->>'attempts')::int = ${props.fromAttempts}`,
+        ),
+      )
+      .returning({ id: conversationModel.id })
+
+    return rows.length > 0
+  }
+
+  async clearQuickReplyChallengesForStaleVersion(props: {
+    tx?: DatabaseClient
+    workspaceId: string
+    flowId: string
+    currentFlowVersionId: string
+  }): Promise<number> {
+    const { tx = db } = props
+    const challenge = quickReplyChallengeJson()
+    const rows = await tx
+      .update(conversationModel)
+      .set({ additionalAttributes: dropChallenge() })
+      .where(
+        and(
+          eq(conversationModel.workspaceId, props.workspaceId),
+          isQuickReplyChallenge(),
+          sql`${challenge}->'data'->>'flowId' = ${props.flowId}`,
+          sql`${challenge}->'data'->>'flowVersionId' IS NOT NULL`,
+          sql`${challenge}->'data'->>'flowVersionId' <> ${props.currentFlowVersionId}`,
+        ),
+      )
+      .returning({ id: conversationModel.id })
+
+    return rows.length
+  }
+
+  /**
+   * A contact can hold a DM conversation and one comment thread per post, so
+   * "the contact's conversation" is a choice, not a lookup. The one query
+   * evaluates that choice in a single snapshot: a concurrently created DM
+   * cannot appear between a DM probe and the comment-thread fallback.
+   *
+   * The DM thread always wins. Every caller is a
+   * `/v1/contacts/{identifier}/messages` handler — send, list and get — and a
+   * direct message is what all three are about. A contact who has only ever
+   * commented has no DM row to prefer and resolves to their newest comment
+   * thread instead. Equal activity timestamps fall back to `id` so the result
+   * stays deterministic.
+   */
   async findByContactWithInboxes(props: {
     contactId: string
     workspaceId: string
     tx?: DatabaseClient
   }): Promise<ConversationWithContactInboxes | undefined> {
     const { tx = db, contactId, workspaceId } = props
+
     return (await tx.query.conversationModel.findFirst({
       where: { contactId, workspaceId },
+      // `sourceId IS NOT NULL` sorts false (DM) before true (comment thread).
+      // `lastActivityAt` is nullable with no default, so `NULLS LAST` is
+      // explicit, then id is the stable tie-breaker.
+      orderBy: (table) => [
+        sql`${table.sourceId} IS NOT NULL`,
+        sql`${table.lastActivityAt} DESC NULLS LAST`,
+        sql`${table.id} DESC`,
+      ],
       with: { contactInboxes: true },
     })) as ConversationWithContactInboxes | undefined
   }
@@ -339,9 +496,25 @@ class ConversationService extends BaseService {
   /**
    * Shared by the public `/v1/contacts/{identifier}/messages|auto-replies|flows`
    * handlers: resolve the contact's conversation and the specific
-   * `ContactInbox` to send through (or the first one when `inboxId` is
-   * omitted), throwing the same 404 either way instead of repeating both
-   * lookups + both `notFoundException` calls at every call site.
+   * `ContactInbox` to send through, throwing the same 404 either way instead of
+   * repeating both lookups + both `notFoundException` calls at every call site.
+   *
+   * Both halves used to be picked arbitrarily, and a send that resolved wrong
+   * failed asynchronously — the handler had already answered 204.
+   *
+   * - The conversation comes from `findByContactWithInboxes`, which settles the
+   *   DM-vs-comment-thread choice for the read paths too.
+   * - The `ContactInbox` now comes from `findRecentByContactId`. The relation
+   *   on the conversation row is keyed by `contactId`, so it carries every
+   *   inbox the contact has across every channel — taking `[0]` of an unordered
+   *   list could address the wrong page entirely. An explicit `inboxId` still
+   *   wins and is still matched against that relation.
+   *
+   * The channel is therefore decided by the `ContactInbox` alone — a
+   * `Conversation` carries no inbox or channel column, and the single DM row a
+   * contact owns is shared across all of their channels. So for a contact
+   * connected on more than one channel, omitting `inboxId` makes the channel a
+   * best guess ("most recently active"). Pass `inboxId` when it must be exact.
    */
   async resolveContactInboxForSend(props: {
     contactId: string
@@ -362,7 +535,10 @@ class ConversationService extends BaseService {
 
     const contactInbox = inboxId
       ? conversation.contactInboxes.find((ci) => ci.inboxId === inboxId)
-      : conversation.contactInboxes[0]
+      : await contactInboxService.findRecentByContactId({
+          workspaceId,
+          contactId,
+        })
     if (!contactInbox) {
       throw notFoundException("Conversation not found")
     }
@@ -375,9 +551,8 @@ class ConversationService extends BaseService {
    * `createMessageAction`: resolve the `ContactInbox` to send an outgoing
    * message through, scoped to an already-identified `conversationId` rather
    * than `contactId` (see `resolveContactInboxForSend` for the public-API
-   * variant, which starts from `contactId` and falls back to the
-   * conversation's first `ContactInbox` instead of the most recently
-   * active one).
+   * variant, which starts from `contactId` and resolves the conversation too).
+   * Both settle on the same `ContactInbox` for a given contact.
    */
   async resolveContactInboxForConversation(props: {
     conversation: Pick<ConversationModel, "contactId">
@@ -405,11 +580,14 @@ class ConversationService extends BaseService {
   }): Promise<ConversationModel | undefined> {
     const { tx = db, contactId } = props
     // A contact can have multiple conversations (DM + comment threads), all
-    // sharing the same ContactInbox — order by lastActivityAt so callers get
-    // the conversation the contact is actually active in, not an arbitrary one.
+    // sharing the same ContactInbox — order by activity so callers get the
+    // conversation the contact is actually active in, not an arbitrary one.
+    // NULLS LAST keeps never-active conversations last; id resolves equal
+    // activity timestamps deterministically.
     return await tx.query.conversationModel.findFirst({
       where: { contactId },
-      orderBy: { lastActivityAt: "desc" },
+      orderBy: (table) =>
+        sql`${table.lastActivityAt} DESC NULLS LAST, ${table.id} DESC`,
     })
   }
 
@@ -531,7 +709,10 @@ class ConversationService extends BaseService {
             tags: true,
           },
         },
-        contactInboxes: { with: { inbox: true } },
+        contactInboxes: {
+          columns: contactInboxOperationalColumns,
+          with: { inbox: true },
+        },
         messages: true,
         assignedUser: true,
         assignedInboxTeam: true,
@@ -542,13 +723,70 @@ class ConversationService extends BaseService {
 
   // ─── Writes ──────────────────────────────────────────────────────────────
 
+  /**
+   * Persists the channel's own conversation id onto an existing row when the
+   * channel newly reported one, or reported a different one.
+   *
+   * TikTok can rotate `conversation_id` for the same contact, and rows created
+   * before this field existed carry none, so the write has to be idempotent
+   * rather than create-only — otherwise an outbound DM on a pre-existing
+   * conversation has nothing to address.
+   */
+  private async syncChannelConversationId(props: {
+    conversation: ConversationModel
+    channelConversationId: string
+    tx: DatabaseClient
+  }): Promise<ConversationModel> {
+    const { conversation, channelConversationId, tx } = props
+    if (
+      conversation.additionalAttributes?.channelConversationId ===
+      channelConversationId
+    ) {
+      return conversation
+    }
+
+    const updated = await tx
+      .update(conversationModel)
+      .set({
+        additionalAttributes: {
+          ...conversation.additionalAttributes,
+          channelConversationId,
+        },
+      })
+      .where(eq(conversationModel.id, conversation.id))
+      .returning()
+      .then((result) => result[0])
+
+    if (!updated) {
+      return conversation
+    }
+
+    await this.invalidate({
+      workspaceId: conversation.workspaceId,
+      ids: [conversation.id],
+    })
+    return updated
+  }
+
   async findOrCreate(props: {
     workspaceId: string
     contactId: string
     sourceId: string | null
+    /**
+     * The channel's own conversation identifier (TikTok's `conversation_id`),
+     * stored on `additionalAttributes` rather than keying the row. See
+     * `IncomingContact.channelConversationId`.
+     */
+    channelConversationId?: string | null
     tx?: DatabaseClient
   }): Promise<ConversationModel> {
-    const { workspaceId, contactId, sourceId, tx = db } = props
+    const {
+      workspaceId,
+      contactId,
+      sourceId,
+      channelConversationId,
+      tx = db,
+    } = props
 
     const findExisting = () =>
       tx.query.conversationModel.findFirst({
@@ -561,12 +799,26 @@ class ConversationService extends BaseService {
 
     const existing = await findExisting()
     if (existing) {
-      return existing
+      return channelConversationId
+        ? await this.syncChannelConversationId({
+            conversation: existing,
+            channelConversationId,
+            tx,
+          })
+        : existing
     }
 
     const created = await tx
       .insert(conversationModel)
-      .values({ id: createId(), workspaceId, contactId, sourceId })
+      .values({
+        id: createId(),
+        workspaceId,
+        contactId,
+        sourceId,
+        additionalAttributes: channelConversationId
+          ? { channelConversationId }
+          : undefined,
+      })
       .onConflictDoNothing()
       .returning()
       .then((result) => result[0])
@@ -576,19 +828,20 @@ class ConversationService extends BaseService {
       // while a comment automation resolves it) won the partial unique index —
       // `Conversation_contactId_dm_key` for DMs, otherwise
       // `Conversation_contactId_sourceId_key` — so the insert produced no row.
-      // Re-read rather than fail: the winner already broadcast
-      // `conversationCreated`, so this path must not broadcast again.
+      // Re-read rather than fail: the winner already created the conversation,
+      // so this path has no additional side effect.
       const concurrent = await findExisting()
       if (!concurrent) {
         throw new Error("Conversation not found")
       }
-      return concurrent
+      return channelConversationId
+        ? await this.syncChannelConversationId({
+            conversation: concurrent,
+            channelConversationId,
+            tx,
+          })
+        : concurrent
     }
-
-    await this.broadcastConversationEvent(workspaceId, {
-      eventType: RealtimeEventType.conversationCreated,
-      data: created,
-    })
 
     return created
   }
@@ -620,14 +873,6 @@ class ConversationService extends BaseService {
       )
     await this.invalidate({ workspaceId, ids })
 
-    await this.broadcastConversationEvent(workspaceId, {
-      eventType: RealtimeEventType.conversationUpdated,
-      data: {
-        conversationIds: ids,
-        changes: { archivedAt: archivedAt?.toISOString() ?? null },
-      },
-    })
-
     const eventType = archivedAt
       ? "conversation:archived"
       : "conversation:unarchived"
@@ -641,6 +886,7 @@ class ConversationService extends BaseService {
           props.userId,
         )
       }
+      await this.releaseOwnedThreads({ workspaceId, conversations, archivedAt })
     }
 
     for (const conv of conversations) {
@@ -651,6 +897,28 @@ class ConversationService extends BaseService {
         occurredAt: new Date(),
         metadata: { triggerContext },
       })
+    }
+  }
+
+  /**
+   * Archiving ends the conversation, so every routing thread we own for these
+   * contacts is released (the owner keeps a thread while the customer stays
+   * active; stopping sends does not free it). Best effort by design: the
+   * archive is already written, so a failure to enqueue is logged and the
+   * thread simply idles out after 24h of customer silence.
+   */
+  private async releaseOwnedThreads(props: {
+    workspaceId: string
+    conversations: { id: string; contactId: string }[]
+    archivedAt: Date
+  }): Promise<void> {
+    try {
+      await threadControlService.releaseOwnedThreadsForContacts(props)
+    } catch (err) {
+      logger.warn(
+        { err, workspaceId: props.workspaceId },
+        "Unable to enqueue thread release after archiving conversations",
+      )
     }
   }
 
@@ -889,6 +1157,7 @@ class ConversationService extends BaseService {
       conversations,
       assignedUserId,
       assignedInboxTeamId,
+      assignedBy,
       triggerContext,
       tx = db,
     } = props
@@ -903,21 +1172,54 @@ class ConversationService extends BaseService {
         ),
       )
       .returning()
+
+    await this.publishAssignmentChanges({
+      workspaceId,
+      conversations: updated,
+      assignedUserId,
+      assignedInboxTeamId,
+      assignedBy,
+      triggerContext,
+    })
+
+    return updated
+  }
+
+  /**
+   * Side effects of an assignment write, extracted so claimForCallAgent can
+   * trigger the same publish from its own UPDATE. Built from the rows the
+   * caller's UPDATE actually returned, never intended input; an empty
+   * conversations result is a no-op.
+   */
+  private async publishAssignmentChanges(props: {
+    workspaceId: string
+    conversations: { id: string; contactId: string }[]
+    assignedUserId: string | null
+    assignedInboxTeamId: string | null
+    assignedBy?: string
+    triggerContext: TriggerContext
+  }): Promise<void> {
+    const {
+      workspaceId,
+      conversations,
+      assignedUserId,
+      assignedInboxTeamId,
+      assignedBy,
+      triggerContext,
+    } = props
+    if (conversations.length === 0) {
+      return
+    }
+    const ids = conversations.map((c) => c.id)
+
     await this.invalidate({ workspaceId, ids })
 
-    await this.broadcastConversationEvent(workspaceId, {
-      eventType: RealtimeEventType.conversationUpdated,
-      data: {
-        conversationIds: ids,
-        changes: { assignedUserId, assignedInboxTeamId },
-      },
-    })
-    await this.broadcastConversationEvent(workspaceId, {
+    publishToWorkspaceParty(workspaceId, {
       eventType: RealtimeEventType.conversationAssigned,
       data: { conversationIds: ids, assignedUserId, assignedInboxTeamId },
     })
 
-    if (assignedUserId && assignedUserId !== props.assignedBy) {
+    if (assignedUserId && assignedUserId !== assignedBy) {
       try {
         await notificationQueue.addBulk(
           conversations.map((conv) => ({
@@ -945,7 +1247,7 @@ class ConversationService extends BaseService {
           conv.contactId,
           conv.id,
           assignedTo,
-          props.assignedBy,
+          assignedBy,
         )
         emit("analytics:dashboard", {
           eventType: "conversation:assigned",
@@ -960,7 +1262,7 @@ class ConversationService extends BaseService {
           workspaceId,
           conv.contactId,
           conv.id,
-          props.assignedBy,
+          assignedBy,
         )
         emit("analytics:dashboard", {
           eventType: "conversation:unassigned",
@@ -971,8 +1273,69 @@ class ConversationService extends BaseService {
         })
       }
     }
+  }
 
-    return updated
+  /**
+   * Auto-assign on call answer/dial. Claims only when unassigned to both a
+   * user and a team — assignUserIfUnassigned's guarded UPDATE is the source
+   * of truth, so a concurrent manual assignment always wins. Never throws on
+   * a losing claim; the call itself must not fail because of this.
+   */
+  async claimForCallAgent(props: {
+    workspaceId: string
+    conversationId: string
+    userId: string
+    triggerHandler: string
+    tx?: DatabaseClient
+  }): Promise<ConversationModel[]> {
+    const { workspaceId, conversationId, userId, triggerHandler, tx } = props
+    const claimed = await assignUserIfUnassigned(
+      { workspaceId, conversationId, userId },
+      tx,
+    )
+
+    await this.publishAssignmentChanges({
+      workspaceId,
+      conversations: claimed,
+      assignedUserId: userId,
+      assignedInboxTeamId: null,
+      assignedBy: userId,
+      triggerContext: {
+        triggerSource: "api",
+        triggerHandler,
+        triggerType: "conversation_assigned",
+      },
+    })
+
+    return claimed
+  }
+
+  async claimAssignmentIfUnassigned(props: {
+    assignedId: `t_${string}` | `u_${string}`
+    conversation: Pick<ConversationModel, "id">
+    triggerContext: TriggerContext
+    workspaceId: string
+  }): Promise<"alreadyAssigned" | "claimed"> {
+    const isTeam = props.assignedId.startsWith("t_")
+    const id = props.assignedId.slice(2)
+    const claimed = await assignTargetIfUnassigned({
+      assignedInboxTeamId: isTeam ? id : null,
+      assignedUserId: isTeam ? null : id,
+      conversationId: props.conversation.id,
+      workspaceId: props.workspaceId,
+    })
+    if (claimed.length === 0) {
+      return "alreadyAssigned"
+    }
+    await this.publishAssignmentChanges({
+      assignedBy: undefined,
+      assignedInboxTeamId: isTeam ? id : null,
+      assignedUserId: isTeam ? null : id,
+      conversations: claimed,
+      triggerContext: props.triggerContext,
+      workspaceId: props.workspaceId,
+    })
+    return "claimed"
   }
 
   async updateBotEnabled(props: {
@@ -993,19 +1356,44 @@ class ConversationService extends BaseService {
     }
     await tx
       .update(conversationModel)
-      .set({ botEnabled, botResumeAt })
+      .set({
+        botEnabled,
+        botResumeAt,
+        ...(botEnabled
+          ? {}
+          : { additionalAttributes: sqlDropQuickReplyChallenge() }),
+      })
       .where(
         and(
           eq(conversationModel.workspaceId, workspaceId),
           inArray(conversationModel.id, ids),
         ),
       )
+    if (!botEnabled) {
+      // Best-effort: fire-time `ensureActive` already skips a follow-up on a
+      // paused conversation, so a failed cancel must never fail the pause (or
+      // skip `invalidate`). Inside a caller's tx it runs behind a SAVEPOINT so
+      // a failed statement cannot poison the outer transaction.
+      const cancel = (client: DatabaseClient) =>
+        smartDelayService.cancelQuickReplyFollowUps({
+          tx: client,
+          workspaceId,
+          conversationIds: ids,
+        })
+      try {
+        if (props.tx) {
+          await props.tx.transaction(cancel)
+        } else {
+          await cancel(tx)
+        }
+      } catch (error) {
+        logger.warn(
+          { err: error, workspaceId, conversationIds: ids },
+          "quick reply follow-up cancel on bot pause failed",
+        )
+      }
+    }
     await this.invalidate({ workspaceId, ids })
-
-    await this.broadcastConversationEvent(workspaceId, {
-      eventType: RealtimeEventType.conversationUpdated,
-      data: { conversationIds: ids, changes: { botEnabled } },
-    })
   }
 
   async updateFollowed(props: {
@@ -1035,11 +1423,6 @@ class ConversationService extends BaseService {
         ),
       )
     await this.invalidate({ workspaceId, ids: [id] })
-
-    await this.broadcastConversationEvent(workspaceId, {
-      eventType: RealtimeEventType.conversationUpdated,
-      data: { conversationIds: [id], changes: { followed } },
-    })
 
     if (followed) {
       await emitConversationFollowUp(workspaceId, contactId, id, props.userId)
@@ -1109,12 +1492,55 @@ class ConversationService extends BaseService {
         workspaceId,
       },
     )
-    const lastMessage = last2Messages.at(-1)
-    const agentLastReadAt = lastMessage ? lastMessage.createdAt : null
+    // Newest first: the cursor lands on the second-newest incoming message so
+    // only the latest one is unread. With a single message there is nothing
+    // to anchor on — anchoring on that message would make `lastActivityAt >
+    // agentLastReadAt` false and leave the row read — so it becomes never-read.
+    const agentLastReadAt =
+      last2Messages.length >= 2 ? (last2Messages[1]?.createdAt ?? null) : null
 
     await this.updateReadStatus({ workspaceId, id, agentLastReadAt, tx })
 
     return { agentLastReadAt }
+  }
+
+  /**
+   * Channel message id (e.g. a WhatsApp wamid) of the newest incoming message
+   * this conversation received on `contactInboxId`. Read receipts and typing
+   * indicators that must reference a real message use it. Looks back 30 days,
+   * matching WhatsApp's mark-as-read guidance.
+   */
+  async findLastIncomingMessageSourceId(props: {
+    conversation: Pick<
+      ConversationModel,
+      "id" | "workspaceId" | "lastActivityAt" | "createdAt"
+    >
+    contactInboxId: string
+  }): Promise<string | undefined> {
+    const { conversation, contactInboxId } = props
+    const messageRepository = await createMessageRepository()
+    const messages = await messageRepository.findLastByConversation(
+      conversation.id,
+      {
+        workspaceId: conversation.workspaceId,
+        messageTypes: ["incoming"],
+        limit: 10,
+        withAttachments: false,
+        // Anchor on this conversation's own lastActivityAt, not a shared
+        // ContactInbox's lastMessageAt (see the sharded-scan note elsewhere).
+        sinceTime: getSafeSinceTime(
+          conversation.lastActivityAt ?? conversation.createdAt,
+          30 * 24 * 60 * 60 * 1000,
+        ),
+      },
+    )
+
+    return (
+      messages.find(
+        (message) =>
+          message.contactInboxId === contactInboxId && message.sourceId,
+      )?.sourceId ?? undefined
+    )
   }
 
   async updateReadStatus(props: {
@@ -1134,14 +1560,72 @@ class ConversationService extends BaseService {
         ),
       )
     await this.invalidate({ workspaceId, ids: [id] })
-
-    await this.broadcastConversationEvent(workspaceId, {
+    publishToWorkspaceParty(workspaceId, {
       eventType: RealtimeEventType.conversationUpdated,
       data: {
         conversationIds: [id],
         changes: { agentLastReadAt: agentLastReadAt?.toISOString() ?? null },
       },
     })
+  }
+
+  /**
+   * Advances agent read state only, so retries and delayed outbound events
+   * cannot overwrite a newer read. The inbox preference is checked inside the
+   * same statement to avoid racing a separate gate read; successful advances
+   * broadcast the same best-effort realtime update as manual reads.
+   */
+  async markReadByOutbound(props: {
+    workspaceId: string
+    conversationId: string
+    inboxId: string
+    readAt: Date
+    silent?: boolean
+  }): Promise<boolean> {
+    const { conversationId, inboxId, readAt, silent, workspaceId } = props
+    const updated = await db
+      .update(conversationModel)
+      .set({ agentLastReadAt: readAt })
+      .where(
+        and(
+          eq(conversationModel.id, conversationId),
+          eq(conversationModel.workspaceId, workspaceId),
+          or(
+            isNull(conversationModel.agentLastReadAt),
+            lt(conversationModel.agentLastReadAt, readAt),
+          ),
+          exists(
+            db
+              .select({ value: sql<number>`1` })
+              .from(inboxModel)
+              .where(
+                and(
+                  eq(inboxModel.id, inboxId),
+                  eq(inboxModel.workspaceId, workspaceId),
+                  eq(inboxModel.markReadOnOutbound, true),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: conversationModel.id })
+
+    if (updated.length === 0) {
+      return false
+    }
+
+    await this.invalidate({ workspaceId, ids: [conversationId] })
+    if (!silent) {
+      publishToWorkspaceParty(workspaceId, {
+        eventType: RealtimeEventType.conversationUpdated,
+        data: {
+          conversationIds: [conversationId],
+          changes: { agentLastReadAt: readAt.toISOString() },
+        },
+      })
+    }
+
+    return true
   }
 
   /**
@@ -1265,15 +1749,24 @@ class ConversationService extends BaseService {
     currentStep?: string | null
     lastActivityAt?: Date
     lastStep?: string | null
+    contactRepliedAt?: Date
     tx?: DatabaseClient
   }): Promise<void> {
     const { workspaceId, conversationId, tx = db } = props
-    const data: Partial<typeof conversationModel.$inferInsert> = {}
+    const data: PgUpdateSetSource<typeof conversationModel> = {}
     if ("currentStep" in props) {
       data.currentStep = props.currentStep
     }
-    if ("lastActivityAt" in props) {
-      data.lastActivityAt = props.lastActivityAt
+    if (props.lastActivityAt !== undefined) {
+      // Postgres GREATEST ignores NULL operands, so a NULL column advances to the new value.
+      data.lastActivityAt = sql`GREATEST(${conversationModel.lastActivityAt}, ${props.lastActivityAt})`
+    }
+    if ("contactRepliedAt" in props && props.contactRepliedAt) {
+      // Advance-only: a delayed/retried older webhook processed after a
+      // newer one must never move this column backwards (which would hide
+      // an already-seen unread message). Postgres GREATEST ignores NULLs;
+      // the COALESCE is kept only for readability.
+      data.contactRepliedAt = sql`GREATEST(COALESCE(${conversationModel.contactRepliedAt}, ${props.contactRepliedAt}), ${props.contactRepliedAt})`
     }
     if ("lastStep" in props) {
       data.lastStep = props.lastStep
@@ -1425,49 +1918,6 @@ class ConversationService extends BaseService {
     return true
   }
 
-  // ─── Realtime ────────────────────────────────────────────────────────────
-
-  /**
-   * Best-effort realtime broadcast via the chat queue (same path used by
-   * message create/edit/delete). Never blocks or fails the caller's mutation
-   * — errors are logged and swallowed.
-   */
-  private async broadcastConversationEvent(
-    workspaceId: string,
-    event:
-      | {
-          eventType: typeof RealtimeEventType.conversationCreated
-          data: unknown
-        }
-      | {
-          eventType: typeof RealtimeEventType.conversationUpdated
-          data: {
-            conversationIds: string[]
-            changes: RealtimeEventConversationUpdatedChanges
-          }
-        }
-      | {
-          eventType: typeof RealtimeEventType.conversationAssigned
-          data: {
-            conversationIds: string[]
-            assignedUserId: string | null
-            assignedInboxTeamId: string | null
-          }
-        },
-  ): Promise<void> {
-    try {
-      await chatQueue.add(ChatJobAction.broadcastEvent, {
-        type: ChatJobAction.broadcastEvent,
-        data: { workspaceId, event },
-      })
-    } catch (err) {
-      logger.warn(
-        { err, workspaceId, eventType: event.eventType },
-        "conversation realtime broadcast enqueue failed",
-      )
-    }
-  }
-
   // ─── Cache ───────────────────────────────────────────────────────────────
 
   async invalidate(props: {
@@ -1522,6 +1972,8 @@ class ConversationService extends BaseService {
     tracking: ContactInboxTrackingData
     contactLocation?: ContactModel["location"] | null
     at: Date
+    /** Set only for contact-authored messages; drives the "No admin reply" filter. */
+    contactRepliedAt?: Date
   }): Promise<ContactInboxTrackingInvalidation | null> {
     const {
       workspaceId,
@@ -1531,6 +1983,7 @@ class ConversationService extends BaseService {
       tracking,
       contactLocation,
       at,
+      contactRepliedAt,
     } = props
 
     return await db.transaction(async (tx) => {
@@ -1555,6 +2008,7 @@ class ConversationService extends BaseService {
         workspaceId,
         conversationId,
         lastActivityAt: at,
+        ...(contactRepliedAt ? { contactRepliedAt } : {}),
       })
 
       return invalidation
@@ -1573,6 +2027,7 @@ class ConversationService extends BaseService {
     contactInboxId: string
     contactId: string
     at: Date
+    bumpActivity?: boolean
     lastStep?: string | null
     currentStep?: string | null
   }): Promise<ContactInboxTrackingInvalidation | null> {
@@ -1582,6 +2037,7 @@ class ConversationService extends BaseService {
       contactInboxId,
       contactId,
       at,
+      bumpActivity = true,
       lastStep,
       currentStep,
     } = props
@@ -1600,7 +2056,7 @@ class ConversationService extends BaseService {
         tx,
         workspaceId,
         conversationId,
-        lastActivityAt: at,
+        ...(bumpActivity ? { lastActivityAt: at } : {}),
         lastStep,
         currentStep,
       })
@@ -1627,8 +2083,16 @@ class ConversationService extends BaseService {
     contactInboxId: string
     contactId: string
     at: Date
+    bumpActivity?: boolean
   }): Promise<ContactInboxTrackingInvalidation | null> {
-    const { workspaceId, conversationId, contactInboxId, contactId, at } = props
+    const {
+      workspaceId,
+      conversationId,
+      contactInboxId,
+      contactId,
+      at,
+      bumpActivity = true,
+    } = props
 
     return await db.transaction(async (tx) => {
       const invalidation =
@@ -1644,7 +2108,7 @@ class ConversationService extends BaseService {
         tx,
         workspaceId,
         conversationId,
-        lastActivityAt: at,
+        ...(bumpActivity ? { lastActivityAt: at } : {}),
       })
 
       return invalidation

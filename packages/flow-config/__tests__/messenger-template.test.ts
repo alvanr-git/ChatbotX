@@ -3,11 +3,14 @@ import {
   extractMessengerFlowButtons,
   extractMessengerParameterInfos,
   extractMessengerTemplateParams,
+  findMessengerTokenVariable,
   type MessengerTemplateComponent,
   mergeMessengerFlowButtonsWithExisting,
   messengerTemplateButtonParamSchema,
+  normalizeMessengerTokenUrl,
   sendMessengerTemplateMessageStepDefaultFn,
   sendMessengerTemplateMessageStepSchema,
+  suggestMessengerUrlSuffixVariable,
 } from "../src/steps/send-messenger-message-template"
 
 // ─── extractMessengerTemplateParams ─────────────────────────────────────────
@@ -64,6 +67,63 @@ describe("extractMessengerTemplateParams", () => {
       expect(
         extractMessengerTemplateParams([component], "NAMED").header,
       ).toBeUndefined()
+    })
+
+    test("image + static text — no header params", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "Order update",
+      }
+      expect(
+        extractMessengerTemplateParams([component], "POSITIONAL").header,
+      ).toBeUndefined()
+    })
+
+    // Meta rejects the send with (#100 - 1893029) "Missing one or more header
+    // params" when an image header's text variable is not passed.
+    test("image + text variable POSITIONAL — collects a header text param", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "{{1}}",
+      }
+      expect(
+        extractMessengerTemplateParams([component], "POSITIONAL").header,
+      ).toEqual([{ type: "text", text: "" }])
+    })
+
+    test("image + text variable NAMED — includes parameter_name", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "{{order_type}} Update",
+      }
+      expect(
+        extractMessengerTemplateParams([component], "NAMED").header,
+      ).toEqual([{ type: "text", text: "", parameter_name: "order_type" }])
+    })
+  })
+
+  describe("stored param shape", () => {
+    test("POSITIONAL params carry no parameter_name key at all", () => {
+      const result = extractMessengerTemplateParams(
+        [
+          { type: "HEADER", format: "IMAGE", text: "{{1}}" },
+          { type: "BODY", text: "Hi {{1}}" },
+        ],
+        "POSITIONAL",
+      )
+      expect(result.header?.[0]).toStrictEqual({ type: "text", text: "" })
+      expect(result.body?.[0]).toStrictEqual({ text: "" })
+    })
+
+    test("components without text produce no header or body params", () => {
+      const result = extractMessengerTemplateParams(
+        [{ type: "HEADER", format: "IMAGE" }, { type: "BODY" }],
+        "POSITIONAL",
+      )
+      expect(result).toEqual({})
     })
   })
 
@@ -123,6 +183,23 @@ describe("extractMessengerTemplateParams", () => {
       expect(result.button).toEqual([
         { sub_type: "url", index: 0, text: "https://example.com/fixed" },
       ])
+    })
+
+    // Meta's NAMED templates keep a named URL suffix ({{url_suffix}}); the
+    // send-time URL parameter is still just the suffix value.
+    test("NAMED URL button with {{url_suffix}} — suffix left empty to fill", () => {
+      const component: MessengerTemplateComponent = {
+        type: "BUTTONS",
+        buttons: [
+          {
+            type: "URL",
+            text: "Track Order",
+            url: "http://www.example.com/orders/{{url_suffix}}",
+          },
+        ],
+      }
+      const result = extractMessengerTemplateParams([component], "NAMED")
+      expect(result.button).toEqual([{ sub_type: "url", index: 0, text: "" }])
     })
 
     test("POSTBACK with fixed payload (no {{) — not added", () => {
@@ -194,6 +271,120 @@ describe("extractMessengerTemplateParams", () => {
   })
 })
 
+// ─── suggestMessengerUrlSuffixVariable ───────────────────────────────────────
+
+describe("suggestMessengerUrlSuffixVariable", () => {
+  test("Mini App link suggests {{mini_app_token}}", () => {
+    expect(
+      suggestMessengerUrlSuffixVariable(
+        "https://app.example.com/mini-apps?id=12&token={{1}}",
+      ),
+    ).toBe("{{mini_app_token}}")
+  })
+
+  test("Minigame link suggests {{minigame_play_token}}", () => {
+    expect(
+      suggestMessengerUrlSuffixVariable(
+        "https://app.example.com/minigames?minigameId=abc&token={{1}}",
+      ),
+    ).toBe("{{minigame_play_token}}")
+  })
+
+  test("other links suggest nothing", () => {
+    expect(suggestMessengerUrlSuffixVariable("https://example.com/{{1}}")).toBe(
+      "",
+    )
+    expect(suggestMessengerUrlSuffixVariable(undefined)).toBe("")
+  })
+
+  test("extractMessengerTemplateParams defaults a Mini App suffix to the token", () => {
+    const result = extractMessengerTemplateParams(
+      [
+        {
+          type: "BUTTONS",
+          buttons: [
+            {
+              type: "URL",
+              text: "Open",
+              url: "https://app.example.com/mini-apps?id=12&token={{1}}",
+            },
+          ],
+        },
+      ],
+      "POSITIONAL",
+    )
+    expect(result.button).toEqual([
+      { sub_type: "url", index: 0, text: "{{mini_app_token}}" },
+    ])
+  })
+})
+
+// ─── normalizeMessengerTokenUrl / findMessengerTokenVariable ─────────────────
+
+describe("normalizeMessengerTokenUrl", () => {
+  test("swaps a Mini App token suffix for {{1}}", () => {
+    expect(
+      normalizeMessengerTokenUrl(
+        "https://app.example.com/mini-apps?id=12&token={{mini_app_token}}",
+      ),
+    ).toEqual({
+      url: "https://app.example.com/mini-apps?id=12&token={{1}}",
+      variable: "mini_app_token",
+    })
+  })
+
+  test("swaps a Minigame token suffix for {{1}}", () => {
+    expect(
+      normalizeMessengerTokenUrl(
+        "https://app.example.com/minigames?minigameId=abc&token={{ minigame_play_token }}",
+      ),
+    ).toEqual({
+      url: "https://app.example.com/minigames?minigameId=abc&token={{1}}",
+      variable: "minigame_play_token",
+    })
+  })
+
+  test("every normalized link gets its token back at send time", () => {
+    const normalized = normalizeMessengerTokenUrl(
+      "https://app.example.com/mini-apps?id=12&token={{mini_app_token}}",
+    )
+    expect(suggestMessengerUrlSuffixVariable(normalized?.url)).toBe(
+      "{{mini_app_token}}",
+    )
+  })
+
+  test.each([
+    ["a non Mini App page", "https://shop.com/go?t={{mini_app_token}}"],
+    ["a path suffix", "https://x.com/app/{{minigame_play_token}}"],
+    [
+      "a token that is not last",
+      "https://app.example.com/mini-apps?id=12&token={{mini_app_token}}&utm=fb",
+    ],
+    [
+      "the other page's token",
+      "https://app.example.com/minigames?minigameId=abc&token={{mini_app_token}}",
+    ],
+  ])("returns null for %s", (_label, url) => {
+    expect(normalizeMessengerTokenUrl(url)).toBeNull()
+  })
+})
+
+describe("findMessengerTokenVariable", () => {
+  test("finds a token variable anywhere in the text", () => {
+    expect(
+      findMessengerTokenVariable("https://x/?t={{mini_app_token}}&a=1"),
+    ).toBe("mini_app_token")
+    expect(findMessengerTokenVariable("{{minigame_play_token}}")).toBe(
+      "minigame_play_token",
+    )
+  })
+
+  test("returns null without a token variable", () => {
+    expect(findMessengerTokenVariable("https://x/{{1}}")).toBeNull()
+    expect(findMessengerTokenVariable(undefined)).toBeNull()
+  })
+})
+
 // ─── extractMessengerParameterInfos ─────────────────────────────────────────
 
 describe("extractMessengerParameterInfos", () => {
@@ -241,6 +432,45 @@ describe("extractMessengerParameterInfos", () => {
       const result = extractMessengerParameterInfos([component], "POSITIONAL")
       expect(result).toEqual([])
     })
+
+    test("image + static text — no parameter", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "Order update",
+      }
+      const result = extractMessengerParameterInfos([component], "POSITIONAL")
+      expect(result).toEqual([])
+    })
+
+    test("image + text variable POSITIONAL — header text param is collected", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "{{1}}",
+      }
+      const result = extractMessengerParameterInfos([component], "POSITIONAL")
+      expect(result).toEqual([
+        { type: "header", index: 0, paramName: "1", format: "text" },
+      ])
+    })
+
+    test("image + text variable NAMED — paramName is raw variable name", () => {
+      const component: MessengerTemplateComponent = {
+        type: "HEADER",
+        format: "IMAGE",
+        text: "{{order_type}} Update",
+      }
+      const result = extractMessengerParameterInfos([component], "NAMED")
+      expect(result).toEqual([
+        {
+          type: "header",
+          index: 0,
+          paramName: "order_type",
+          format: "text",
+        },
+      ])
+    })
   })
 
   describe("BODY", () => {
@@ -285,6 +515,37 @@ describe("extractMessengerParameterInfos", () => {
           buttonSubType: "url",
         },
       ])
+    })
+
+    test("NAMED URL button with {{url_suffix}} → paramName is the variable name", () => {
+      const component: MessengerTemplateComponent = {
+        type: "BUTTONS",
+        buttons: [
+          {
+            type: "URL",
+            text: "Track Order",
+            url: "http://www.example.com/orders/{{url_suffix}}",
+          },
+        ],
+      }
+      const result = extractMessengerParameterInfos([component], "NAMED")
+      expect(result).toEqual([
+        {
+          type: "button",
+          index: 0,
+          paramName: "url_suffix",
+          buttonIndex: 0,
+          buttonSubType: "url",
+        },
+      ])
+    })
+
+    test("static URL button → no ParameterInfo (nothing for the user to fill)", () => {
+      const component: MessengerTemplateComponent = {
+        type: "BUTTONS",
+        buttons: [{ type: "URL", text: "Go", url: "https://x.com/jobs/" }],
+      }
+      expect(extractMessengerParameterInfos([component], "NAMED")).toEqual([])
     })
 
     test("POSTBACK with fixed payload (no {{) → empty result", () => {

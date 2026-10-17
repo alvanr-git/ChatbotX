@@ -32,21 +32,7 @@ import { Client } from "pg"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 // biome-ignore lint/performance/noNamespaceImport: every table in the schema is the point
 import * as schema from "../../src/schema"
-
-/** The `setup-env` sentinel: a real database never listens on port 1. */
-const NON_ROUTABLE_PORT = "1"
-
-function realDatabaseUrl(): string | null {
-  const url = process.env.DATABASE_URL
-  if (!url) {
-    return null
-  }
-  try {
-    return new URL(url).port === NON_ROUTABLE_PORT ? null : url
-  } catch {
-    return null
-  }
-}
+import { realDatabaseUrl } from "./database-url"
 
 const databaseUrl = realDatabaseUrl()
 
@@ -127,5 +113,9 @@ describe.skipIf(!databaseUrl)("drizzle defaults vs database defaults", () => {
     }
 
     expect(phantom.sort()).toEqual([...DEFAULTS_MISSING_FROM_DATABASE])
+  })
+
+  test("AIAgent.actionRules has a database default", () => {
+    expect(databaseDefaults.get("AIAgent.actionRules")).toBe(true)
   })
 })

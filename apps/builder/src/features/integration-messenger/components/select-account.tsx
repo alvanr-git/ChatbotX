@@ -1,11 +1,6 @@
 "use client"
 
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@chatbotx.io/ui/components/ui/alert"
-import {
   Card,
   CardContent,
   CardHeader,
@@ -13,20 +8,16 @@ import {
 } from "@chatbotx.io/ui/components/ui/card"
 import { useTranslations } from "next-intl"
 import { CONNECT_PICKER_CARD_CLASS } from "@/features/channel-connect/components/connect-picker-card"
-import type { MessengerPickerItem } from "@/features/integration-messenger/components/messenger-pages"
+import type { ConnectPickerItem } from "@/features/channel-connect/lib/picker-items"
 import { MessengerPages } from "@/features/integration-messenger/components/messenger-pages"
 
 type SelectPageProps = {
-  items: MessengerPickerItem[]
-  bmLookupFailed: boolean
+  sessionId: string
+  items: ConnectPickerItem[]
   workspaceId: string
 }
 
-export function SelectPage({
-  items,
-  bmLookupFailed,
-  workspaceId,
-}: SelectPageProps) {
+export function SelectPage({ sessionId, items, workspaceId }: SelectPageProps) {
   const t = useTranslations()
 
   return (
@@ -37,17 +28,11 @@ export function SelectPage({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {bmLookupFailed && (
-          <Alert variant="warning">
-            <AlertTitle>
-              {t("messenger.selectPage.bmLookupFailedTitle")}
-            </AlertTitle>
-            <AlertDescription>
-              {t("messenger.selectPage.bmLookupFailedDescription")}
-            </AlertDescription>
-          </Alert>
-        )}
-        <MessengerPages items={items} workspaceId={workspaceId} />
+        <MessengerPages
+          items={items}
+          sessionId={sessionId}
+          workspaceId={workspaceId}
+        />
       </CardContent>
     </Card>
   )

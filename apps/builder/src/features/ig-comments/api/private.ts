@@ -1,9 +1,11 @@
-import { fbCommentAutomationService } from "@chatbotx.io/business"
+import { commentAutomationService } from "@chatbotx.io/business"
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import z from "zod"
+import { postAccountInboxIdSchema } from "@/features/shared/comment-automation/schema/account"
 import { withWorkspaceIdSchema } from "@/features/workspaces/schema/resource"
 import { workspaceAuthorizedMidddleware } from "@/middlewares/auth"
 import { authorizedAPI } from "@/orpc"
+import { ensureLiveCommentsSubscriptionForAutomation } from "../lib/ensure-live-comments-subscription"
 import {
   listInstagramFacebookMedia,
   listInstagramLoginMedia,
@@ -29,8 +31,7 @@ export const igCommentsPrivateAPI = {
     .use(workspaceAuthorizedMidddleware, (input) => input.workspaceId)
     .output(listIgCommentsResponse)
     .handler(
-      async ({ input }) =>
-        await fbCommentAutomationService.listIgComments(input),
+      async ({ input }) => await commentAutomationService.listIgComments(input),
     ),
 
   createIgCommentAPI: authorizedAPI
@@ -45,11 +46,17 @@ export const igCommentsPrivateAPI = {
     .output(igCommentResource)
     .handler(async ({ input }) => {
       const { workspaceId, type, ...data } = input
-      return await fbCommentAutomationService.createInstagram({
+      const created = await commentAutomationService.createInstagram({
         workspaceId,
         type,
         data,
       })
+      await ensureLiveCommentsSubscriptionForAutomation({
+        workspaceId,
+        type,
+        post: data.post,
+      })
+      return created
     }),
 
   updateIgCommentAPI: authorizedAPI
@@ -68,7 +75,7 @@ export const igCommentsPrivateAPI = {
     .output(igCommentResource)
     .handler(async ({ input }) => {
       const { workspaceId, id, type: _type, ...rest } = input
-      return await fbCommentAutomationService.updateInstagram(
+      return await commentAutomationService.updateInstagram(
         { workspaceId, id },
         rest,
       )
@@ -85,7 +92,7 @@ export const igCommentsPrivateAPI = {
     .use(workspaceAuthorizedMidddleware, (input) => input.workspaceId)
     .output(z.void())
     .handler(async ({ input }) => {
-      await fbCommentAutomationService.deleteInstagram({
+      await commentAutomationService.deleteInstagram({
         workspaceId: input.workspaceId,
         id: input.id,
       })
@@ -112,6 +119,7 @@ export const igCommentsPrivateAPI = {
             media_product_type: z.string().optional(),
             media_type: z.string().optional(),
             accountId: z.string(),
+            inboxId: postAccountInboxIdSchema,
           }),
         ),
         pages: z.array(z.object({ id: z.string(), name: z.string() })),

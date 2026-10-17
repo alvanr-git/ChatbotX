@@ -1,5 +1,11 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { webchatsAdapter } from "../src/template/adapters/webchats"
+
+// The broadcast policy import reaches quota/workspace modules these narrow mocks omit.
+vi.mock("../src/broadcast/plan-policy.service", () => ({
+  broadcastPlanPolicyService: {},
+}))
 
 const {
   mockCount,
@@ -9,23 +15,22 @@ const {
   mockFindFirst,
   mockFindMany,
   mockInboxCreate,
-  mockInsert,
+  mockIsAtLimit,
   mockParsePagination,
   mockRelationsFilterToSQL,
   mockTransaction,
   mockUpdate,
   mockUpdateSet,
   mockUpdateWhere,
+  mockUpsertConnectionRow,
   mockWorkspaceCreate,
   mockWorkspaceFindOrFail,
 } = vi.hoisted(() => {
   let createIdCallCount = 0
-  const mockInsertReturning = vi.fn(async () => [{ id: "webchat-1" }])
-  const mockInsertValues = vi.fn(() => ({ returning: mockInsertReturning }))
-  const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
   const mockUpdateWhere = vi.fn(async () => undefined)
   const mockUpdateSet = vi.fn(() => ({ where: mockUpdateWhere }))
   const mockUpdate = vi.fn(() => ({ set: mockUpdateSet }))
+  const mockFindFirst = vi.fn()
 
   return {
     mockUpdate,
@@ -38,18 +43,21 @@ const {
     // this is ever called; kept so a future test exercising a non-null id
     // has something to mock against.
     mockFindActiveFlowById: vi.fn(async () => ({ id: "flow-1" })),
-    mockFindFirst: vi.fn(),
+    mockFindFirst,
     mockFindMany: vi.fn(async () => []),
     mockInboxCreate: vi.fn(async () => ({
       inbox: { id: "inbox-1" },
       wasCreated: true,
     })),
-    mockInsert,
+    mockIsAtLimit: vi.fn(async () => false),
     mockParsePagination: vi.fn(),
     mockRelationsFilterToSQL: vi.fn(),
     mockTransaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
-      callback({ insert: mockInsert }),
+      callback({
+        query: { integrationWebchatModel: { findFirst: mockFindFirst } },
+      }),
     ),
+    mockUpsertConnectionRow: vi.fn(async () => ({ id: "conn-1" })),
     mockWorkspaceCreate: vi.fn(async () => ({
       id: "ws-new",
       ownerId: "user-1",
@@ -97,8 +105,36 @@ vi.mock("@chatbotx.io/utils", () => ({
   createId: mockCreateId,
 }))
 
+// Records the trackers handed to `withQuotaCompensation` on the failure
+// path and rethrows, like the real helper (whose own compensation is covered
+// in src/connection/__tests__/upsert.test.ts).
+const compensationInputs = vi.hoisted(() => [] as unknown[])
+const mockWithQuotaCompensation = vi.hoisted(() =>
+  vi.fn(async (input: unknown, operation: () => Promise<unknown>) => {
+    try {
+      return await operation()
+    } catch (err) {
+      compensationInputs.push(input)
+      throw err
+    }
+  }),
+)
+vi.mock("../src/connection", () => ({
+  CONNECTION_STORE_BINDINGS: { webchat: { duplicateConstraint: undefined } },
+  upsertConnectionRow: mockUpsertConnectionRow,
+  withQuotaCompensation: mockWithQuotaCompensation,
+}))
+
 vi.mock("../src/inbox/service", () => ({
   inboxService: { create: mockInboxCreate, disconnect: vi.fn() },
+}))
+
+vi.mock("../src/connection/state-service", () => ({
+  connectionStateService: { disconnectInbox: vi.fn() },
+}))
+
+vi.mock("../src/quota-enforcement/service", () => ({
+  quotaEnforcementService: { isAtLimit: mockIsAtLimit },
 }))
 
 vi.mock("../src/audit/dispatcher", () => ({
@@ -142,9 +178,12 @@ const baseData = {
 describe("integrationWebchatService.createWithWorkspace", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    compensationInputs.length = 0
     mockTransaction.mockImplementation(
       async (callback: (tx: unknown) => unknown) =>
-        callback({ insert: mockInsert }),
+        callback({
+          query: { integrationWebchatModel: { findFirst: mockFindFirst } },
+        }),
     )
     mockWorkspaceFindOrFail.mockResolvedValue({
       id: "ws-1",
@@ -158,6 +197,78 @@ describe("integrationWebchatService.createWithWorkspace", () => {
       inbox: { id: "inbox-1" },
       wasCreated: true,
     } as never)
+    mockUpsertConnectionRow.mockResolvedValue({ id: "conn-1" } as never)
+    mockFindFirst.mockResolvedValue({ id: "webchat-1" } as never)
+  })
+
+  test("releases the new workspace's seat when the transaction fails after the workspace was created", async () => {
+    // `workspaceService.create` consumed the seat (Redis, outside the tx) and
+    // marked the tracker; the webchat insert then fails and the tx rolls
+    // back the Workspace row — the seat must be handed back too.
+    mockWorkspaceCreate.mockImplementation((props: unknown) => {
+      const { quotaConsumption } = props as {
+        quotaConsumption?: { consumed: boolean; userId?: string }
+      }
+      if (quotaConsumption) {
+        Object.assign(quotaConsumption, { consumed: true, userId: "user-1" })
+      }
+      return Promise.resolve({ id: "ws-new", ownerId: "user-1" } as never)
+    })
+    const failure = new Error("webchat insert failed")
+    mockUpsertConnectionRow.mockRejectedValueOnce(failure)
+
+    await expect(
+      integrationWebchatService.createWithWorkspace({
+        createdBy: "user-1",
+        workspaceName: "My Chatbot",
+        data: baseData,
+      }),
+    ).rejects.toBe(failure)
+
+    expect(compensationInputs).toHaveLength(1)
+    expect(compensationInputs[0]).toMatchObject({
+      ownerId: "user-1",
+      workspaceQuotaConsumption: { consumed: true, userId: "user-1" },
+    })
+    expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+  })
+
+  test("hands the channel quota back when the transaction fails after connect.completed already consumed it", async () => {
+    // `upsertConnectionRow` consumed the channel slot (tracker mutated by
+    // reference, as the real transition does); the read-back of the webchat
+    // row then fails and the whole transaction rolls back.
+    mockUpsertConnectionRow.mockImplementation((props: unknown) => {
+      const { quotaConsumption } = props as {
+        quotaConsumption: Record<string, unknown>
+      }
+      Object.assign(quotaConsumption, {
+        consumed: true,
+        workspaceId: "ws-1",
+        workspaceUsageIncremented: true,
+      })
+      return Promise.resolve({ id: "conn-1" } as never)
+    })
+    mockFindFirst.mockResolvedValue(undefined as never)
+
+    await expect(
+      integrationWebchatService.createWithWorkspace({
+        workspaceId: "ws-1",
+        createdBy: "user-1",
+        workspaceName: "My Chatbot",
+        data: baseData,
+      }),
+    ).rejects.toThrow("IntegrationWebchat row missing")
+
+    expect(compensationInputs).toHaveLength(1)
+    expect(compensationInputs[0]).toMatchObject({
+      ownerId: "owner-1",
+      quotaConsumption: {
+        consumed: true,
+        workspaceId: "ws-1",
+        workspaceUsageIncremented: true,
+      },
+      workspaceQuotaConsumption: { consumed: false },
+    })
   })
 
   test("creates a workspace only when workspaceId is absent and reports createdWorkspace correctly", async () => {
@@ -180,7 +291,9 @@ describe("integrationWebchatService.createWithWorkspace", () => {
     vi.clearAllMocks()
     mockTransaction.mockImplementation(
       async (callback: (tx: unknown) => unknown) =>
-        callback({ insert: mockInsert }),
+        callback({
+          query: { integrationWebchatModel: { findFirst: mockFindFirst } },
+        }),
     )
     mockWorkspaceCreate.mockResolvedValue({
       id: "ws-new",
@@ -190,6 +303,8 @@ describe("integrationWebchatService.createWithWorkspace", () => {
       inbox: { id: "inbox-1" },
       wasCreated: true,
     } as never)
+    mockUpsertConnectionRow.mockResolvedValue({ id: "conn-1" } as never)
+    mockFindFirst.mockResolvedValue({ id: "webchat-1" } as never)
 
     const withoutWorkspace =
       await integrationWebchatService.createWithWorkspace({
@@ -206,6 +321,50 @@ describe("integrationWebchatService.createWithWorkspace", () => {
       action: "connect",
       detail: "connected a new Webchat channel (#webchat-1)",
     })
+  })
+})
+
+describe("integrationWebchatService.create — quota gate", () => {
+  const tx = {
+    query: { integrationWebchatModel: { findFirst: mockFindFirst } },
+  } as never
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockIsAtLimit.mockResolvedValue(false)
+    mockInboxCreate.mockResolvedValue({
+      inbox: { id: "inbox-1" },
+      wasCreated: true,
+    } as never)
+    mockUpsertConnectionRow.mockResolvedValue({ id: "conn-1" } as never)
+    mockFindFirst.mockResolvedValue({ id: "webchat-1" } as never)
+  })
+
+  test("throws channelLimitReached and creates no Inbox/Connection row when the owner's channel quota is already full", async () => {
+    mockIsAtLimit.mockResolvedValue(true)
+
+    await expect(
+      integrationWebchatService.create(
+        { workspaceId: "ws-1", ownerId: "owner-1", data: baseData },
+        tx,
+      ),
+    ).rejects.toMatchObject({ code: "channelLimitReached" })
+
+    expect(mockInboxCreate).not.toHaveBeenCalled()
+    expect(mockUpsertConnectionRow).not.toHaveBeenCalled()
+  })
+
+  test("proceeds to create the Inbox + Connection row when quota has capacity", async () => {
+    mockIsAtLimit.mockResolvedValue(false)
+
+    const created = await integrationWebchatService.create(
+      { workspaceId: "ws-1", ownerId: "owner-1", data: baseData },
+      tx,
+    )
+
+    expect(created).toEqual({ id: "webchat-1" })
+    expect(mockInboxCreate).toHaveBeenCalledTimes(1)
+    expect(mockUpsertConnectionRow).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -362,5 +521,84 @@ describe("integrationWebchatService.update", () => {
     ).rejects.toThrow("Welcome flow not found")
 
     expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+})
+
+describe("webchatsAdapter.insert — quota exhausted during template install", () => {
+  const buildEntry = (sourceId: string) => ({
+    sourceId,
+    name: `Webchat ${sourceId}`,
+    auth: {},
+    enable: true,
+    authorizedDomains: [],
+    conversationStarters: [],
+    persistentMenus: [],
+    brandColor: "#000000",
+    hideHeader: false,
+    showLogo: true,
+    hideMessageInput: false,
+    customCss: null,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockInboxCreate.mockResolvedValue({
+      inbox: { id: "inbox-2" },
+      wasCreated: true,
+    } as never)
+    mockUpsertConnectionRow.mockResolvedValue({ id: "conn-2" } as never)
+  })
+
+  test("skips the quota-exhausted webchat without creating any Inbox/Connection row, while still installing the rest of the batch", async () => {
+    mockIsAtLimit
+      .mockResolvedValueOnce(true) // first entry: quota already full
+      .mockResolvedValueOnce(false) // second entry: capacity available
+    mockFindFirst.mockResolvedValueOnce({ id: "webchat-2" } as never)
+
+    const tx = {
+      query: {
+        workspaceModel: {
+          findFirst: vi.fn(async () => ({ ownerId: "owner-1" })),
+        },
+        integrationWebchatModel: { findFirst: mockFindFirst },
+      },
+    }
+    const track = vi.fn()
+    const warn = vi.fn()
+
+    await webchatsAdapter.insert(
+      {
+        tx: tx as never,
+        workspaceId: "ws-1",
+        installationId: "install-1",
+        idMaps: {},
+        track,
+        warn,
+      },
+      [buildEntry("src-1"), buildEntry("src-2")],
+    )
+
+    // The quota-exhausted entry (src-1) must never reach the Inbox or
+    // Connection tables — proving the fix moved the quota check ahead of
+    // both inserts instead of inserting first and swallowing the failure.
+    expect(mockInboxCreate).toHaveBeenCalledTimes(1)
+    expect(mockUpsertConnectionRow).toHaveBeenCalledTimes(1)
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "webchats",
+        entityKind: "quota",
+        path: "webchats.src-1",
+        value: "channelLimitReached",
+      }),
+    )
+    // Only the entry with capacity gets tracked as an installed resource —
+    // the skipped one is never counted as connected.
+    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceResourceId: "src-2",
+        resourceId: "webchat-2",
+      }),
+    )
   })
 })

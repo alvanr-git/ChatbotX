@@ -17,6 +17,18 @@ vi.mock("@/features/ai-agents/hooks/use-ai-agents", () => ({
   useAIAgentSelectOptions: () => ({ options: [], isError: false }),
 }))
 
+vi.mock(
+  "@/features/shared/comment-automation/automation-account-field",
+  () => ({
+    AutomationAccountField: () => null,
+    useAccountChoiceMissing: () => false,
+  }),
+)
+
+vi.mock("@/features/threads-comments/hooks/use-threads-posts", () => ({
+  useThreadsPosts: () => ({ data: undefined }),
+}))
+
 vi.mock("@/hooks/routing", () => ({
   useWorkspaceId: () => "workspace-1",
 }))
@@ -35,11 +47,23 @@ const baseValues: CreateThreadsCommentRequest = {
   publicReply: { type: "none", value: null },
   includeKeywords: { type: "all", value: [] },
   excludeKeywords: [],
+  excludeKeywordsType: "contain",
   options: {
     replyToNewContactsOnly: false,
     replyOncePerUserPerPost: false,
     replyToUsersWhoCommentedOnOtherPosts: true,
     ignoreCommentReplies: true,
+    trackUserTags: false,
+  },
+  hideComments: {
+    all: false,
+    hasPhoneNumber: false,
+    hasLink: false,
+    hasKeywords: false,
+    hasGif: false,
+    hasEmoji: false,
+    keywords: [],
+    showCommentsAfter: "none",
   },
   replyAfter: { type: "immediately", value: 0 },
 }
@@ -73,7 +97,7 @@ describe("ThreadsCommentForm capability gating", () => {
     container.remove()
   })
 
-  test("does not render unsupported private, like, or hide comment controls", () => {
+  test("does not render unsupported private or like controls", () => {
     container = document.createElement("div")
     document.body.append(container)
     root = createRoot(container)
@@ -90,8 +114,59 @@ describe("ThreadsCommentForm capability gating", () => {
     expect(container.textContent).not.toContain(
       "threadsCommentAutomation.options.likeUserComment",
     )
-    expect(container.textContent).not.toContain(
-      "threadsCommentAutomation.hideComments",
+  })
+
+  // Threads hides top-level replies via `manage_reply`, and exposes a reply's
+  // `gif_url` — but has no image/video attachment lookup.
+  test("renders hide comments with GIF and emoji, without image or video", () => {
+    container = document.createElement("div")
+    document.body.append(container)
+    root = createRoot(container)
+    act(() => {
+      root.render(<Harness />)
+    })
+
+    expect(container.textContent).toContain(
+      "threadsCommentAutomation.card.hideComments",
     )
+    expect(container.textContent).toContain(
+      "commentAutomation.hideComments.hasGif",
+    )
+    expect(container.textContent).toContain(
+      "commentAutomation.hideComments.hasEmoji",
+    )
+    expect(container.textContent).not.toContain("hideComments.hasImage")
+    expect(container.textContent).not.toContain("hideComments.hasVideo")
+    expect(container.textContent).toContain(
+      "commentAutomation.trackUserTags.label",
+    )
+  })
+
+  // One field: the label, a two-option radio for the match type, and the
+  // keyword tags right below — no separate "match type" select.
+  test("renders exclude keywords as one radio-group field", () => {
+    container = document.createElement("div")
+    document.body.append(container)
+    root = createRoot(container)
+    act(() => {
+      root.render(<Harness />)
+    })
+
+    expect(container.textContent).toContain(
+      "threadsCommentAutomation.excludeKeywords",
+    )
+    expect(container.textContent).toContain(
+      "commentAutomation.excludeKeywordsType.equal",
+    )
+    expect(container.textContent).toContain(
+      "commentAutomation.excludeKeywordsType.contain",
+    )
+    expect(container.textContent).not.toContain(
+      "commentAutomation.excludeKeywordsType.label",
+    )
+    expect(
+      container.querySelectorAll('[role="radio"][value="equal"]').length +
+        container.querySelectorAll('input[type="radio"][value="equal"]').length,
+    ).toBeGreaterThan(0)
   })
 })

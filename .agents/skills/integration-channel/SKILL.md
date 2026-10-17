@@ -1,8 +1,8 @@
 ---
 name: integration-channel
 description: >-
-  Create and modify integration channels (messenger, whatsapp, zalo, tiktok, webchat,
-  etc.) for the chatbot platform. Use when adding a new channel integration,
+  Create and modify integration channels (messenger, whatsapp, zalo, tiktok, threads,
+  webchat, etc.) for the chatbot platform. Use when adding a new channel integration,
   modifying webhook handlers, working with message send/receive, or connecting
   external platforms.
 ---
@@ -44,7 +44,7 @@ Channel name → determines package name (`@chatbotx.io/integration-<channel>`),
 | Base                          | When to use                                               | Examples                          |
 | ----------------------------- | --------------------------------------------------------- | --------------------------------- |
 | `customAuthSchema` (from SDK) | User provides credentials directly. No OAuth.             | smtp, webchat, telegram           |
-| `Oauth2AuthValue` (from SDK)  | Platform uses OAuth2 with clientId/clientSecret + tokens. | messenger, whatsapp, zalo, tiktok |
+| `Oauth2AuthValue` (from SDK)  | Platform uses OAuth2 with clientId/clientSecret + tokens. | messenger, whatsapp, zalo, tiktok, threads |
 
 For EACH field: name, Zod type, required or optional. Infer types from context (e.g. "port" → `z.number().int().positive()`).
 
@@ -52,7 +52,7 @@ For EACH field: name, Zod type, required or optional. Infer types from context (
 
 | Scenario                                                   | Platform credentials? | Examples                          |
 | ---------------------------------------------------------- | --------------------- | --------------------------------- |
-| OAuth app (clientId/clientSecret shared across workspaces) | YES                   | messenger, whatsapp, zalo, tiktok |
+| OAuth app (clientId/clientSecret shared across workspaces) | YES                   | messenger, whatsapp, zalo, tiktok, threads |
 | Per-workspace credentials only                             | NO                    | smtp, webchat, telegram           |
 | Shared third-party API key                                 | YES                   | giphy, stripe                     |
 
@@ -382,25 +382,36 @@ invariant 20 in `AGENTS.md`.
 
 ## Comment Handler Pattern
 
-Some integrations (messenger, instagram-facebook) expose a `comment` channel alongside `message`. The structure mirrors `message` handlers:
+Channels with comments (messenger, instagram, instagram-facebook, tiktok, threads) expose a `comment` channel alongside `message`. Every one of them uses the same flat layout — one file per role, no folder that holds only an `index.ts`:
 
 ```
 handlers/
   comment/
-    index.ts                    ← exports commentHandlers object
-    actions.ts                  ← deleteComment, hideComment, likeComment, editComment
-    outgoing-comment/
-      index.ts                  ← sendComment
+    index.ts                    ← only aggregates commentHandlers, no logic
+    comment.ts                  ← editComment, deleteComment, likeComment, hideComment
+    outgoing-comment.ts         ← sendComment (public reply)
+    outgoing-private-reply.ts   ← sendPrivateReply (DM to the commenter)
+  message/
+    index.ts                    ← only aggregates messageHandlers, no logic
+    incoming-message.ts         ← receiveMessage
+    media-urls.ts               ← getMessageMediaUrls (Meta channels)
+    outgoing-message/
+      index.ts                  ← sendMessage, sendFlowStep
+      send-*.ts                 ← one converter per flow step type
 ```
+
+Only include the files for slots the channel supports. A helper shared by more than one handler (e.g. tiktok `requirePostId`) goes in `lib/`, never in one handler file imported by another.
 
 **`index.ts`:**
 
 ```typescript
-import { deleteComment, editComment, hideComment, likeComment } from "./actions"
+import { deleteComment, editComment, hideComment, likeComment } from "./comment"
 import { sendComment } from "./outgoing-comment"
+import { sendPrivateReply } from "./outgoing-private-reply"
 
 export const commentHandlers = {
   sendComment,
+  sendPrivateReply,
   editComment,
   deleteComment,
   likeComment,
@@ -408,7 +419,9 @@ export const commentHandlers = {
 }
 ```
 
-**`actions.ts`** — wrap API calls, catch errors, re-throw as `mapToChannelError(error)`.
+**`comment.ts`** — wrap API calls, catch errors, re-throw as `mapToChannelError(error)`. Type every handler as `CommentHandlers<Auth>["<slot>"]`.
+
+**API naming** — functions in `apis/` are named `<verb><Resource>` without the channel name (`replyToComment`, `hideComment`, `sendMessage`, `uploadAttachment`); the package name already says which channel. When an API function shares a name with the handler that calls it, alias the import (`hideComment as hideCommentApi`) — Biome forbids namespace imports.
 
 **`sendComment`** — requires `message.contentAttributes.replyToCommentId` (string); throw `ChannelError(PAYLOAD_INVALID)` if missing.
 
@@ -443,31 +456,33 @@ implementation instead of each building its own picker:
 `apps/builder/src/features/channel-connect/` (`ConnectSelectionForm` +
 `useConnectFlow` + `ConnectManyDialog` + `CoexistStep`).
 
-- **Single-account server core + oRPC route** — one plain server function per
-  provider id (e.g. `actions/connect-page.ts`'s `connectMessengerPage`),
-  returning `ConnectActionResult<TOutcome>` (`{ kind: "outcome", outcome }` or
-  `{ kind: "sessionError", code }`) — never a thrown exception the client has
-  to classify, and never a 500 (the route would be unclassifiable). Build the
-  three outcome literals with `lib/connect-action-outcomes.ts`'s
-  `notSelectableOutcome` / `duplicatedOutcome` / `connectedOutcome`, wrap
-  best-effort follow-ups (branding, tag scan, …) in `runConnectFollowUps`,
-  and convert the core's outer catch with `toConnectActionFailure`. Expose it
-  as `POST /api/channels/<channel>/connect` from the feature's `api/`
-  folder (`authorizedAPI`, ids-only input, registered through the feature's
-  `api/index.ts`) — **not** a server action: Next serializes server actions
+- **Resolve the session through the shared sequence** — provider connection
+  cores call `runConnectSequence` from
+  `channel-connect/lib/run-connect-sequence.ts`. It centrally calls
+  `resolveConnectSession` to validate pending auth, workspace membership,
+  tenant-aware credential ownership, and workspace access before the
+  channel-specific candidate lookup or persistence.
+- **Single-account server core + typed oRPC procedure** — one plain server
+  function per provider id (e.g. `actions/connect-page.ts`'s
+  `connectMessengerPage`), returning `ConnectActionResult<TOutcome>`
+  (`{ kind: "outcome", outcome }` or `{ kind: "sessionError", code }`) —
+  never a thrown exception the client has to classify, and never a 500 (the
+  procedure would be unclassifiable). Build the three outcome literals with
+  `lib/connect-action-outcomes.ts`'s `notSelectableOutcome` /
+  `duplicatedOutcome` / `connectedOutcome`, wrap best-effort follow-ups
+  (branding, tag scan, …) in `runConnectFollowUps`, and convert the core's
+  outer catch with `toConnectActionFailure`. Expose it through the
+  integration's `api/` procedure and register it through the feature's
+  `api/index.ts` — **not** a server action: Next serializes server actions
   from one browser, so the picker's batch could only connect one account at a
   time. Add a server action only for a form that genuinely needs one (as
   WhatsApp's top-level connect form does), delegating to the same core.
-- **`resolveConnectSession`** (`lib/resolve-connect-session.ts`) — reads the
-  pending-auth cookie or signup session for both legs (initial provider list
-  fetch and the per-id connect call); returns the same session-error codes
-  the outcome wire type carries.
-- **Client side** — every picker posts through `lib/connect-client.ts`'s
-  `connectViaApi` (path from `CONNECT_CHANNEL_REGISTRY[channel].connectPath`),
-  which turns any transport failure into the batch's own `failed`/`unknown`
-  outcome. `useConnectFlow` runs a single pick inline (button spinner) and
-  fans 2+ picks out through `ConnectManyDialog`'s status list,
-  `CONNECT_CONCURRENCY` at a time.
+- **Client side** — every picker calls its typed oRPC procedure through
+  `lib/connect-client.ts`'s `connectViaApi` and
+  `CONNECT_CHANNEL_REGISTRY[channel].connectRoute`, which turns any transport
+  failure into the batch's own `failed`/`unknown` outcome. `useConnectFlow`
+  runs a single pick inline (button spinner) and fans 2+ picks out through
+  `ConnectManyDialog`'s status list, `CONNECT_CONCURRENCY` at a time.
   On a coexist-eligible channel (`isCoexistChannel`,
   `packages/utils/channel.ts`) the "sync existing history" opt-in is a
   **per-row switch in the picker** (`CoexistRowSwitch` /
@@ -497,7 +512,7 @@ implementation instead of each building its own picker:
 
 **Channel vs integration.** Not every integration is a channel. `channelTypes`
 (`packages/utils/src/channel.ts:18`) is exactly: `omnichannel`, `webchat`, `messenger`,
-`whatsapp`, `zalo`, `smtp`, `telegram`, `instagram`, `tiktok`, `api`. Entries below that are
+`whatsapp`, `zalo`, `smtp`, `telegram`, `instagram`, `threads`, `tiktok`, `api`. Entries below that are
 not in that list (`google-sheets`, `instagram-facebook`, …) are `integrationTypes` only —
 they connect an external service but carry no inbox conversation.
 
@@ -508,6 +523,7 @@ they connect an external service but carry no inbox conversation.
 | whatsapp            | OAuth2    | YES                   | clientId/clientSecret + systemUser as platform credential                                                                          |
 | zalo                | OAuth2    | YES                   | clientId/clientSecret as platform credential                                                                                       |
 | tiktok              | OAuth2    | YES                   | clientId/clientSecret as platform credential                                                                                       |
+| threads             | OAuth2    | YES                   | Meta Threads app (clientId/clientSecret) as platform credential; comments only — public reply + hide top-level replies, no DM API and no like; see the `comment-automation` skill |
 | google-sheets       | OAuth2    | YES                   | clientId/clientSecret as platform credential                                                                                       |
 | instagram-facebook  | OAuth2    | YES                   | Meta/Facebook app (clientId/clientSecret); auth via Facebook Graph API for Instagram Business/Creator accounts linked to FB Pages; handles DMs + post comments; Personal accounts filtered out; integration name in code: `instagramFacebook` |
 | smtp                | Custom    | NO                    | SMTP with provider presets                                                                                                         |

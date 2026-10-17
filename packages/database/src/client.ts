@@ -56,6 +56,10 @@ export type DatabaseClient = typeof db | Transaction
 // Side-effect-free hypertable helpers (kept out of this module so they can be
 // imported without booting the connection pool). Re-exported here so callers
 // keep using the single `@chatbotx.io/database/client` entrypoint.
+export {
+  type StatementTimeout,
+  setLocalStatementTimeout,
+} from "./statement-timeout"
 export { liftDecompressionLimit } from "./timescale"
 
 export const countWithRelationsFilter = <TTable extends PgTable>(props: {
@@ -186,6 +190,19 @@ export const throwIfExists = async <TTable extends PgTable>(props: {
   if (result) {
     throw new Error(message)
   }
+}
+
+/**
+ * A database error safe to log or record: its message and parameters carry the
+ * bound values (tokens, payload data), so only the driver-level code is kept.
+ * Any other error is returned unchanged.
+ */
+export const toLoggableDatabaseError = (error: unknown): unknown => {
+  if (!(error instanceof DrizzleQueryError)) {
+    return error
+  }
+  const code = (error.cause as { code?: unknown } | undefined)?.code
+  return new Error(`Database error${code ? ` (${String(code)})` : ""}`)
 }
 
 export const isDatabaseError = (

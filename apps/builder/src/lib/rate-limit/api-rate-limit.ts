@@ -23,6 +23,8 @@ export type ApiRateLimitScope =
   | "channel-api-rate-limit"
   | "workspace-token-rate-limit"
   | "workspace-token-preauth-rate-limit"
+  | "inbound-webhook-preauth-rate-limit"
+  | "inbound-webhook-rate-limit"
 
 type ApiRateLimitInput = {
   scope: ApiRateLimitScope
@@ -136,10 +138,11 @@ export const checkApiRateLimit = async ({
  * drift between them.
  */
 export const assertApiNotRateLimited = async (
-  props: ApiRateLimitInput,
+  props: ApiRateLimitInput & { resHeaders?: Headers },
 ): Promise<void> => {
   const { limited, retryAfter } = await checkApiRateLimit(props)
   if (limited) {
+    props.resHeaders?.set("Retry-After", String(retryAfter))
     throw new ChatbotXException(
       `Too many requests. Retry after ${retryAfter}s.`,
       "tooManyRequests",

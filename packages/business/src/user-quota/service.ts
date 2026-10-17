@@ -5,15 +5,19 @@ import {
   db,
   eq,
   gt,
+  inArray,
   lte,
   type SQL,
   sql,
   sum,
 } from "@chatbotx.io/database/client"
-import { planStatuses } from "@chatbotx.io/database/partials"
 import {
+  ACTIVE_CONNECTION_STATUSES,
+  planStatuses,
+} from "@chatbotx.io/database/partials"
+import {
+  connectionModel,
   contactModel,
-  inboxModel,
   ROOT_TENANT_ID,
   userQuotaModel,
   workspaceMacModel,
@@ -195,6 +199,19 @@ class UserQuotaService extends BaseService {
       return quota
     }
     return null
+  }
+
+  async getPlanIdentity(
+    userId: string,
+  ): Promise<{ isOnTrial: boolean; planName: string | null }> {
+    const quota = await db.query.userQuotaModel.findFirst({
+      where: { userId },
+      columns: { planStatus: true, planName: true },
+    })
+    return {
+      isOnTrial: quota?.planStatus === planStatuses.enum.trial,
+      planName: quota?.planName ?? null,
+    }
   }
 
   private async readDefaultPlanSnapshot(
@@ -692,6 +709,19 @@ class UserQuotaService extends BaseService {
   }
 
   /**
+   * Atomically admit one live unit using a quota row already loaded by the
+   * caller. A missing row is unlimited; no quota row is fetched here.
+   */
+  admit(
+    userId: string,
+    metric: QuotaMetric,
+    quota: UserQuotaModel | null,
+  ): Promise<number | null> {
+    const { limit } = this.metricValues(quota, metric)
+    return this.store.admit(userId, metric, limit)
+  }
+
+  /**
    * Write-through a +1 usage increment to BOTH the DB column and the Redis live
    * counter, then bust the row cache — so the gate (`hasCapacity`, DB-read) and
    * the display (`getLiveUsage`, Redis-read) never disagree. The shared store
@@ -699,6 +729,17 @@ class UserQuotaService extends BaseService {
    */
   async consume(userId: string, metric: QuotaMetric): Promise<void> {
     await this.store.consume(userId, metric, 1)
+  }
+
+  /** Persist an admitted unit and invalidate the quota row cache. */
+  async commitAdmission(userId: string, metric: QuotaMetric): Promise<void> {
+    await this.store.upsertMetricBy(userId, metric, 1)
+    await this.store.invalidate(userId)
+  }
+
+  /** Best-effort release of one previously admitted live unit. */
+  async revokeAdmission(userId: string, metric: QuotaMetric): Promise<void> {
+    await this.store.decrementBy(userId, metric, 1)
   }
 
   async release(userId: string, metric: QuotaMetric): Promise<void> {
@@ -722,10 +763,16 @@ class UserQuotaService extends BaseService {
   }
 
   /**
-   * Shared `contacts ⋈ workspace` / `workspaces` / `inboxes ⋈ workspace`
+   * Shared `contacts ⋈ workspace` / `workspaces` / active-channel-`Connection`
    * count block behind both `reconcileOwnerPoolUsage` (tenant-scoped `where`)
    * and `reconcileUserSelfUsage` (owner-scoped `where`) — same three queries,
    * differing only in which workspace predicate is applied.
+   *
+   * `channelsUsed` counts distinct `Connection` rows (`kind = "channel"` AND
+   * `status IN` {@link ACTIVE_CONNECTION_STATUSES}) joined to `workspace`,
+   * NOT raw `Inbox` rows: an `Inbox` can exist with no backing `Connection`
+   * at all (orphaned) or with one that's paused/needs_reauth/disconnected,
+   * and neither case should hold a channel-quota slot.
    */
   private async countWorkspaceScopedUsage(where: SQL): Promise<{
     contactsUsed: number
@@ -746,13 +793,19 @@ class UserQuotaService extends BaseService {
         db.select({ count: count() }).from(workspaceModel).where(where),
 
         db
-          .select({ count: count() })
-          .from(inboxModel)
+          .select({ count: countDistinct(connectionModel.id) })
+          .from(connectionModel)
           .innerJoin(
             workspaceModel,
-            eq(inboxModel.workspaceId, workspaceModel.id),
+            eq(connectionModel.workspaceId, workspaceModel.id),
           )
-          .where(where),
+          .where(
+            and(
+              where,
+              eq(connectionModel.kind, "channel"),
+              inArray(connectionModel.status, ACTIVE_CONNECTION_STATUSES),
+            ),
+          ),
       ])
 
     return {

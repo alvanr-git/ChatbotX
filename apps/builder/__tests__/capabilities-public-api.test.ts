@@ -51,6 +51,7 @@ vi.mock("@chatbotx.io/business", () => ({
 }))
 
 vi.mock("@chatbotx.io/business/errors", () => ({
+  BROADCAST_PLAN_LIMIT_CODE: "broadcastPlanLimit",
   ChatbotXException: class extends Error {},
 }))
 
@@ -104,6 +105,7 @@ describe("GET /v1/capabilities", () => {
     })
 
     expect(getCapabilities).toHaveBeenCalledWith({
+      channel: undefined,
       workspaceId: "workspace-1",
       include: undefined,
     })
@@ -119,8 +121,24 @@ describe("GET /v1/capabilities", () => {
     })
 
     expect(getCapabilities).toHaveBeenCalledWith({
+      channel: undefined,
       workspaceId: "workspace-1",
       include: ["tags", "flows"],
+    })
+  })
+
+  test("forwards a requested channel policy", async () => {
+    getCapabilities.mockResolvedValueOnce({})
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { channel: "tiktok" },
+    })
+
+    expect(getCapabilities).toHaveBeenCalledWith({
+      channel: "tiktok",
+      workspaceId: "workspace-1",
+      include: undefined,
     })
   })
 })

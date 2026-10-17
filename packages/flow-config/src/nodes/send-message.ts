@@ -1,3 +1,4 @@
+import { type ChannelType, channelTypes } from "@chatbotx.io/utils/channel"
 import { z } from "zod"
 import { actionSteps } from "../shared"
 import { buttonStepSchema } from "../steps/button"
@@ -6,19 +7,29 @@ import {
   chooseChannelStepSchema,
 } from "../steps/choose-channel"
 import { getUserDataStepSchema } from "../steps/get-user-data"
+import {
+  quickReplySettingsDefaultFn,
+  quickReplySettingsSchema,
+  refineQuickReplySettings,
+} from "../steps/quick-reply-settings"
 import { sendAudioStepSchema } from "../steps/send-audio"
+import { sendCardStepSchema } from "../steps/send-card"
 import { sendCarouselStepSchema } from "../steps/send-carousel"
 import { sendFileStepSchema } from "../steps/send-file"
 import { sendGifStepSchema } from "../steps/send-gif"
 import { sendImageStepSchema } from "../steps/send-image"
 import { sendMessengerTemplateMessageStepSchema } from "../steps/send-messenger-message-template"
 import { sendMultipleImagesStepSchema } from "../steps/send-multiple-images"
+import { sendProductsStepSchema } from "../steps/send-products"
 import { MAX_QUICK_REPLIES } from "../steps/send-quick-reply"
 import { sendTextStepSchema } from "../steps/send-text"
 import { sendVideoStepSchema } from "../steps/send-video"
+import { sendViewCatalogStepSchema } from "../steps/send-view-catalog"
 import { sendWaTemplateMessageStepSchema } from "../steps/send-wa-message-template"
 import { typingStepSchema } from "../steps/typing"
+import { whatsappCallButtonStepSchema } from "../steps/whatsapp-call-button"
 import { whatsappFlowStepSchema } from "../steps/whatsapp-flow"
+import { whatsappLocationStepSchema } from "../steps/whatsapp-location"
 import { whatsappOptionListStepSchema } from "../steps/whatsapp-option-list"
 import {
   baseNodeDataSchema,
@@ -29,35 +40,62 @@ import {
 } from "./base"
 
 export const sendMessageNodeSchema = baseNodeSchema.extend({
-  type: z.literal(nodeTypeSchema.enum.sendMessage),
+  type: z
+    .literal(nodeTypeSchema.enum.sendMessage)
+    .describe(
+      'Node type "sendMessage": sends messages. `data.details.beforeStep` selects the channel, `steps` are the messages/actions in order, `quickReplies` are quick-reply buttons shown after the last message.',
+    ),
   data: baseNodeDataSchema.extend({
-    details: z.object({
-      beforeStep: chooseChannelStepSchema,
-      steps: z.array(
-        z.discriminatedUnion("stepType", [
-          sendAudioStepSchema,
-          sendFileStepSchema,
-          sendImageStepSchema,
-          sendMultipleImagesStepSchema,
-          sendTextStepSchema,
-          sendVideoStepSchema,
-          // sendCardStepSchema,
-          sendCarouselStepSchema,
-          getUserDataStepSchema,
-          sendGifStepSchema,
-          typingStepSchema,
-          sendWaTemplateMessageStepSchema,
-          sendMessengerTemplateMessageStepSchema,
-          whatsappOptionListStepSchema,
-          whatsappFlowStepSchema,
-          ...actionSteps,
-        ]),
-      ),
-      quickReplies: z.array(buttonStepSchema).max(MAX_QUICK_REPLIES),
-    }),
+    details: z
+      .object({
+        beforeStep: chooseChannelStepSchema,
+        steps: z.array(
+          z.discriminatedUnion("stepType", [
+            sendAudioStepSchema,
+            sendFileStepSchema,
+            sendImageStepSchema,
+            sendMultipleImagesStepSchema,
+            sendTextStepSchema,
+            sendVideoStepSchema,
+            sendCardStepSchema,
+            sendCarouselStepSchema,
+            getUserDataStepSchema,
+            sendGifStepSchema,
+            typingStepSchema,
+            sendWaTemplateMessageStepSchema,
+            sendMessengerTemplateMessageStepSchema,
+            whatsappOptionListStepSchema,
+            sendViewCatalogStepSchema,
+            whatsappCallButtonStepSchema,
+            whatsappFlowStepSchema,
+            sendProductsStepSchema,
+            whatsappLocationStepSchema,
+            ...actionSteps,
+          ]),
+        ),
+        quickReplies: z
+          .array(buttonStepSchema)
+          .max(MAX_QUICK_REPLIES)
+          .describe(
+            `Quick-reply buttons shown after the last message (max ${MAX_QUICK_REPLIES}); use [] for none.`,
+          ),
+        quickReplySettings: quickReplySettingsSchema.optional(),
+      })
+      .superRefine(refineQuickReplySettings),
   }),
 })
 export type SendMessageNodeSchema = z.infer<typeof sendMessageNodeSchema>
+
+/**
+ * Returns the configured channel, falling back to omnichannel for stored
+ * legacy values that predate the current channel enum.
+ */
+export const getSendMessageChannel = (
+  node: SendMessageNodeSchema,
+): ChannelType => {
+  const parsed = channelTypes.safeParse(node.data.details.beforeStep.channel)
+  return parsed.success ? parsed.data : channelTypes.enum.omnichannel
+}
 
 export const sendMessageNodeDefaultFn = (
   props: DefaultNodeProps,
@@ -73,6 +111,7 @@ export const sendMessageNodeDefaultFn = (
       beforeStep: chooseChannelStepDefaultFn(),
       steps: [],
       quickReplies: [],
+      quickReplySettings: quickReplySettingsDefaultFn(),
       ...props.detailProps,
     },
   },
@@ -80,6 +119,16 @@ export const sendMessageNodeDefaultFn = (
 
 export const BROADCAST_PAYLOAD_TYPE = "broadcast"
 export const SEQUENCE_SCHEDULE_PAYLOAD_TYPE = "sequenceSchedule"
+export const isBulkOutboundMetadata = (
+  metadata: unknown,
+  isBulkBroadcast = false,
+): boolean =>
+  typeof metadata === "object" &&
+  metadata !== null &&
+  "type" in metadata &&
+  (metadata.type === SEQUENCE_SCHEDULE_PAYLOAD_TYPE ||
+    (metadata.type === BROADCAST_PAYLOAD_TYPE && isBulkBroadcast))
+
 export const COMMENT_AUTOMATION_PAYLOAD_TYPE = "commentAutomation"
 export const UPDATE_STATUS_PAYLOAD_TYPE = "updateStatus"
 export const FLOW_NODE_PAYLOAD_TYPE = "flowNode"

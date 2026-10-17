@@ -67,6 +67,9 @@ vi.mock("@/env", () => ({ isCommunity: () => isCommunity() }))
 vi.mock("@chatbotx.io/database/partials", async () => {
   const { z } = await import("zod")
   return {
+    broadcastPlanLimitDataSchema: z.object({}),
+    PRODUCT_MESSAGE_UNRESOLVABLE_CODE: "productMessageUnresolvable",
+    productMessageUnresolvableDataSchema: z.object({}),
     webchatConversationStarter: z.object({}),
     webchatPersistentMenu: z.object({}),
   }
@@ -217,8 +220,8 @@ describe("POST /v1/webchats", () => {
   })
 })
 
-describe("PUT /v1/webchats/{id}", () => {
-  const procedure = findProcedure("PUT", "/v1/webchats/{id}")
+describe("PATCH /v1/webchats/{id}", () => {
+  const procedure = findProcedure("PATCH", "/v1/webchats/{id}")
 
   test("re-applies branding when persistentMenus is supplied", async () => {
     isCommunity.mockReturnValue(true)

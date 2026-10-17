@@ -5,6 +5,7 @@ import {
   eq,
   inArray,
 } from "@chatbotx.io/database/client"
+import { inboxTeamMemberRepository } from "@chatbotx.io/database/repositories"
 import {
   inboxTeamMemberModel,
   inboxTeamModel,
@@ -18,6 +19,7 @@ import { withCache } from "@chatbotx.io/redis"
 import { createId } from "@chatbotx.io/utils"
 import { BaseService } from "../../base.service"
 import { ChatbotXException, notFoundException } from "../../errors"
+import { type IdLabel, selectLabelsByIds } from "../../select-labels-by-ids"
 import { workspaceMemberService } from "../../workspace-member/service"
 
 type InboxTeamWithMembers = InboxTeamModel & {
@@ -45,6 +47,20 @@ class InboxTeamService extends BaseService {
         }),
       { tags: ["inbox-teams", `inbox-teams:${workspaceId}`] },
     )
+  }
+
+  /**
+   * Bounded, workspace-scoped projection of a single team's member user
+   * ids — the ring-target snapshot's team read
+   * (`whatsappVoipCallService.selectRingTargetsForCall`), only loaded when
+   * a conversation's `assignedInboxTeamId` is set. Never the whole (cached)
+   * `listByWorkspace`, which loads every team with members and users.
+   */
+  listUserIdsByTeamId(props: {
+    workspaceId: string
+    inboxTeamId: string
+  }): Promise<string[]> {
+    return inboxTeamMemberRepository.listUserIdsByTeamId(props)
   }
 
   // ─── Reads (NOT cached — write-path guard) ───────────────────────────────
@@ -339,6 +355,14 @@ class InboxTeamService extends BaseService {
       where: { workspaceId, id: { in: ids } },
       columns: { id: true },
     })
+  }
+
+  /** Teams of the workspace among `ids`. */
+  async listLabelsByIds(input: {
+    workspaceId: string
+    ids: string[]
+  }): Promise<IdLabel[]> {
+    return await selectLabelsByIds(inboxTeamModel, input)
   }
 }
 

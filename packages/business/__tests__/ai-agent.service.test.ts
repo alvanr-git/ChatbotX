@@ -1,12 +1,22 @@
 import type { AIAgentModel } from "@chatbotx.io/database/types"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
+// The broadcast policy import reaches quota/workspace modules these narrow mocks omit.
+vi.mock("../src/broadcast/plan-policy.service", () => ({
+  broadcastPlanPolicyService: {},
+}))
+
 const {
   mockDelete,
+  mockFindActiveFlow,
+  mockFindCustomFields,
   mockFindFirst,
   mockFindMany,
+  mockFindMembers,
+  mockFindTags,
   mockInsert,
   mockInvalidateCacheByTags,
+  mockListInboxTeams,
   mockTransaction,
   mockUpdate,
   mockWithCache,
@@ -42,10 +52,15 @@ const {
 
   return {
     mockDelete,
+    mockFindActiveFlow: vi.fn(),
+    mockFindCustomFields: vi.fn(async () => []),
     mockFindFirst: dbClient.query.aiAgentModel.findFirst,
     mockFindMany: dbClient.query.aiAgentModel.findMany,
+    mockFindMembers: vi.fn(),
+    mockFindTags: vi.fn(async () => []),
     mockInsert,
     mockInvalidateCacheByTags: vi.fn(),
+    mockListInboxTeams: vi.fn(async () => []),
     mockTransaction: dbClient.transaction,
     mockUpdate,
     mockWithCache: vi.fn(
@@ -93,12 +108,33 @@ vi.mock("@chatbotx.io/redis", () => ({
   withCache: mockWithCache,
 }))
 
-vi.mock("@chatbotx.io/utils", () => ({
+vi.mock("@chatbotx.io/utils", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@chatbotx.io/utils")>()),
   createId: () => "agent-1",
 }))
 
 const dispatchAuditRecord = vi.fn()
 vi.mock("../src/audit/dispatcher", () => ({ dispatchAuditRecord }))
+
+vi.mock("../src/custom-field/service", () => ({
+  customFieldService: { findManyByIds: mockFindCustomFields },
+}))
+
+vi.mock("../src/enterprise/inbox-team/service", () => ({
+  inboxTeamService: { listExistingIds: mockListInboxTeams },
+}))
+
+vi.mock("../src/flow/service", () => ({
+  flowService: { findActiveById: mockFindActiveFlow },
+}))
+
+vi.mock("../src/tag/service", () => ({
+  tagService: { findManyByIds: mockFindTags },
+}))
+
+vi.mock("../src/workspace-member/service", () => ({
+  workspaceMemberService: { findByWorkspaceIdAndUserId: mockFindMembers },
+}))
 
 const { aiAgentService } = await import("../src/ai-agent/service")
 
@@ -139,6 +175,7 @@ function lastAuditDetail(): string {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockFindActiveFlow.mockResolvedValue(undefined)
   mockFindFirst.mockResolvedValue(aiAgent)
   mockFindMany.mockResolvedValue([aiAgent])
 })
@@ -192,6 +229,28 @@ describe("aiAgentService cache invalidation", () => {
     await aiAgentService.delete({ ids: ["agent-1"], workspaceId })
 
     expect(mockInvalidateCacheByTags).toHaveBeenCalledWith([workspaceCacheTag])
+  })
+})
+
+describe("aiAgentService AI action validation", () => {
+  test("rejects an inactive or unpublished flow action", async () => {
+    await expect(
+      aiAgentService.create(workspaceId, {
+        ...createRequest,
+        actionRules: [
+          {
+            id: "rule-1",
+            when: "Customer asks for a demo",
+            actions: [{ id: "flow-1", type: "send_flow", flowId: "flow-1" }],
+          },
+        ],
+      }),
+    ).rejects.toThrow("A selected flow must be active and published.")
+
+    expect(mockFindActiveFlow).toHaveBeenCalledWith({
+      id: "flow-1",
+      workspaceId,
+    })
   })
 })
 

@@ -1,5 +1,8 @@
 // @vitest-environment node
 
+import { mkdir, writeFile } from "node:fs/promises"
+import { dirname } from "node:path"
+
 import {
   type JSONSchema,
   OpenAPIGenerator,
@@ -7,6 +10,7 @@ import {
 } from "@orpc/openapi"
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4"
 import { beforeAll, describe, expect, test, vi } from "vitest"
+import { IDEMPOTENCY_EXEMPT_READ_PATHS } from "@/lib/idempotency/constants"
 
 // `@/routers/public` transitively imports every feature's `api/public.ts`,
 // which pulls in `@chatbotx.io/database/client` (opens a real `pg.Pool` at
@@ -24,7 +28,7 @@ vi.mock("@/middlewares/auth", () => ({
 
 vi.mock("@chatbotx.io/database/client", () => {
   const proxy: unknown = new Proxy(() => proxy, { get: () => proxy })
-  return { db: proxy }
+  return { db: proxy, sql: proxy }
 })
 
 type JsonSchema = {
@@ -33,6 +37,7 @@ type JsonSchema = {
   description?: string
   oneOf?: JsonSchema[]
   properties?: Record<string, JsonSchema>
+  required?: string[]
   type?: string
 }
 
@@ -160,6 +165,14 @@ beforeAll(async () => {
       publicSpecGenerateOptions("public-spec-operations.test"),
     ),
   )
+  if (process.env.MCP_EVAL_SPEC_OUTPUT) {
+    await mkdir(dirname(process.env.MCP_EVAL_SPEC_OUTPUT), { recursive: true })
+    await writeFile(
+      process.env.MCP_EVAL_SPEC_OUTPUT,
+      JSON.stringify(spec, null, 2),
+      "utf8",
+    )
+  }
 
   componentSchemas = (spec.components?.schemas ?? {}) as Record<string, unknown>
   specDocument = spec
@@ -271,6 +284,10 @@ const hasDescribedComposedBranches = (schema: JsonSchema): boolean =>
       branches.every((branch) => Boolean(branch.description))
     )
   })
+
+const PATH_PARAM_ID_SUFFIX_PATTERN = /^[a-z][A-Za-z0-9]*Id$/
+const PATH_PARAM_SHAPE_PATTERN = /^[a-z][A-Za-z0-9]*$/
+const TRAILING_PATH_PARAM_PATTERN = /\{[^}]+\}$/
 
 describe("public API spec — operation naming guard", () => {
   // Pins the MCP tool name / operationId surface. A diff here is a
@@ -385,6 +402,36 @@ describe("public API spec — operation naming guard", () => {
     expect(missingInputDescriptions).toEqual([])
   })
 
+  test("broadcast sendRatePerMinute documents the trial Messenger default and cap", () => {
+    const createBroadcast = operations.find(
+      (operation) => operation.operationId === "broadcasts.create",
+    )
+
+    expect(
+      createBroadcast?.bodySchema?.properties?.sendRatePerMinute?.description,
+    ).toBe(
+      "Maximum recipients handed off per dispatch minute (1-1000). Omit to use your plan's default (500; Messenger broadcasts on a trial plan use and cap at 60).",
+    )
+  })
+
+  test("broadcast schedule and resume document editable send rates", () => {
+    const schedule = operations.find(
+      (operation) => operation.operationId === "broadcasts.schedule",
+    )
+    const resume = operations.find(
+      (operation) => operation.operationId === "broadcasts.resume",
+    )
+    const description =
+      "Maximum recipients handed off per dispatch minute (1-1000). Omit to keep the stored rate; null clears it."
+
+    expect(
+      schedule?.bodySchema?.properties?.sendRatePerMinute?.description,
+    ).toBe(description)
+    expect(resume?.bodySchema?.properties?.sendRatePerMinute?.description).toBe(
+      description,
+    )
+  })
+
   test("every /v1/channels/api/* operation requires only the channel token scheme", () => {
     const channelOps = operations.filter((op) =>
       op.path.startsWith("/v1/channels/api/"),
@@ -436,13 +483,16 @@ describe("public API spec — operation naming guard", () => {
       "aiAgents.list",
       "contacts.list",
       "contacts.create",
-      "contacts.search",
       "contacts.get",
-      "contacts.findByCustomField",
       "contacts.upsert",
       "contacts.listMessages",
       "contacts.getMessage",
       "contacts.refreshProfile",
+      // Deprecated aliases sharing `contacts.list`'s response schema
+      // (`contactResponse`/`listContactsResponse`/`publicListContactsResponse`)
+      // — same pre-existing leak, not new.
+      "contacts.search",
+      "contacts.findByCustomField",
       "conversations.list",
       "coupons.listTopics",
       "coupons.createTopic",
@@ -558,6 +608,95 @@ describe("public API spec — operation naming guard", () => {
 
     expect(leaking).toEqual([])
   })
+
+  // A path parameter name must say what it addresses. `id`/`idOrName` for
+  // the operation's own resource, `identifier` for the flexible
+  // id/email/phone contact address, a handful of domain nouns that are
+  // resources in their own right (`channel`, `provider`, `worksheetName`),
+  // or `<noun>Id` for a parent/related resource addressed by a different
+  // noun than the operation's own (e.g. `conversationId` on a message
+  // route). `operationId` is banned outright: it collides with the
+  // OpenAPI/MCP/CLI concept those same tools use to name the operation
+  // itself, which is exactly how `ads.retryCampaign` et al. used to read as
+  // "retry the operation-id" instead of "retry the messaging ad".
+  const ALLOWED_BARE_PATH_PARAM_NAMES = new Set([
+    "channel",
+    "id",
+    "identifier",
+    "idOrName",
+    "provider",
+    "worksheetName",
+  ])
+
+  test("every path parameter name says what it addresses", () => {
+    const invalidPathParams = operations.flatMap((operation) => {
+      const names = operation.parameters
+        .filter((parameter) => operation.path.includes(`{${parameter.name}}`))
+        .map((parameter) => parameter.name)
+
+      return names
+        .filter(
+          (name) =>
+            name === "operationId" ||
+            !PATH_PARAM_SHAPE_PATTERN.test(name) ||
+            !(
+              ALLOWED_BARE_PATH_PARAM_NAMES.has(name) ||
+              PATH_PARAM_ID_SUFFIX_PATTERN.test(name)
+            ),
+        )
+        .map((name) => `${operation.operationId}.${name}`)
+    })
+
+    expect(invalidPathParams).toEqual([])
+  })
+
+  // House rule (docs/developer/workspace-api-tokens.md, "PUT vs. PATCH on a
+  // resource's own id"): PUT replaces a resource wholesale (body has
+  // required fields — omitting one would leave the resource in an undefined
+  // state), PATCH merges a partial change (every body field optional).
+  // Scoped to routes whose last path segment is the resource's own id/name
+  // placeholder — a sub-resource setter like `/{id}/enabled` or a
+  // collection route like `/v1/bot-fields` doesn't address "the whole
+  // resource" the same way, so the rule doesn't apply there; both are
+  // already excluded by the trailing-path-param check.
+  //
+  // Blind spot this mechanical check cannot see (see the doc section above
+  // for the full explanation): a zod `.default(...)` field drops out of
+  // `required` exactly like a genuinely optional one, so a PUT can pass this
+  // guard while still silently wiping every defaulted field a caller omits.
+  // Checking that requires reading the handler, not the generated schema.
+
+  // Deprecated back-compat aliases for a route that flipped PUT→PATCH
+  // during the public-API consolidation: the alias keeps the OLD method
+  // (PUT) on the SAME merge-style handler as its PATCH canonical sibling —
+  // it never had "replace everything" semantics even when it was the only
+  // spelling, so it fails this house rule by construction, not by mistake.
+  const DEPRECATED_METHOD_FLIP_ALIASES = new Set<string>([
+    "ads.updateRuleLegacy",
+    "contacts.updateLegacy",
+  ])
+
+  test("every PUT/PATCH addressing a resource by its trailing path id matches its body's required-ness", () => {
+    const resourceAddressedMutations = operations.filter(
+      (op) =>
+        (op.method === "PUT" || op.method === "PATCH") &&
+        TRAILING_PATH_PARAM_PATTERN.test(op.path) &&
+        !DEPRECATED_METHOD_FLIP_ALIASES.has(op.operationId),
+    )
+
+    expect(resourceAddressedMutations.length).toBeGreaterThan(0)
+
+    const mismatched = resourceAddressedMutations
+      .filter((op) => {
+        const hasRequiredBodyField = (op.bodySchema?.required?.length ?? 0) > 0
+        return op.method === "PATCH"
+          ? hasRequiredBodyField
+          : !hasRequiredBodyField
+      })
+      .map((op) => op.operationId)
+
+    expect(mismatched).toEqual([])
+  })
 })
 
 describe("public API spec — white-label safety", () => {
@@ -645,7 +784,7 @@ describe("public API spec — error response coverage", () => {
 
   // Mirrors `toSnakeCase` in apps/mcp-server/src/openapi-loader.ts — kept in
   // sync manually rather than imported, since apps/builder has no dependency
-  // on chatbotx-mcp-server. If that implementation changes, update this too.
+  // on chatbotx-mcp. If that implementation changes, update this too.
   const toSnakeCase = (str: string): string =>
     str
       .replace(/([A-Z]{2,})(?=[A-Z][a-z]|$)/g, "_$1")
@@ -690,6 +829,47 @@ describe("public API spec — error response coverage", () => {
 
     expect(missing422).toEqual([])
   })
+
+  // oRPC only maps non-path input into query parameters for GET
+  // (@orpc/openapi's `OpenAPIGenerator`); every other method — including
+  // DELETE — gets a `requestBody`. The MCP/CLI clients used to silently
+  // drop the body on DELETE (`NO_BODY_METHODS` in
+  // `execute-tool.ts`/`dynamic-executor.ts` included DELETE), which made
+  // any DELETE operation with declared body fields permanently
+  // uncallable — or, for a field with a default, silently unoverridable —
+  // through either client even though its schema advertised it. That is
+  // fixed now, but a DELETE route should still only carry a body when it
+  // genuinely needs one to address or disambiguate the resource — pin the
+  // exact set so a new one is a deliberate, reviewed addition, not a
+  // silent trap for callers of a client that regresses this fix.
+  //
+  // `contacts.removeTags` (`tagIds`), `contacts.unsubscribeSequences`
+  // (`sequenceIds`), and `inboxTeams.removeMembers` (`userIds`) each remove
+  // a caller-chosen subset of a collection. `keywords.delete` (`type`,
+  // defaulted to "inbound") and `messages.delete` (`createdAt`, required to
+  // locate a message in sharded storage — the comment in
+  // `messages/schema/public.ts` claiming DELETE maps this to a query
+  // parameter was wrong for this oRPC version) turned up only once this
+  // guard's filter ran against the real generated spec, which is exactly
+  // the "signal" this guard exists to catch: both were silently broken (or
+  // silently limited to the default) by the same dropped-DELETE-body bug
+  // this change fixes. `miniApps.delete` (`deleteWhatsappFlows`, defaulted
+  // to false) opts into also removing the Mini App's Flows on Meta.
+  test("DELETE operations with a request body are exactly the reviewed set", () => {
+    const deletesWithBody = operations
+      .filter((op) => op.method === "DELETE" && op.bodySchema)
+      .map((op) => op.operationId)
+      .sort()
+
+    expect(deletesWithBody).toEqual([
+      "contacts.removeTags",
+      "contacts.unsubscribeSequences",
+      "inboxTeams.removeMembers",
+      "keywords.delete",
+      "messages.delete",
+      "miniApps.delete",
+    ])
+  })
 })
 
 /**
@@ -716,11 +896,21 @@ describe("public API spec — declared codes match what the mapper throws", () =
     "invalidRequestData",
     // Thrown by `validationException` in @chatbotx.io/business.
     "validation",
+    // Default code of a `ChatbotXException` thrown without one.
+    "systemError",
     "tooManyRequests",
     "INTERNAL_SERVER_ERROR",
   ]
 
-  type ProcedureErrorMap = { path: string; codes: string[] }
+  type ProcedureErrorMap = {
+    path: string
+    routePath: string
+    method: string
+    codes: string[]
+    statuses: Record<string, number | undefined>
+    /** Codes whose declaration carries a `data` schema (so the spec documents it). */
+    structuredCodes: string[]
+  }
 
   function collectErrorMaps(
     node: unknown,
@@ -730,9 +920,29 @@ describe("public API spec — declared codes match what the mapper throws", () =
     if (!node || typeof node !== "object") {
       return
     }
-    const def = (node as Record<string, { errorMap?: object }>)["~orpc"]
+    const def = (
+      node as Record<
+        string,
+        { errorMap?: object; route?: { method?: string; path?: string } }
+      >
+    )["~orpc"]
     if (def?.errorMap) {
-      out.push({ path: path.join("."), codes: Object.keys(def.errorMap) })
+      out.push({
+        path: path.join("."),
+        routePath: def.route?.path ?? "",
+        method: (def.route?.method ?? "POST").toUpperCase(),
+        codes: Object.keys(def.errorMap),
+        statuses: Object.fromEntries(
+          Object.entries(
+            def.errorMap as Record<string, { status?: number }>,
+          ).map(([code, entry]) => [code, entry?.status]),
+        ),
+        structuredCodes: Object.entries(
+          def.errorMap as Record<string, { data?: unknown }>,
+        )
+          .filter(([, entry]) => entry?.data !== undefined)
+          .map(([code]) => code),
+      })
       return
     }
     for (const [key, child] of Object.entries(node)) {
@@ -761,6 +971,39 @@ describe("public API spec — declared codes match what the mapper throws", () =
     expect(missing).toEqual([])
   })
 
+  test("only write procedures declare idempotency error codes", () => {
+    const idempotencyCodes = [
+      "idempotencyKeyInvalid",
+      "idempotencyKeyReused",
+      "idempotencyKeyConflict",
+    ]
+    const writeMethods = ["POST", "PUT", "PATCH", "DELETE"]
+    const writesMissingCodes = procedures
+      .filter((procedure) => writeMethods.includes(procedure.method))
+      .filter(
+        (procedure) => !IDEMPOTENCY_EXEMPT_READ_PATHS.has(procedure.routePath),
+      )
+      .map((procedure) => ({
+        path: procedure.path,
+        absent: idempotencyCodes.filter(
+          (code) => !procedure.codes.includes(code),
+        ),
+      }))
+      .filter((procedure) => procedure.absent.length > 0)
+    const readsDeclaringCodes = procedures
+      .filter((procedure) => ["GET", "HEAD"].includes(procedure.method))
+      .map((procedure) => ({
+        path: procedure.path,
+        declared: idempotencyCodes.filter((code) =>
+          procedure.codes.includes(code),
+        ),
+      }))
+      .filter((procedure) => procedure.declared.length > 0)
+
+    expect(writesMissingCodes).toEqual([])
+    expect(readsDeclaringCodes).toEqual([])
+  })
+
   test("no procedure re-declares a code commonApiErrors already provides", async () => {
     const { commonApiErrors, possibleErrorsOnFindingResource } = await import(
       "@/lib/orpc/orpc-error-helper"
@@ -779,5 +1022,155 @@ describe("public API spec — declared codes match what the mapper throws", () =
       (proc) => new Set(proc.codes).size !== proc.codes.length,
     )
     expect(duplicated).toEqual([])
+  })
+
+  // Each case pins a code the handler (or the service it calls) really throws,
+  // so a refactor that drops it from the route's map is caught here.
+  // Each case pins a code AND the status the handler (or the service it calls)
+  // really throws: oRPC treats a declared code with a different status as
+  // undefined too, so both have to match.
+  test("routes declare the specific codes their services throw, with the thrown status", () => {
+    const creationCodes = {
+      messagingAdPageMissing: 400,
+      messagingAdInstagramActorMissing: 400,
+      messagingAdWhatsappPageRequired: 400,
+      messagingAdWhatsappPhoneMissing: 400,
+      invalidRequest: 400,
+    }
+    const expected: Record<string, Record<string, number>> = {
+      "ads.createCampaign": {
+        notFound: 404,
+        messagingAdsReconnectRequired: 409,
+        ...creationCodes,
+      },
+      "ads.retryCampaign": {
+        notFound: 404,
+        messagingAdNotRetryable: 409,
+        messagingAdsReconnectRequired: 409,
+        ...creationCodes,
+      },
+      "ads.publishCampaign": { notFound: 404, messagingAdNotPublishable: 409 },
+      "ads.pauseCampaign": {
+        notFound: 404,
+        messagingAdsReconnectRequired: 409,
+      },
+      "ads.deleteCampaign": {
+        notFound: 404,
+        messagingAdsReconnectRequired: 409,
+      },
+      "ads.listCampaignAdAccounts": { messagingAdsReconnectRequired: 409 },
+      "ads.uploadCampaignVideo": { messagingAdsReconnectRequired: 409 },
+      "ads.listCampaignMessengerPages": { invalidRequest: 400 },
+      "products.createMetaCatalog": {
+        notFound: 404,
+        metaCatalogReconnectRequired: 400,
+      },
+      "products.selectMetaCatalog": { metaCatalogReconnectRequired: 400 },
+      "products.syncMetaCatalog": { metaCatalogReconnectRequired: 400 },
+      "contacts.create": { notFound: 404, invalidCustomFieldValue: 400 },
+      "contacts.upsert": { notFound: 404, phoneExists: 422 },
+      "contacts.sendMessage": {
+        notFound: 404,
+        productMessageUnresolvable: 422,
+      },
+      "messages.create": { productMessageUnresolvable: 422 },
+      "contacts.update": { invalidCustomFieldValue: 400 },
+      "contacts.setCustomField": { invalidCustomFieldValue: 400 },
+      "contacts.applyCustomFieldOperations": { invalidCustomFieldValue: 400 },
+      "sequences.create": { notFound: 404 },
+      "botFields.create": {
+        notFound: 404,
+        invalidFieldOperation: 400,
+        invalidCustomFieldValue: 400,
+      },
+      "botFields.set": {
+        invalidFieldOperation: 400,
+        invalidCustomFieldValue: 400,
+      },
+      "botFields.setMany": { invalidFieldOperation: 400 },
+      "botFields.delete": { templateAllowDeleteViolation: 400 },
+    }
+    const byPath = new Map(procedures.map((proc) => [proc.path, proc]))
+    const wrong = Object.entries(expected).flatMap(([path, codes]) => {
+      const proc = byPath.get(path)
+      if (!proc) {
+        return [{ path, code: "<operation not found>" }]
+      }
+      return Object.entries(codes)
+        .filter(([code, status]) => proc.statuses[code] !== status)
+        .map(([code, status]) => ({
+          path,
+          code,
+          expected: status,
+          declared: proc.statuses[code],
+        }))
+    })
+
+    expect(wrong).toEqual([])
+  })
+
+  test("sending a message documents why a product message was refused", () => {
+    const byPath = new Map(procedures.map((proc) => [proc.path, proc]))
+    const withoutReason = ["contacts.sendMessage", "messages.create"].filter(
+      (path) =>
+        !byPath
+          .get(path)
+          ?.structuredCodes.includes("productMessageUnresolvable"),
+    )
+
+    expect(withoutReason).toEqual([])
+  })
+
+  test("no-op routes do not promise a 404 they never return", () => {
+    // `analytics.resetFlowStats` keeps `notFound`: the spec guard above requires
+    // it on every DELETE; its description states that an unknown id is a no-op.
+    const noOp = [
+      "analytics.commentAutomationReplyStats",
+      "analytics.commentAutomationUserComments",
+      "analytics.commentAutomationBotReplies",
+      "analytics.commentAutomationErrors",
+    ]
+    const byPath = new Map(procedures.map((proc) => [proc.path, proc]))
+    expect(
+      noOp.filter((path) => byPath.get(path)?.codes.includes("notFound")),
+    ).toEqual([])
+  })
+})
+
+describe("public API spec — catalog and call conditions", () => {
+  // Agents build trigger and webhook conditions from this spec alone, so every
+  // operation that takes conditions must offer the two catalog conditions and
+  // the five call conditions, and say where a product id comes from.
+  const CONDITION_OPERATIONS = [
+    "triggers.update",
+    "webhooks.create",
+    "webhooks.update",
+  ]
+  const CONDITION_TYPES = [
+    "shoppingCartSent",
+    "userAskedAboutProduct",
+    "incomingCall",
+    "missedAudioCall",
+    "callEnded",
+    "callRecorded",
+    "callTranscribed",
+  ]
+
+  test.each(
+    CONDITION_OPERATIONS,
+  )("%s offers every catalog and call condition", (operationId) => {
+    const schema = JSON.stringify(requestSchemasByOperationId[operationId])
+
+    expect(
+      CONDITION_TYPES.filter((type) => !schema.includes(`"${type}"`)),
+    ).toEqual([])
+  })
+
+  test.each(
+    CONDITION_OPERATIONS,
+  )("%s tells an agent where a product id comes from", (operationId) => {
+    const schema = JSON.stringify(requestSchemasByOperationId[operationId])
+
+    expect(schema).toContain("products.list")
   })
 })

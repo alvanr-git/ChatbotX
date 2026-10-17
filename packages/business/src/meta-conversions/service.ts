@@ -1,11 +1,9 @@
-import {
-  contactInboxRepository,
-  metaCapiEventRepository,
-} from "@chatbotx.io/database/repositories"
+import { metaCapiEventRepository } from "@chatbotx.io/database/repositories"
 import type { MetaCapiEventModel } from "@chatbotx.io/database/types"
 import { encryptUtils } from "@chatbotx.io/encryption"
 import { createId } from "@chatbotx.io/utils"
 import {
+  capiTestMessagingIdSchema,
   defaultMetaCapiActionSource,
   type MetaCapiActionSource,
 } from "@chatbotx.io/utils/meta-capi"
@@ -23,16 +21,16 @@ import { instagramCapiReadinessAdapter } from "./adapters/instagram"
 import { messengerCapiReadinessAdapter } from "./adapters/messenger"
 import type { CapiReadinessAdapter, CapiSendAdapter } from "./adapters/types"
 import { whatsappCapiReadinessAdapter } from "./adapters/whatsapp"
-import {
-  capiEventDedupsPerUtcDay,
-  capiEventRequiresCtwaClid,
-} from "./channel-policy"
+import { buildChannelIdentity } from "./channel-identity"
+import { capiEventDedupsPerUtcDay, isCapiDisconnected } from "./channel-policy"
 import { createDatasetWithFallback } from "./dataset-fallback"
 import {
   type CapiConnectChannel,
   type ClearCapiAccessTokenInput,
+  type ConnectCapiWithTokenInput,
+  connectCapiWithTokenInput,
+  type DatasetValidationInput,
   type EnqueueEventInput,
-  type EnqueueTestEventInput,
   type EnsureDatasetIdInput,
   enqueueEventInput,
   type FindWorkspaceEventInput,
@@ -43,6 +41,7 @@ import {
   type SaveCapiAccessTokenInput,
   type SaveCapiTestEventCodeInput,
   type SaveDatasetIdInput,
+  type SendTestEventInput,
   saveCapiAccessTokenInput,
   saveCapiTestEventCodeInput,
   saveDatasetIdInput,
@@ -52,6 +51,24 @@ import {
 import { resolveCapiAccessToken } from "./token"
 
 const META_CAPI_SCOPE_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Graph error codes that say the token cannot see an object: permission denied
+ * (10, 200-299), invalid or inaccessible id (100) and missing object (803).
+ * Anything else — a timeout, a rate limit, a 5xx — says nothing about access.
+ */
+const DATASET_ACCESS_ERROR_CODES = new Set([10, 100, 803])
+
+const isDatasetAccessError = (err: unknown): boolean => {
+  if (typeof err !== "object" || err === null || !("code" in err)) {
+    return false
+  }
+  const { code } = err
+  return (
+    typeof code === "number" &&
+    (DATASET_ACCESS_ERROR_CODES.has(code) || (code >= 200 && code <= 299))
+  )
+}
 
 export class CapiScopeRefreshError extends Error {
   retryable = true
@@ -65,7 +82,8 @@ export class CapiScopeRefreshError extends Error {
 /** A "Send test event" precondition the CAPI settings tab must surface. */
 export type CapiTestEventErrorReason =
   | "testEventCodeRequired"
-  | "noContactForTest"
+  | "capiDisconnected"
+  | "invalidMessagingId"
 
 export class CapiTestEventError extends Error {
   readonly reason: CapiTestEventErrorReason
@@ -80,7 +98,6 @@ export class CapiTestEventError extends Error {
 /** Fixed sample event for "Send test event": what Meta's own Test Events sample uses. */
 const capiTestEventSample = {
   eventName: "Purchase",
-  actionSource: defaultMetaCapiActionSource,
   value: "100",
   currency: "USD",
 } as const
@@ -191,7 +208,7 @@ class MetaConversionsService extends BaseService {
    * they read as the default, exactly as `enqueueEvent` treats them.
    */
   buildSourceKey(input: {
-    scope: "flow" | "trigger" | "test"
+    scope: "flow" | "trigger"
     scopeId: string
     contactInboxId: string
     channel: MetaConversionsChannel
@@ -468,50 +485,62 @@ class MetaConversionsService extends BaseService {
   }
 
   /**
-   * "Send test event": queues one sample Purchase through the real send
-   * pipeline, attributed to the inbox's most recent contact (Meta needs a
-   * real messaging identity even for test events). Refuses to run without a
-   * saved test_event_code so a test can never become a production event;
-   * the worker re-checks the code at send time for the same reason.
+   * "Send test event": one sample Purchase, identified ONLY by the messaging
+   * id the admin typed in (a page-scoped / IG-scoped user id or a
+   * click-to-WhatsApp click id — Meta's Test events tab hands out sample
+   * values). Nothing is read from or attributed to a stored contact, no hashed
+   * customer info is sent, and no `MetaCapiEvent` row is written: the event is
+   * posted synchronously through `send` so Meta's own error reaches the admin.
+   * Requires a saved test_event_code so it can never land in live reporting.
    */
-  async enqueueTestEvent<TChannel extends MetaConversionsChannel>(
-    input: EnqueueTestEventInput<TChannel>,
-  ): Promise<MetaCapiEventModel | null> {
-    if (!input.integration.capiTestEventCode) {
+  async sendTestEvent<TChannel extends MetaConversionsChannel>(
+    input: SendTestEventInput<TChannel>,
+  ): Promise<void> {
+    const testEventCode = input.integration.capiTestEventCode
+    if (!testEventCode) {
       throw new CapiTestEventError("testEventCodeRequired")
     }
-    // Same gate the worker applies to real sends: pick a contact the channel
-    // can actually send for instead of queuing an event Meta would reject.
-    // Derived from the sample's action source, so this lookup and the
-    // `buildSourceKey` call below always agree on the identity rules.
-    const contactInbox = await contactInboxRepository.findMostRecentByInbox({
-      inboxId: input.integration.inboxId,
-      workspaceId: input.integration.workspaceId,
-      requireCtwaClid: capiEventRequiresCtwaClid(
-        input.channel,
-        capiTestEventSample.actionSource,
-      ),
-    })
-    if (!contactInbox) {
-      throw new CapiTestEventError("noContactForTest")
+    // Same user-intent disconnect gate the worker applies to live sends — the
+    // synchronous path must not post (or provision a dataset) either.
+    if (isCapiDisconnected(input.integration)) {
+      throw new CapiTestEventError("capiDisconnected")
+    }
+    const messagingId = capiTestMessagingIdSchema.safeParse(input.messagingId)
+    if (!messagingId.success) {
+      throw new CapiTestEventError("invalidMessagingId", {
+        cause: messagingId.error,
+      })
     }
 
-    return this.enqueueEvent({
-      workspaceId: input.integration.workspaceId,
+    const auth = await resolveCapiAccessTokenForChannel(
+      input.channel,
+      input.integration,
+    )
+    const datasetId = await this.ensureDatasetId({
       channel: input.channel,
-      contactInboxId: contactInbox.id,
-      inboxId: input.integration.inboxId,
-      source: "manualTest",
-      // A fresh scopeId per click so a WhatsApp per-day dedup never swallows
-      // a second test on the same day.
-      sourceKey: this.buildSourceKey({
-        scope: "test",
-        scopeId: createId(),
-        contactInboxId: contactInbox.id,
-        channel: input.channel,
-        actionSource: capiTestEventSample.actionSource,
-      }),
-      ...capiTestEventSample,
+      integration: input.integration,
+      provisionDataset: input.provisionDataset,
+    })
+
+    // Spread the (generic) identity first so TypeScript keeps the concrete
+    // sample fields visible on the resulting intersection type.
+    const identity = buildChannelIdentity(
+      input.channel,
+      input.integration,
+      messagingId.data,
+    )
+    await input.send({
+      datasetId,
+      accessToken: auth.accessToken,
+      testEventCode,
+      event: {
+        ...identity,
+        eventName: capiTestEventSample.eventName,
+        occurredAt: new Date(),
+        eventId: `test:${createId()}`,
+        value: capiTestEventSample.value,
+        currency: capiTestEventSample.currency,
+      },
     })
   }
 
@@ -583,6 +612,86 @@ class MetaConversionsService extends BaseService {
       datasetId: parsed.datasetId,
       capiAccessToken,
     })
+  }
+
+  /**
+   * Dedicated connect: the Ads tab's own OAuth minted `accessToken`, kept apart
+   * from the channel token. The dataset is settled with it *before* anything is
+   * stored — the worker treats a stored token without a dataset as "no scope"
+   * and drops the event for good, so a half-connected row must never exist. If
+   * Meta refuses the dataset this throws and the row is left untouched.
+   *
+   * A dataset the row already stores (picked by the user, or chosen before the
+   * dedicated connect existed) is kept when the new token can read it, so events
+   * keep flowing where they did. Only a row without one — or whose one the new
+   * token cannot read — gets the dataset Meta has linked to the page / account /
+   * WABA. The adapter still chooses who creates that dataset (WhatsApp prefers
+   * the agency System User and falls back to this token).
+   *
+   * Only the dataset id and the encrypted token are written, atomically, with
+   * the disconnect flag cleared.
+   */
+  async connectCapiWithToken<TChannel extends CapiConnectChannel>(
+    input: ConnectCapiWithTokenInput<TChannel>,
+  ): Promise<MetaConversionsIntegrationByChannel[TChannel] | null> {
+    const parsed = connectCapiWithTokenInput.parse({
+      accessToken: input.accessToken,
+    })
+    const sendAdapter = sendAdapterFor(input.channel)
+    const connectAdapter = connectAdapterFor(input.channel)
+    connectAdapter.assertSupported(input.integration)
+
+    const capiAccessToken = await encryptUtils.encryptObject({
+      accessToken: parsed.accessToken,
+    })
+    const datasetId =
+      (await this.findReadableStoredDataset({
+        integration: input.integration,
+        accessToken: parsed.accessToken,
+        validate: input.validate,
+      })) ??
+      (await this.provisionDatasetViaMeta(
+        sendAdapter,
+        { ...input.integration, capiAccessToken },
+        input.provisionDataset,
+      ))
+
+    return connectAdapter.connectCustomCapi({
+      id: input.integration.id,
+      workspaceId: input.integration.workspaceId,
+      datasetId,
+      capiAccessToken,
+    })
+  }
+
+  /** The dataset id a row already stores, when `accessToken` can read it; `null` otherwise. */
+  private async findReadableStoredDataset(input: {
+    integration: { id: string; datasetId: string | null }
+    accessToken: string
+    validate: (input: DatasetValidationInput) => Promise<string>
+  }): Promise<string | null> {
+    const storedDatasetId = input.integration.datasetId
+    if (!storedDatasetId) {
+      return null
+    }
+    try {
+      await input.validate({
+        datasetId: storedDatasetId,
+        accessToken: input.accessToken,
+      })
+      return storedDatasetId
+    } catch (err) {
+      // Only a definite "this token cannot read it" may swap the dataset events
+      // flow to; a timeout or rate limit is surfaced so the admin just retries.
+      if (!isDatasetAccessError(err)) {
+        throw err
+      }
+      logger.info(
+        { err, integrationId: input.integration.id },
+        "Stored CAPI dataset is not readable with the dedicated token; using the dataset linked at Meta",
+      )
+      return null
+    }
   }
 
   /**

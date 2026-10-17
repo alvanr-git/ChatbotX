@@ -24,13 +24,25 @@ vi.mock("@chatbotx.io/database/client", () => ({
     update: mocks.inboxUpdate,
     insert: mocks.inboxInsert,
   },
+  and: vi.fn((...conditions) => conditions),
   eq: vi.fn((column, value) => ({ column, value })),
   relationsFilterToSQL: vi.fn((_, where) => where),
 }))
 
 vi.mock("@chatbotx.io/database/schema", () => ({
-  inboxModel: { id: "id" },
+  inboxModel: { id: "id", workspaceId: "workspaceId" },
   workspaceUsageModel: { workspaceId: "workspaceId-column" },
+}))
+
+// `inboxService` now imports `inboxRepository` from the repositories
+// barrel for `listChannelOptionsByWorkspace` — stubbed here (unused by any
+// test in this file) so the barrel's OTHER, unrelated repositories don't
+// drag in a transitive schema this file's `@chatbotx.io/database/schema`
+// mock never had to satisfy before.
+vi.mock("@chatbotx.io/database/repositories", () => ({
+  inboxRepository: { listOptionsByWorkspaceAndChannel: vi.fn() },
+  aiHandoverSettingsRepository: { lockExisting: vi.fn(async () => null) },
+  aiHandoverBulkRunRepository: { cancelLive: vi.fn() },
 }))
 
 vi.mock("@chatbotx.io/redis", () => ({
@@ -117,10 +129,10 @@ describe("InboxService.disconnect", () => {
       disconnectedAt: expect.any(Date),
       disconnectReason: "manual",
     })
-    expect(mocks.inboxUpdateWhere).toHaveBeenCalledWith({
-      column: "id",
-      value: "inbox-1",
-    })
+    expect(mocks.inboxUpdateWhere).toHaveBeenCalledWith([
+      { column: "id", value: "inbox-1" },
+      { column: "workspaceId", value: "workspace-1" },
+    ])
   })
 
   test("uses an explicit transaction client when provided", async () => {
@@ -137,10 +149,10 @@ describe("InboxService.disconnect", () => {
     })
 
     expect(mocks.inboxUpdate).toHaveBeenCalledTimes(1)
-    expect(mocks.inboxUpdateWhere).toHaveBeenCalledWith({
-      column: "id",
-      value: "inbox-2",
-    })
+    expect(mocks.inboxUpdateWhere).toHaveBeenCalledWith([
+      { column: "id", value: "inbox-2" },
+      { column: "workspaceId", value: "workspace-1" },
+    ])
   })
 
   test("releases the channels quota for the owner", async () => {
@@ -247,7 +259,56 @@ describe("InboxService.create", () => {
     )
   })
 
-  test("reconnects an existing disconnected inbox without consuming quota", async () => {
+  test("consumes the owner's channels quota when reconnecting a disconnected inbox", async () => {
+    mocks.inboxFindFirst.mockResolvedValue({
+      id: "existing-inbox",
+      status: "disconnected",
+    })
+    quotaEnforcementService.tryConsume.mockResolvedValue({ ok: true })
+
+    await inboxService.create({
+      data: {
+        workspaceId: "workspace-1",
+        channel: "whatsapp",
+        name: "WhatsApp",
+      } as never,
+      ownerId: "owner-1",
+    })
+
+    expect(quotaEnforcementService.tryConsume).toHaveBeenCalledWith({
+      userId: "owner-1",
+      metric: "channels",
+    })
+    expect(mocks.inboxUpdate).toHaveBeenCalledTimes(1)
+    expect(workspaceUsageService.increment).toHaveBeenCalledWith(
+      "workspace-1",
+      "channels",
+    )
+  })
+
+  test("throws a typed channelLimitReached exception reconnecting a disconnected inbox when the owner's quota is exhausted", async () => {
+    mocks.inboxFindFirst.mockResolvedValue({
+      id: "existing-inbox",
+      status: "disconnected",
+    })
+    quotaEnforcementService.tryConsume.mockResolvedValue({ ok: false })
+
+    const createInbox = inboxService.create({
+      data: {
+        workspaceId: "workspace-1",
+        channel: "whatsapp",
+        name: "WhatsApp",
+      } as never,
+      ownerId: "owner-1",
+    })
+
+    await expect(createInbox).rejects.toMatchObject({
+      code: "channelLimitReached",
+    })
+    expect(mocks.inboxUpdate).not.toHaveBeenCalled()
+  })
+
+  test("reconnects an existing disconnected inbox without consuming quota when skipQuota is set", async () => {
     mocks.inboxFindFirst.mockResolvedValue({
       id: "existing-inbox",
       status: "disconnected",
@@ -260,9 +321,11 @@ describe("InboxService.create", () => {
         name: "WhatsApp",
       } as never,
       ownerId: "owner-1",
+      skipQuota: true,
     })
 
     expect(quotaEnforcementService.tryConsume).not.toHaveBeenCalled()
+    expect(workspaceUsageService.increment).not.toHaveBeenCalled()
     expect(mocks.inboxUpdate).toHaveBeenCalledTimes(1)
   })
 
@@ -271,6 +334,7 @@ describe("InboxService.create", () => {
       id: "existing-inbox",
       status: "disconnected",
     })
+    quotaEnforcementService.tryConsume.mockResolvedValue({ ok: true })
 
     await inboxService.create({
       data: {
@@ -311,5 +375,47 @@ describe("InboxService.list", () => {
       with: undefined,
     })
     expect(mocks.count).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("InboxService.listAllConnectedByWorkspace", () => {
+  test("returns every connected inbox with no page limit and no count query", async () => {
+    mocks.inboxFindMany.mockResolvedValue([
+      { id: "inbox-1" },
+      { id: "inbox-2" },
+    ])
+
+    const result = await inboxService.listAllConnectedByWorkspace({
+      workspaceId: "workspace-1",
+    })
+
+    expect(result).toEqual({ data: [{ id: "inbox-1" }, { id: "inbox-2" }] })
+    expect(mocks.inboxFindMany).toHaveBeenCalledWith({
+      where: {
+        workspaceId: "workspace-1",
+        status: "connected",
+      },
+      with: undefined,
+    })
+    // No pagination: the 50-row `maxLimit` that caps `list` must not apply.
+    const call = mocks.inboxFindMany.mock.calls[0][0]
+    expect(call).not.toHaveProperty("limit")
+    expect(call).not.toHaveProperty("offset")
+    expect(mocks.count).not.toHaveBeenCalled()
+  })
+
+  test("eager-loads integrations when includes asks for them", async () => {
+    mocks.inboxFindMany.mockResolvedValue([])
+
+    await inboxService.listAllConnectedByWorkspace({
+      workspaceId: "workspace-1",
+      includes: ["integration"],
+    })
+
+    expect(mocks.inboxFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        with: expect.objectContaining({ integrationMessenger: true }),
+      }),
+    )
   })
 })

@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm"
 import {
+  type AnyPgColumn,
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -20,6 +22,16 @@ export const gender = pgEnum(
   "gender",
   genderTypes.options as [string, ...string[]],
 )
+
+/**
+ * A name as an inbound webhook compares it: whitespace runs collapsed to one
+ * space and trimmed, so `"John "` (a first name with an empty last name) and
+ * `"John"` are the same name. Only ASCII whitespace counts — spelled out, because
+ * `\s` depends on the database locale — and the webhook's extraction uses the
+ * same set. The lookup and its index both use this.
+ */
+export const normalizedFullNameSql = (fullName: AnyPgColumn) =>
+  sql`btrim(regexp_replace(${fullName}, '[ \\t\\n\\v\\f\\r]+', ' ', 'g'))`
 
 export const contactModel = pgTable(
   "Contact",
@@ -55,6 +67,8 @@ export const contactModel = pgTable(
     subscribedAt: timestamp(timestampConfig),
     broadcastSubscribedAt: timestamp(timestampConfig),
     blockedAt: timestamp(timestampConfig),
+    totalTagged: integer().notNull().default(0),
+    totalNewTagged: integer().notNull().default(0),
     workspaceId: bigintAsString()
       .notNull()
       .references(() => workspaceModel.id, {
@@ -79,6 +93,14 @@ export const contactModel = pgTable(
     index("idx_contact_workspace_phone_number").on(
       table.workspaceId,
       table.phoneNumber,
+    ),
+    // Exact full-name lookup of an inbound webhook that identifies a contact by
+    // name (`ContactInbox` is joined on the inbox, this narrows the candidates).
+    // Indexed by digest: a name can be arbitrarily long, and a B-tree entry
+    // over 2.7 KB would fail the write that stored it.
+    index("idx_contact_workspace_full_name_md5").on(
+      table.workspaceId,
+      sql`md5(${normalizedFullNameSql(table.fullName)})`,
     ),
     index("Contact_firstName_trgm_idx").using(
       "gin",

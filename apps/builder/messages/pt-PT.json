@@ -1,8 +1,10 @@
 {
   "actions": {
+    "scrollToBottom": "Deslocar para o fim",
     "retry": "Tentar novamente",
     "copy": "Copiar",
     "copyUrl": "Copiar URL",
+    "chatWidget": "Widget de chat",
     "actions": "Ações",
     "add": "Adicionar",
     "addVariable": "Adicionar variável",
@@ -153,7 +155,9 @@
     "schedule": "Schedule",
     "moveToDraft": "Move to draft",
     "stop": "Stop",
-    "resume": "Resume"
+    "resume": "Resume",
+    "viewRuns": "Ver execuções",
+    "editSchedule": "Editar agendamento"
   },
   "errors": {
     "superAdminRequired": "Tem de ser um superadministrador do espaço de trabalho para fazer isto."
@@ -336,6 +340,7 @@
       "message": "O seu último pagamento falhou. Atualize o método de pagamento para manter o espaço de trabalho ativo."
     },
     "trial": {
+      "planName": "Avaliação",
       "daysLeft": "Avaliação: faltam {days} dias",
       "endsTomorrow": "A avaliação termina amanhã",
       "expired": "A sua avaliação terminou — atualize o plano para manter o espaço de trabalho ativo",
@@ -365,7 +370,10 @@
       "sending": "A enviar",
       "cancelled": "Cancelada",
       "draft": "Draft",
-      "failed": "Failed"
+      "failed": "Failed",
+      "recurring": "Recorrente",
+      "paused": "Pausada",
+      "ended": "Encerrada"
     },
     "stats": {
       "sent": "Enviado",
@@ -449,8 +457,9 @@
       "audienceFilter": "Filtro de público",
       "noAudienceFilter": "Sem filtro de público",
       "template": "Modelo",
-      "noTemplate": "Sem modelo",
-      "integration": "Integração"
+      "integration": "Integração",
+      "schedule": "Agendamento de repetição",
+      "runOf": "Execução de <link>{name}</link>"
     },
     "filters": {
       "all": "All"
@@ -499,15 +508,94 @@
     },
     "moveToDraftDialog": {
       "title": "Move to draft",
-      "description": "\"{name}\" will be unscheduled and moved back to drafts."
+      "description": "\"{name}\" will be unscheduled and moved back to drafts.",
+      "templateTitle": "Editar agendamento",
+      "templateDescription": "\"{name}\" é pausada e volta para rascunhos para você alterar o agendamento."
     },
     "stopDialog": {
       "title": "Stop broadcast",
-      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive."
+      "description": "Remaining messages for \"{name}\" stop within about a minute. A few already handed to the channel may still deliver. You can resume later — only unsent recipients will receive.",
+      "templateTitle": "Pausar transmissão recorrente",
+      "templateDescription": "\"{name}\" para de criar novas execuções. Uma execução que já está enviando continua. Você pode retomar depois; as execuções durante a pausa são ignoradas."
     },
     "resumeDialog": {
       "title": "Resume broadcast",
-      "description": "\"{name}\" will continue sending to recipients who have not received it yet."
+      "description": "\"{name}\" will continue sending to recipients who have not received it yet.",
+      "templateDescription": "\"{name}\" volta a se repetir a partir do próximo horário agendado. As execuções durante a pausa foram ignoradas."
+    },
+    "planLimitDialog": {
+      "title": "Atualize o seu plano",
+      "sendRate": "O seu plano {plan} atual permite broadcasts com uma velocidade máxima de envio de {rate} mensagens por minuto. Atualize o plano para enviar broadcasts até {multiplier}x mais depressa.",
+      "activeBroadcasts": "O seu plano {plan} atual executa {max, plural, one {# broadcast} other {# broadcasts}} de cada vez. Atualize o plano para executar mais broadcasts em simultâneo."
+    },
+    "sendLimit": {
+      "title": "Limite",
+      "hint": "Deixe em branco para enviar a todos os contactos correspondentes.",
+      "rateHint": "Deixe em branco para utilizar a taxa predefinida.",
+      "rangeSummary": "Contactos n.º{start} – n.º{end}",
+      "rangeFromSummary": "A partir do contacto n.º{start}",
+      "rangeLabel": "Intervalo de contactos",
+      "fromLabel": "De",
+      "toLabel": "Até",
+      "allPlaceholder": "Todos",
+      "rangeEndBeforeStart": "A posição final não pode ser anterior à posição inicial"
+    },
+    "recurring": {
+      "nextRun": "Próximo envio {when}",
+      "paused": "Pausada",
+      "ended": "Encerrada {when} · {count, plural, one {# execução} other {# execuções}}",
+      "runs": "{count, plural, one {# execução} other {# execuções}}",
+      "noUpcomingSends": "Não há mais envios — as datas restantes são ignoradas"
+    },
+    "runs": {
+      "back": "Transmissões recorrentes",
+      "pausedNotice": "Pausada desde {when}. As execuções durante a pausa são ignoradas.",
+      "groupBy": "Agrupar execuções por",
+      "grouping": {
+        "day": "Dia",
+        "week": "Semana",
+        "month": "Mês"
+      },
+      "totals": "{runs, plural, one {# execução} other {# execuções}} em {slots, plural, one {# horário} other {# horários}}",
+      "error": "Não foi possível carregar as execuções.",
+      "retry": "Tentar novamente",
+      "empty": "Ainda não há execuções. A primeira começa no próximo horário agendado.",
+      "loadMore": "Carregar mais",
+      "weekOf": "Semana de {date}",
+      "groupSummary": "{created, plural, one {# execução} other {# execuções}}{missed, plural, =0 {} other { · # perdida(s)}}{skipped, plural, =0 {} other { · # ignorada(s)}}",
+      "deliveredRate": "{rate} entregue",
+      "notSent": "Não enviada — {reason}",
+      "earlierSlots": "{count, plural, one {# horário anterior} other {# horários anteriores}} perdido(s)",
+      "stalled": "Travada",
+      "lateByMinutes": "{count, plural, one {# minuto de atraso} other {# minutos de atraso}}",
+      "lateByHours": "{count, plural, one {# hora de atraso} other {# horas de atraso}}",
+      "recipients": "{count, plural, one {# destinatário} other {# destinatários}}",
+      "reasons": {
+        "catchUpSuperseded": "a plataforma estava fora do ar; uma execução posterior foi enviada",
+        "paused": "o agendamento estava pausado",
+        "draft": "a transmissão estava sendo editada",
+        "blockedOwner": "a conta está bloqueada",
+        "planLimit": "limite do plano atingido",
+        "noTargets": "nenhuma página para enviar",
+        "undeliverable": "o fluxo ou modelo está indisponível",
+        "excludedDate": "Data ignorada"
+      },
+      "outcomes": {
+        "created": "Enviada",
+        "skipped": "Ignorada",
+        "missed": "Perdida"
+      },
+      "upcoming": {
+        "title": "Próximos envios",
+        "empty": "Sem envios agendados",
+        "skip": "Ignorar",
+        "restore": "Restaurar",
+        "skippedBadge": "Ignorado",
+        "skipped": "{date} ignorado",
+        "restored": "{date} restaurado",
+        "undo": "Anular",
+        "error": "Este envio já não pode ser alterado"
+      }
     }
   },
   "commentAutomation": {
@@ -536,16 +624,57 @@
       "keywordsNotMatched": "Palavras-chave não corresponderam",
       "contactNotNew": "O contacto não é novo",
       "alreadyRepliedOnPost": "Já respondido nesta publicação",
-      "engagedOnOtherPost": "Já interagiu noutra publicação"
+      "engagedOnOtherPost": "Já interagiu noutra publicação",
+      "mentionCountNotMatched": "O número de menções não correspondeu"
+    },
+    "replyTo": {
+      "mentions": "Comentários com menções suficientes",
+      "mentionCount": "Número de pessoas identificadas",
+      "mentionCountDescription": "Só correspondem os comentários que identificam pelo menos este número de pessoas (@nome).",
+      "mentionCountOption": "{count, plural, one {# pessoa} other {# pessoas}}"
+    },
+    "excludeKeywordsType": {
+      "equal": "Comentários iguais a",
+      "contain": "Comentários que contêm"
+    },
+    "hideComments": {
+      "hasGif": "Contém GIF",
+      "hasEmoji": "Contém emoji"
+    },
+    "trackUserTags": {
+      "label": "Registar se um utilizador marca outros utilizadores",
+      "descriptionText": "Conta as contas identificadas em cada comentário e soma-as aos totais do contacto em todos os comentários. Utilize '{{total_tagged}}' para todas as contas identificadas e '{{total_new_tagged}}' para contas que nunca enviaram mensagem à sua página nem foram contactos."
+    },
+    "card": {
+      "reply": "Resposta"
+    },
+    "liveBadge": "Em direto",
+    "postTypeDialog": {
+      "title": "Selecione o tipo de publicação"
+    },
+    "account": {
+      "label": "Conta",
+      "description": "A conta ligada em que esta automação responde. Escolha “Todas as contas” para responder em todas as contas ligadas deste canal.",
+      "all": "Todas as contas",
+      "placeholder": "Selecione uma conta",
+      "required": "Há várias contas ligadas: escolha uma ou escolha “Todas as contas” de propósito.",
+      "targetsCleared": "As publicações selecionadas foram removidas porque podem pertencer a outra conta.",
+      "column": "Conta",
+      "disconnected": "Conta desligada",
+      "disconnectedDescription": "Esta automação está associada a uma conta que já não está ligada, por isso não responde a nenhum comentário. Volte a ligar a conta ou escolha outra."
     }
   },
   "condition": {
+    "unknownValue": "Desconhecido",
     "yes": "Sim",
     "no": "Não",
     "valuePlaceholder": "...",
     "datePlaceholder": "YYYY-MM-DD",
     "datetimePlaceholder": "YYYY-MM-DD HH:mm",
     "datetimeInvalid": "Introduza uma data no formato YYYY-MM-DD HH:mm ou uma variável",
+    "openPost": "Abrir {post}",
+    "openPostLink": "Abrir",
+    "postWithoutCaption": "Publicação sem legenda",
     "operator": {
       "and": "Todas as condições",
       "or": "Qualquer condição"
@@ -607,6 +736,7 @@
       "questionnaireInProgress": "Questionário em curso",
       "questionnaireFinished": "Questionário concluído",
       "couponTopic": "Cupão",
+      "leaderboardScore": "Pontos de gamificação",
       "votedOnPoll": "Votou na sondagem",
       "lastComment": "Último comentário",
       "commentedOnPost": "Comentou na publicação",
@@ -649,6 +779,7 @@
       "noAdminReply": "Sem resposta do administrador",
       "contactCreatedAt": "Contacto criado em",
       "fromCtwaAd": "De anúncio",
+      "fromGoogleAd": "Do Google Ads",
       "ctwaConversion": "Conversão de anúncio",
       "lastUserInputTypes": {
         "text": "Texto",
@@ -658,7 +789,8 @@
         "video": "Vídeo",
         "audio": "Áudio",
         "gif": "GIF",
-        "file": "Ficheiro"
+        "file": "Ficheiro",
+        "storyMention": "Menção no Story"
       },
       "ctwaConversionTypes": {
         "lead": "Lead",
@@ -675,6 +807,7 @@
       "ecommerce": "Comércio eletrónico",
       "systemFields": "Campos do sistema",
       "topicCoupon": "Tópico de cupão",
+      "leaderboard": "Pontos de gamificação",
       "customFields": "Campos personalizados",
       "botFields": "Campos do bot",
       "email": "E-mail",
@@ -714,7 +847,8 @@
       "api": "API",
       "webchat": "Webchat",
       "botLink": "Ligação do bot",
-      "chatPlugin": "Plugin de chat C."
+      "chatPlugin": "Plugin de chat C.",
+      "inboundWebhook": "Webhook de entrada"
     },
     "ctwaRetarget": {
       "segments": {
@@ -727,6 +861,7 @@
     }
   },
   "fields": {
+    "optionalHint": "(opcional)",
     "marketingMessagesConfigId": {
       "label": "ID de configuração das Mensagens de marketing",
       "description": "ID de configuração do Facebook Login for Business utilizado para solicitar a permissão marketing_messages_messenger."
@@ -1096,6 +1231,19 @@
     "contactId": {
       "label": "ID do contacto"
     },
+    "channelIdentity": {
+      "psid": "PSID",
+      "igsid": "IGSID",
+      "whatsappId": "WhatsApp ID",
+      "bsuid": "BSUID",
+      "zaloUserId": "ID de utilizador do Zalo",
+      "telegramChatId": "ID do chat do Telegram",
+      "tiktokUserId": "ID de utilizador do TikTok",
+      "threadsUsername": "Nome de utilizador do Threads",
+      "webchatGuestId": "ID de visitante do Webchat",
+      "externalId": "ID externo",
+      "channelId": "ID do canal"
+    },
     "flow": {
       "label": "Fluxo"
     },
@@ -1233,7 +1381,8 @@
       "video": "Vídeo",
       "audio": "Áudio",
       "gif": "GIF",
-      "file": "Ficheiro"
+      "file": "Ficheiro",
+      "storyMention": "Menção no Story"
     },
     "lastMonth": {
       "label": "Último mês"
@@ -1717,7 +1866,8 @@
     "schedule": {
       "label": "Agendamento",
       "now": "Agora",
-      "scheduled": "Agendar para mais tarde"
+      "scheduled": "Agendar para mais tarde",
+      "recurring": "Repetir"
     },
     "inputFieldId": {
       "label": "Campo personalizado de entrada"
@@ -1776,6 +1926,10 @@
     "autoSkipFailAttempts": {
       "label": "Tentativas falhadas até ignorar automaticamente"
     },
+    "showHint": {
+      "label": "Mostrar sugestão",
+      "description": "Sugere o telefone ou e-mail do contacto como resposta rápida. Funciona apenas no Messenger e no Instagram."
+    },
     "autoSkip": {
       "label": "Ignorar automaticamente"
     },
@@ -1816,7 +1970,8 @@
       "searchPlaceholder": "Pesquisar palavra-chave..."
     },
     "templateId": {
-      "label": "Modelo do WhatsApp"
+      "label": "Modelo do WhatsApp",
+      "placeholder": "Selecione um modelo"
     },
     "messengerTemplateId": {
       "label": "Modelo do Messenger"
@@ -1868,7 +2023,10 @@
       "label": "ID do cliente"
     },
     "clientSecret": {
-      "label": "Segredo do cliente"
+      "label": "Segredo do cliente",
+      "keepHint": "Deixe em branco para manter o segredo do cliente guardado.",
+      "isSet": "Um segredo do cliente está definido.",
+      "isNotSet": "Nenhum segredo do cliente definido."
     },
     "verifyToken": {
       "label": "Token de verificação do webhook"
@@ -1965,7 +2123,10 @@
         "failed": "Falhou",
         "completedAt": "Concluído em",
         "errorDetails": "Erros de importação",
-        "row": "Linha {row}"
+        "row": "Linha {row}",
+        "unsupportedChannelStep": "O canal {channel} não suporta {block}.",
+        "channelStepConstraintExceeded": "{block} excede o limite de {channel}: {actual} {unit}, máximo {allowed}.",
+        "channelStepConstraintExceededGeneric": "O canal {channel} não suporta a configuração {block} atual."
       }
     },
     "line": {
@@ -1986,6 +2147,17 @@
       "label": "URL de retorno de início de sessão",
       "hint": "Adicione-o aos URI de redirecionamento autorizados da sua aplicação Google para ativar o início de sessão com o Google."
     },
+    "adsDeveloperToken": {
+      "label": "Developer token do Google Ads",
+      "hint": "Opcional: a Google já não exige um developer token. Deixe em branco para manter o token guardado.",
+      "isSet": "Está definido um developer token.",
+      "isNotSet": "Não está definido nenhum developer token.",
+      "clear": "Limpar",
+      "cleared": "Developer token limpo."
+    },
+    "googleAdsCallbackUrl": {
+      "hint": "Utilize uma aplicação OAuth da Google dedicada ao Google Ads, separada da sua aplicação Google, com os âmbitos adwords e datamanager ativados. Precisa da sua própria verificação OAuth da Google."
+    },
     "webhookUrl": {
       "label": "URL do webhook",
       "hint": "Registe este URL exato do webhook na aplicação do seu fornecedor. Tem de utilizar este anfitrião, e não o seu domínio personalizado — o fornecedor não consegue aceder a um domínio personalizado."
@@ -1997,11 +2169,16 @@
       "clientId": "ID do cliente",
       "clientSecret": "Segredo do cliente",
       "displayName": "Nome a apresentar",
+      "needsReauthorizationForComments": "Esta ligação foi autorizada antes da automação de comentários. Volte a ligar para começar a receber eventos de comentário.",
       "connectInstructions": {
         "step1": "Crie uma aplicação TikTok em <link>developers.tiktok.com</link>.",
         "step2": "Autorize a sua conta e copie o <strong>token de acesso</strong>, o <strong>ID aberto</strong> e o <strong>segredo do cliente</strong>.",
         "step3": "Cole as credenciais abaixo para estabelecer ligação."
-      }
+      },
+      "commentToMessage": "Comment-to-Message",
+      "commentToMessageDescription": "Lets this account answer high-intent comments with a direct message. Required for TikTok comment automations that use a private reply.",
+      "commentToMessageEligibility": "Only available to Business Accounts registered in Vietnam, Indonesia or Thailand, owned by someone over 18, that are registered businesses or have run Messaging Ads, with messaging permissions set to \"Requests\".",
+      "commentToMessageUnknown": "Not checked with TikTok yet — refresh to read the current setting."
     },
     "drip": {
       "label": "Drip"
@@ -2177,21 +2354,65 @@
       "broadcasts": "Difusões",
       "analytics": "Análises",
       "ecommerce": "Comércio eletrónico",
-      "integrations": "Integrações",
       "channels": "Canais",
+      "integrations": "Integrações",
       "minigames": "Minijogos",
       "appointments": "Marcações",
       "media": "Multimédia",
-      "ads": "Anúncios"
+      "ads": "Anúncios",
+      "settings": "Definições",
+      "miniApps": "Mini Apps",
+      "leaderboards": "Classificações"
     },
     "adReferral": {
       "label": "Ads",
       "ctwa": "CTWA",
       "ctm": "CTM",
-      "ctid": "CTID"
+      "ctid": "CTID",
+      "googleAds": "Google Ads",
+      "googleAdsWhatsapp": "GA CCWA",
+      "googleAdsMessenger": "GA CCTM"
     },
     "adSource": {
       "label": "Ad source"
+    },
+    "manualAppSecret": {
+      "label": "Segredo da aplicação Meta (opcional)",
+      "description": "Ativa a verificação da assinatura do webhook para esta ligação manual. Encontra-o no painel da tua aplicação Meta em Definições > Básico."
+    },
+    "lastCallRecorded": {
+      "label": "Última gravação de chamada"
+    },
+    "lastCallTranscript": {
+      "label": "Última transcrição de chamada"
+    },
+    "sendRatePerMinute": {
+      "label": "Mensagens por minuto"
+    },
+    "adsUploadMethod": {
+      "label": "Método de envio",
+      "hint": "O Data Manager é recomendado. A API de envio legada só funciona para projetos do Google Cloud que a Google ainda permite e não usa a permissão do Data Manager. A alteração aplica-se apenas a novas ligações: volte a ligar os espaços de trabalho existentes.",
+      "dataManager": "API do Data Manager (recomendada)",
+      "legacy": "API de envio legada"
+    },
+    "referralName": {
+      "label": "Nome de quem convidou"
+    },
+    "capiConfigId": {
+      "label": "Config ID da Conversions API",
+      "description": "ID de configuração do Embedded Signup usado para pedir a permissão whatsapp_business_manage_events ao ligar a Conversions API."
+    },
+    "outboundAutomatedResponse": {
+      "label": "Palavra-chave da página"
+    },
+    "fbComment": {
+      "label": "Automação de comentários do Facebook"
+    },
+    "igComment": {
+      "label": "Automação de comentários do Instagram"
+    },
+    "igStory": {
+      "label": "Automação de stories do Instagram"
     }
   },
   "flows": {
@@ -2202,6 +2423,28 @@
     "title": "Fluxos",
     "quickReplies": {
       "limitReached": "Foi atingido o limite de respostas rápidas ({max})."
+    },
+    "quickReplySettings": {
+      "open": "Definições de respostas rápidas",
+      "title": "Configurar respostas rápidas",
+      "chooseNextStep": "Escolher o passo seguinte",
+      "followUp": {
+        "label": "Fazer seguimento se o contacto não interagir",
+        "waitFor": "Aguardar",
+        "divider": "Se o contacto não interagir, fazer seguimento com",
+        "windowHint": "O Messenger e o Instagram só permitem enviar mensagens até 24 horas após a última mensagem do contacto; os seguimentos posteriores são ignorados nesses canais.",
+        "handle": "Sem interação"
+      },
+      "retry": {
+        "label": "Tentar novamente se a resposta não for uma resposta rápida",
+        "message": "Mensagem de nova tentativa",
+        "messageDefault": "Por favor, toque numa das opções abaixo 👇",
+        "count": "Número de tentativas",
+        "countOption": "{count, plural, =0 {Sem novas tentativas} one {# vez} other {# vezes}}",
+        "divider": "Quando o número de tentativas for excedido",
+        "handle": "Tentativas excedidas",
+        "getUserDataConflict": "A nova tentativa não está disponível quando esta mensagem contém um passo Obter dados do utilizador."
+      }
     },
     "buttons": {
       "limitReached": "Foi atingido o limite de botões ({max})."
@@ -2296,6 +2539,7 @@
       "sendTemplateMessage": "Mensagem de modelo",
       "whatsappOptionList": "Lista de opções",
       "noTemplatesAvailable": "Não existem modelos disponíveis",
+      "inboxesUnavailable": "Não foi possível carregar os canais",
       "noFlowsAvailable": "Não existem fluxos disponíveis",
       "setCustomField": "Definir campo personalizado",
       "startAnotherNode": "Iniciar outro nó",
@@ -2308,6 +2552,8 @@
       "transferConversationToHuman": "Transferir conversa para uma pessoa",
       "unarchiveConversation": "Desarquivar conversa",
       "unassignConversation": "Remover atribuição da conversa",
+      "markConversationAsUnread": "Marcar conversa como não lida",
+      "markConversationAsRead": "Marcar conversa como lida",
       "unfollowConversation": "Deixar de seguir conversa",
       "unsubscribeBroadcast": "Cancelar subscrição da difusão",
       "getUserData": "Obter dados do utilizador",
@@ -2332,7 +2578,15 @@
       "import": "Importar fluxo",
       "export": "Exportar",
       "importStarted": "O fluxo está a ser importado. Consulte o histórico de importações para ver os resultados.",
-      "importJsonOnly": "Apenas ficheiros JSON"
+      "importJsonOnly": "Apenas ficheiros JSON",
+      "whatsappCallButton": "Ligar no WhatsApp",
+      "whatsappLocation": "Localização",
+      "metaConversions": "Meta Conversions API",
+      "threadControl": "Controlo da conversa",
+      "sendGoogleAdsConversion": "Enviar conversão do Google Ads",
+      "changeGamificationScore": "Alterar pontos de gamificação",
+      "sendViewCatalog": "Ver catálogo",
+      "sendProducts": "Enviar produtos"
     },
     "splitTraffic": {
       "balanceHint": "A soma total deve ser igual a 100%.",
@@ -2448,12 +2702,79 @@
     "media": {
       "stepUnsupportedOnChannel": "Este canal não consegue enviar este tipo de multimédia — o passo é ignorado aí. Remova-o ou mude o nó para um canal compatível.",
       "buttonsSkippedOnChannel": "Este canal não consegue enviar botões juntamente com uma mensagem multimédia — são ignorados aí. Coloque-os num passo de texto seguinte."
+    },
+    "whatsappCallButton": {
+      "editButtonTitle": "Editar botão",
+      "buttonLabel": "Texto do botão"
+    },
+    "changeGamificationScore": {
+      "leaderboard": "Classificação",
+      "operation": "Operação",
+      "add": "Adicionar pontos (+)",
+      "subtract": "Subtrair pontos (−)",
+      "points": "Pontos",
+      "targetUser": "Pontos do utilizador",
+      "targetReferrer": "Pontos de quem convidou",
+      "targetReferrerHint": "Altera também os pontos de quem convidou este contacto.",
+      "summary": "{points} pts em {leaderboard}"
+    },
+    "whatsappLocation": {
+      "title": "Localização",
+      "name": "Nome",
+      "address": "Morada",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "setLocation": "Definir localização",
+      "errors": {
+        "tooLong": "Máximo de 1000 caracteres.",
+        "invalidLatitude": "Introduza uma latitude entre -90 e 90.",
+        "invalidLongitude": "Introduza uma longitude entre -180 e 180.",
+        "locationRequired": "Introduza as coordenadas da localização."
+      }
+    },
+    "sendViewCatalog": {
+      "footerLabel": "Rodapé",
+      "thumbnailLabel": "Produto da miniatura"
+    },
+    "sendProducts": {
+      "description": "Escolha os produtos a enviar e como os apresentar.",
+      "display": "Apresentação",
+      "displays": {
+        "products": "Produtos",
+        "carousel": "Carrossel"
+      },
+      "products": "Produtos",
+      "selectProducts": "Selecionar produtos",
+      "searchProducts": "Pesquisar produtos",
+      "noProducts": "Nenhum produto encontrado.",
+      "loading": "A carregar...",
+      "loadError": "Não foi possível carregar os produtos.",
+      "retry": "Tentar novamente",
+      "catalogNotConnected": "Ligue e sincronize um catálogo da Meta para enviar produtos.",
+      "openProducts": "Abrir Produtos",
+      "channelUnsupported": "Este canal não pode enviar produtos.",
+      "unavailableProduct": "Produto indisponível",
+      "removeProduct": "Remover produto",
+      "removeSection": "Remover secção",
+      "moreOptions": "Mais opções",
+      "fewerOptions": "Menos opções",
+      "header": "Título",
+      "body": "Corpo",
+      "footer": "Rodapé",
+      "sectionTitle": "Título da secção",
+      "addSection": "Adicionar secção",
+      "productCount": "{count} / {max} produtos",
+      "productsSelected": "{count, plural, one {# produto} other {# produtos}}",
+      "noneSelected": "Ainda sem produtos",
+      "sendFailed": "Não foi possível enviar os produtos."
     }
   },
   "folders": {
-    "heading": {
-      "title": "Pastas"
-    }
+    "rootOption": "-- Raiz --",
+    "showMore": "+{count}",
+    "showLess": "Mostrar menos",
+    "root": "Raiz",
+    "viewingFolder": "A ver pasta: {name}"
   },
   "gemini": {
     "autoReply": {
@@ -2536,7 +2857,8 @@
     "dashboardNav": {
       "whatsapp": "Anúncios Click-to-WhatsApp",
       "messenger": "Anúncios Click-to-Messenger",
-      "instagram": "Anúncios Click-to-Instagram"
+      "instagram": "Anúncios Click-to-Instagram",
+      "google": "Google Ads"
     },
     "connectAccounts": {
       "connectAdAccount": "Ligar conta de anúncios",
@@ -2669,7 +2991,8 @@
       "adAccountFilter": {
         "all": "Todas as contas de anúncios",
         "label": "Conta de anúncios",
-        "unavailable": "Não foi possível carregar as contas de anúncios — verifique a ligação de Ads desta integração, ou a ligação do Facebook Ads do espaço de trabalho, nas definições."
+        "unavailable": "Não foi possível carregar as contas de anúncios — verifique a ligação de Ads desta integração, ou a ligação do Facebook Ads do espaço de trabalho, nas definições.",
+        "note": "Os anúncios com conversões mas com investimento zero ou entrega zero no período selecionado ficam ocultos ao filtrar por conta de anúncios."
       },
       "channelFilter": {
         "label": "Canal",
@@ -2992,6 +3315,128 @@
   "integrations": {
     "title": "Integrações"
   },
+  "aiHandover": {
+    "title": "Meta Business AI",
+    "description": "Controle o que acontece quando o assistente de IA da Meta responde aos seus clientes do Messenger.",
+    "info": "Quando ativado, as conversas são assumidas aqui depois de o assistente de IA as devolver, e as definições abaixo aplicam-se.",
+    "enabled": {
+      "label": "Ativar"
+    },
+    "schedule": {
+      "label": "Horário de execução",
+      "description": "Aplicar apenas nestas horas do fuso horário do workspace.",
+      "from": "Da hora",
+      "to": "Até à hora",
+      "add": "Adicionar intervalo",
+      "remove": "Remover intervalo"
+    },
+    "gotoFlow": {
+      "label": "Ir para o fluxo",
+      "description": "Fluxo iniciado quando o assistente de IA devolve a conversa. Tem prioridade sobre a mensagem de devolução.",
+      "placeholder": "Selecione um fluxo",
+      "clear": "Remover fluxo"
+    },
+    "returnMessage": {
+      "label": "Mensagem de retorno",
+      "description": "Enviada em alternativa quando não há fluxo ou o fluxo já não está ativo.",
+      "placeholder": "Mensagem enviada quando a IA devolve a conversa"
+    },
+    "pauseBot": {
+      "label": "Transferir conversa para uma pessoa",
+      "description": "Para o bot para este contacto após a devolução, até um membro da equipa assumir ou o bot ser retomado."
+    },
+    "readOnly": "Pode ver estas definições, mas não as alterar.",
+    "errors": {
+      "supportSession": "As definições não podem ser alteradas numa sessão de suporte.",
+      "flowNotFound": "O fluxo selecionado não foi encontrado ou não está ativo.",
+      "timeRanges": "Introduza intervalos válidos: horas inteiras de 0 a 24, com início e fim diferentes."
+    },
+    "bulk": {
+      "title": "Aplicar a todos os clientes",
+      "description": "Entregue todas as conversas elegíveis do Messenger ao assistente de IA da Meta ou retome as que ele mantém neste momento. Decorre em segundo plano e pode acompanhá-lo aqui.",
+      "started": "Iniciado. Pode acompanhar o progresso aqui.",
+      "progress": "Progresso",
+      "processedOfTotal": "{done} de {total} conversas",
+      "counters": "{processed} concluídas, {skipped} ignoradas, {failed} com falha",
+      "action": {
+        "enable": "Ativar para todos",
+        "disable": "Desativar para todos"
+      },
+      "status": {
+        "pending": "A aguardar início",
+        "running": "Em execução",
+        "cancelling": "A cancelar",
+        "completed": "Concluída",
+        "failed": "Falhou",
+        "cancelled": "Cancelada"
+      },
+      "enable": {
+        "dialogDescription": "Todas as conversas do Messenger em que o cliente escreveu nos últimos 30 dias e que nenhuma outra aplicação mantém são entregues ao assistente de IA da Meta. As conversas são retomadas de acordo com as definições acima.",
+        "confirm": "Ativar para todos",
+        "blocked": "Guarde a automatização acima e ative-a (dentro do horário de execução) para a ativar para todos os clientes."
+      },
+      "disable": {
+        "dialogDescription": "Apenas as conversas que o assistente de IA da Meta mantém neste momento são retomadas, e só é possível contactar clientes que escreveram nos últimos 7 dias. Cada um recebe a mensagem abaixo, enviada com a etiqueta Human Agent da Meta, por isso escreva-a como se fosse uma pessoa a responder. A Página precisa da permissão Human Agent.",
+        "messageLabel": "Mensagem para os clientes",
+        "messageDescription": "Até {max} carateres.",
+        "messagePlaceholder": "Olá, um membro da equipa está a assumir esta conversa.",
+        "confirm": "Desativar para todos",
+        "policyWarning": "A Meta só permite a etiqueta Human Agent a uma pessoa que responde ao cliente. Usá-la para promoções ou mensagens automáticas pode levar à restrição das mensagens da Página."
+      },
+      "errors": {
+        "automationNotActive": "Guarde a automatização e ative-a (dentro do horário de execução) antes de a ativar para todos os clientes.",
+        "messageRequired": "Introduza a mensagem a enviar aos clientes.",
+        "messageTooLong": "A mensagem é demasiado longa.",
+        "pageNotConnected": "Esta Página não está ligada.",
+        "nothingToRetry": "Não há nada para tentar novamente."
+      },
+      "runErrors": {
+        "automationStopped": "Interrompida porque a automatização foi desativada.",
+        "tokenInvalid": "O acesso da Página foi revogado. Volte a ligar a Página e tente novamente.",
+        "channelUnsupported": "Este canal não suporta a ação em massa.",
+        "maxAttempts": "Desistiu após falhas repetidas.",
+        "channelUnavailable": "Interrompida porque não foi possível contactar a Meta várias vezes seguidas.",
+        "batchFailed": "Algumas conversas não puderam ser confirmadas e foram contadas como falhas.",
+        "pageDisconnected": "Interrompida porque a Página foi desligada.",
+        "pageRefused": "A Meta recusou a transferência para esta Página: pode não estar configurada para o assistente de IA da Meta ou faltar a permissão.",
+        "integrationUnavailable": "Não foi possível carregar a ligação da Página. Volte a ligar a Página e tente novamente."
+      },
+      "pausedUntil": "Em pausa até {at} para respeitar os limites de taxa da Meta para esta Página. Retoma sozinho.",
+      "preparing": "A preparar…",
+      "live": {
+        "enable": "A ativar para os clientes: {done} / {total}",
+        "disable": "A desativar para os clientes: {done} / {total}",
+        "enableCounting": "A ativar para os clientes: a contar…",
+        "disableCounting": "A desativar para os clientes: a contar…"
+      },
+      "done": {
+        "enable": "Ativado para {processed} de {total} clientes.",
+        "disable": "Desativado para {processed} de {total} clientes."
+      },
+      "stopped": {
+        "enable": "A ativação para todos os clientes foi interrompida.",
+        "disable": "A desativação para todos os clientes foi interrompida."
+      },
+      "retry": "Tentar novamente"
+    },
+    "history": {
+      "link": "Histórico",
+      "title": "Histórico de execuções em massa",
+      "empty": "Ainda não há execuções.",
+      "columns": {
+        "action": "Ação",
+        "requestedAt": "Início",
+        "progress": "Processadas / total",
+        "finishedAt": "Fim",
+        "message": "Mensagem",
+        "requestedBy": "Pedida por"
+      },
+      "description": "Cada vez que \"Aplicar a todos os clientes\" foi ativado ou desativado para esta Página, do mais recente ao mais antigo.",
+      "error": "Não foi possível carregar o histórico.",
+      "previousPage": "Página anterior",
+      "nextPage": "Página seguinte"
+    }
+  },
   "platformSettings": {
     "title": "Definições da plataforma",
     "errors": {
@@ -3024,6 +3469,10 @@
       "tiktok": "Esta conta do TikTok já está ligada a outro espaço de trabalho.",
       "whatsapp": "Este número do WhatsApp já está ligado a outro espaço de trabalho.",
       "zalo": "Esta OA do Zalo já está ligada a outro espaço de trabalho."
+    },
+    "missingScopes": {
+      "generic": "Ligação cancelada: algumas permissões não foram concedidas. Ligue novamente e aceite todas as permissões solicitadas.",
+      "tiktok": "Ligação ao TikTok cancelada: algumas permissões não foram concedidas. Ligue novamente e aceite todas as permissões solicitadas."
     },
     "reconnect": {
       "success": "Canal novamente ligado com sucesso.",
@@ -3072,8 +3521,10 @@
         "channelLimit": "Limite de canais atingido.",
         "workspaceLimit": "Limite do espaço de trabalho atingido.",
         "providerRejected": "O fornecedor rejeitou este pedido.",
+        "inProgress": "A ligação já está em curso.",
         "unknown": "Algo correu mal.",
-        "followUpFailed": "Configuração incompleta — conclua nas definições do canal."
+        "followUpFailed": "Configuração incompleta — conclua nas definições do canal.",
+        "webhookSubscribeFailed": "Ligado, mas a subscrição do webhook falhou — tente novamente nas definições da ligação."
       },
       "sessionError": {
         "sessionExpired": "A sua sessão expirou. Volte a ligar-se.",
@@ -3126,7 +3577,9 @@
       "bannerDescription": "A eliminação deste espaço de trabalho está agendada. Anule a eliminação abaixo para continuar a utilizá-lo.",
       "pendingBlockedToast": "A eliminação deste espaço de trabalho está agendada. Contacte um administrador do espaço de trabalho para restaurar o acesso.",
       "navDisabledTooltip": "Indisponível enquanto a eliminação do espaço de trabalho estiver agendada",
-      "badge": "Eliminação agendada"
+      "badge": "Eliminação agendada",
+      "purging": "A eliminação do espaço de trabalho está em curso.",
+      "alreadyStarted": "A eliminação do espaço de trabalho já começou."
     },
     "supportAccess": {
       "bannerTitle": "Sessão de suporte da plataforma",
@@ -3152,6 +3605,14 @@
     "deleteConfirmation": "Tem a certeza absoluta?\nEsta ação não pode ser anulada.\nIsto eliminará permanentemente {feature} dos nossos servidores."
   },
   "messages": {
+    "timeAgo": {
+      "now": "agora",
+      "minutes": "{count} min",
+      "hours": "{count} h",
+      "days": "{count} d",
+      "months": "{count} mês",
+      "years": "{count} a"
+    },
     "moveFeature": "Mover {feature}",
     "poweredBy": "Com tecnologia de {name}",
     "noGiphyApiKey": "Não foi encontrada nenhuma chave da API do GIPHY. Adicione uma nas Definições da plataforma.",
@@ -3163,6 +3624,8 @@
     "failed": "Falhou",
     "copiedToClipboard": "Copiado para a área de transferência",
     "messengerAdsJsonDescription": "Só terá de gerar um novo código JSON se fizer alterações no passo inicial. As alterações noutros passos não afetarão este código JSON.",
+    "welcomeMessageFlowIdsTitle": "IDs dos fluxos de mensagem de boas-vindas",
+    "welcomeMessageFlowIdsDescription": "Sincronizado com cada Página do Facebook quando publica. Selecione em App parceira no Gestor de Anúncios.",
     "messengerAdsNotPublished": "Publique o conteúdo deste fluxo e tente novamente.",
     "messengerAdsNoStartNode": "Este fluxo não tem um passo inicial válido. Abra o fluxo, defina um passo inicial Enviar mensagem, publique e tente novamente.",
     "messengerAdsError": "Ocorreu um erro ao gerar o JSON. Tente novamente.",
@@ -3181,6 +3644,7 @@
     "changeLikeState": "Alterar estado do gosto",
     "changeHideState": "Alterar estado de ocultação",
     "commentHidden": "Este comentário foi ocultado",
+    "commentMediaUnavailable": "Este comentário contém um GIF, autocolante ou imagem que não pode ser apresentado",
     "messageDeleted": "A mensagem foi eliminada.",
     "sendFailed": "Falha ao enviar",
     "repliedToStory": "Respondeu ao seu story",
@@ -3196,6 +3660,7 @@
     "cancelEdit": "Cancelar",
     "replaceAttachment": "Substituir anexo",
     "addAttachment": "Adicionar anexo",
+    "reloadAttachment": "Recarregar anexo",
     "failedToCopy": "Não foi possível copiar",
     "failedToPreviewImage": "Não foi possível pré-visualizar a imagem",
     "loadingData": "A carregar dados...",
@@ -3221,7 +3686,10 @@
     "deleteFeature": "Eliminar {feature}",
     "resetFeature": "Repor {feature}",
     "resetConfirmation": "Isto irá limpar os valores dos {feature} selecionados.\nEsta ação não pode ser anulada.",
+    "resetAllConfirmation": "Isto irá limpar os valores de todos os {feature} deste contacto.\nEsta ação não pode ser anulada.",
     "resetSuccess": "{feature} reposto com sucesso",
+    "clearFeature": "Limpar {feature}",
+    "clearSuccess": "{feature} limpo com sucesso",
     "deleteConfirmation": "Tem a certeza absoluta?\nEsta ação não pode ser anulada.\nIsto eliminará permanentemente {feature} dos nossos servidores.",
     "addFeature": "Adicionar {feature}",
     "signOutConfirmation": "Tem a certeza de que pretende terminar sessão?",
@@ -3264,6 +3732,10 @@
     "noVersionsFound": "Não foram encontradas versões publicadas",
     "publishVersionSuccess": "Foi publicada uma nova versão",
     "flowConfigIncomplete": "Algumas configurações estão incompletas",
+    "quickReplyNextStepRequired": "Escolha um passo seguinte para cada definição de resposta rápida ativada",
+    "quickReplyRetryMessageRequired": "Introduza uma mensagem de nova tentativa",
+    "quickReplyRetryWithGetUserData": "A nova tentativa não pode ser combinada com um passo Obter dados do utilizador",
+    "whatsappFlowIncomplete": "Abra o botão e escolha um WhatsApp Flow e o respetivo ecrã inicial.",
     "whatsappCarouselButtonsMismatch": "No WhatsApp, um carrossel tem de ter os mesmos botões em cada cartão: um único botão de ligação em cada cartão, ou o mesmo número de botões de resposta em cada cartão",
     "whatsappCarouselLinkButtonNotAlone": "No WhatsApp, um cartão de carrossel com um botão de ligação não pode ter outros botões. Remova os outros botões nesse cartão ou altere o botão de ligação para outra ação.",
     "duplicateNodeError": "Não foi possível duplicar o bloco. Tente novamente.",
@@ -3272,13 +3744,58 @@
     "historyDepth": "({count})",
     "none": "Nenhum",
     "tiktokCardTitleTooLong": "O TikTok vai cortar esta mensagem: com botões associados, apenas os primeiros 40 caracteres são enviados. Encurte a mensagem ou remova os botões.",
+    "sendTextTooLongForChannel": "Esta mensagem é maior do que este canal permite. Encurte-a ou aponte este bloco para um canal com um limite mais elevado.",
     "waTemplateMpmNoProducts": "Adicione pelo menos um produto a este botão multiproduto antes de publicar.",
     "waTemplateMpmTooManySections": "Um botão multiproduto pode ter no máximo 10 secções. Remova algumas secções antes de publicar.",
     "waTemplateMpmTooManyProducts": "Um botão multiproduto pode ter no máximo 30 produtos no total. Remova alguns produtos antes de publicar.",
     "waTemplateLtoExpirationRequired": "Escolha uma data de expiração para a oferta por tempo limitado antes de enviar.",
     "waTemplateMpmIncompleteProducts": "Cada secção precisa de pelo menos um produto selecionado — remova linhas vazias ou escolha um produto.",
-    "mediaStepUnsupported": "Este canal não consegue enviar este tipo de multimédia. Remova o passo ou aponte este nó para um canal compatível.",
-    "mediaButtonsUnsupported": "Este canal não consegue enviar botões juntamente com uma mensagem multimédia. Remova os botões ou mova-os para um passo de texto depois deste."
+    "unsupportedBlock": "Este canal não suporta este bloco.",
+    "constraintExceeded": "O limite deste canal foi excedido.",
+    "mediaButtonsUnsupported": "Este canal não consegue enviar botões juntamente com uma mensagem multimédia. Remova os botões ou mova-os para um passo de texto depois deste.",
+    "voiceCall": "Chamada de voz",
+    "voiceCallDuration": "Chamada de voz · {duration}",
+    "missedVoiceCall": "Chamada de voz perdida",
+    "declinedVoiceCall": "Chamada de voz recusada",
+    "voiceCallFailed": "Chamada de voz falhada",
+    "unansweredVoiceCall": "Sem resposta",
+    "canceledVoiceCall": "Chamada cancelada",
+    "acceptedCallPermission": "Aceitou o pedido de permissão de chamada",
+    "declinedCallPermission": "Recusou o pedido de permissão de chamada",
+    "sendHumanAgentTag": "Enviar uma mensagem com a etiqueta HUMAN_AGENT",
+    "warning": "Atenção!",
+    "humanAgentWarningDescription": "Só pode responder à mensagem de um utilizador no prazo de 7 dias quando o problema não puder ser razoavelmente resolvido no prazo de 24 horas. Alguns exemplos são fins de semana, feriados ou casos que exigem mais de um dia para serem concluídos. Não utilize esta opção por qualquer outro motivo, pois poderá colocar a sua Página do Facebook ou conta do Instagram em risco. Em caso de dúvida, não continue.",
+    "callFailed": "Problema na chamada",
+    "flowResponse": {
+      "viewResponse": "Ver resposta",
+      "title": "Resposta do Flow",
+      "description": "Respostas que o cliente enviou neste WhatsApp Flow.",
+      "empty": "Esta resposta não tem dados.",
+      "failed": "Não foi possível carregar a resposta.",
+      "noAnswer": "Sem resposta",
+      "labelsUnavailable": "Não foi possível carregar as perguntas do Flow, por isso são apresentados os nomes dos campos.",
+      "yes": "Sim",
+      "no": "Não"
+    },
+    "sendViewCatalogBodyTooLong": "O texto da mensagem é demasiado longo para uma mensagem de catálogo. Encurte-o.",
+    "sendViewCatalogFooterTooLong": "O rodapé é demasiado longo para uma mensagem de catálogo. Encurte-o.",
+    "viewCatalog": "Ver catálogo",
+    "sendProductsDisplayUnsupported": "Este canal não pode enviar este tipo de mensagem de produto.",
+    "sendProductsFieldRequired": "Este campo é obrigatório.",
+    "sendProductsFieldNotAllowed": "Este campo não pode ser utilizado aqui.",
+    "sendProductsFieldTooLong": "Este texto é demasiado longo.",
+    "sendProductsProductCountOutOfRange": "Escolha um número válido de produtos.",
+    "sendProductsSectionCountOutOfRange": "Existem demasiadas secções.",
+    "sendProductsDuplicateProduct": "Um produto só pode aparecer uma vez.",
+    "inboundOrder": {
+      "title": "Carrinho de compras",
+      "preview": "Carrinho de compras ({count, plural, one {# artigo} other {# artigos}})",
+      "note": "Nota",
+      "unresolvedProduct": "Não encontrado no seu catálogo"
+    },
+    "referredProduct": {
+      "askedAbout": "Perguntou sobre este produto"
+    }
   },
   "instagram": {
     "description": "Esta integração permite-lhe criar bots do Instagram.",
@@ -3344,12 +3861,7 @@
     "selectPage": {
       "noPagesTitle": "Não foram encontradas Páginas do Facebook",
       "noPagesDescription": "As Páginas num Gestor de Negócios exigem acesso ao Gestor de Negócios durante a ligação. Volte a ligar o Messenger e conceda todas as permissões solicitadas.",
-      "noConnectablePagesTitle": "Não há Páginas disponíveis para ligar",
-      "noConnectablePagesDescription": "Não é administrador desta Página",
-      "bmLookupFailedTitle": "Poderão faltar páginas do Gestor de Negócios",
-      "bmLookupFailedDescription": "Volte a ligar o Messenger e conceda acesso ao Gestor de Negócios para que as páginas geridas através dele possam ser apresentadas.",
       "alreadyConnectedNote": "Esta página já está ligada",
-      "notAdminNote": "Não é administrador desta Página",
       "tryAgain": "Tentar ligar novamente"
     },
     "title": "Facebook Messenger",
@@ -3442,6 +3954,85 @@
     },
     "title": "DeepSeek"
   },
+  "decision": {
+    "addConnection": "Add AI Router connection",
+    "advanced": "Advanced",
+    "context": "Context",
+    "discardTypeChangeDescription": "Changing the AI Router type will discard its criteria and threshold.",
+    "discardTypeChangeTitle": "Change AI Router type?",
+    "output": "Output",
+    "outputNoul": "probabilityTrue (0–1)",
+    "statement": "Statement",
+    "thresholdChoice": "Require minimum confidence",
+    "thresholdNoul": "Require minimum TRUE probability",
+    "thresholdScore": "Require score threshold",
+    "thresholds": "Confidence & thresholds",
+    "addProfile": "Add AI Router profile",
+    "globalRouter": "Global Router",
+    "globalRouterRoutesDiscarded": "As rotas e os mapeamentos de metadados do Global Router também serão removidos.",
+    "globalRouterDescription": "This profile becomes the workspace Global Router and replaces any previously selected Global Router.",
+    "globalRouterChooseDestination": "Choose destination",
+    "globalRouterDefaultDestination": "Default destination",
+    "globalRouterDestinationRequired": "Choose where unmatched messages should go.",
+    "globalRouterRouteDestinationRequired": "Choose a destination for this result.",
+    "globalRouterRoutes": "Route recognized results",
+    "globalRouterUsesFallback": "Uses default destination",
+    "globalRouterDestinationTypes": {
+      "flow": "Flow",
+      "aiAgent": "AI Agent",
+      "assignConversation": "Assign Conversation to an Admin"
+    },
+    "globalRouterFallbackDescription": "A default destination is required. It applies only when the Global Router is usable but evaluation has no valid result or route; unavailable connections or models use the workspace Default AI/Flow.",
+    "globalRouterFalseMaximum": "FALSE maximum probability",
+    "globalRouterMetadataMappings": "Optional result metadata mappings",
+    "globalRouterNoulDescription": "Values between the FALSE maximum and TRUE minimum use the fallback. The profile threshold does not affect Global Router Noul routing.",
+    "globalRouterRuntimeUnsupported": "This model has not been certified for AI Router runtime. You can save the configuration, but the Global Router remains inactive until certification.",
+    "globalRouterTrueMinimum": "TRUE minimum probability",
+    "flowStepDescription": "Select an active profile and map its typed results to contact custom fields.",
+    "profile": "AI Router profile",
+    "question": "Question",
+    "result": "Result",
+    "resultValues": {
+      "choice": "Choice",
+      "confidence": "Confidence",
+      "noul": "Noul",
+      "probability": "Probability",
+      "score": "Score"
+    },
+    "connection": "AI Router connection",
+    "connectionUnavailable": "AI Router connection unavailable",
+    "charactersRemaining": "{count} characters remaining",
+    "modelUnavailable": "Selected model is no longer available. Choose another model.",
+    "editProfile": "Editar perfil do AI Router",
+    "evaluateDecision": "AI Router",
+    "model": "Model",
+    "profileDescription": "A profile combines an AI Router connection, model and typed question contract.",
+    "profiles": "AI Router profiles",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "label": "Status"
+    },
+    "connectionDescription": "Configure a provider credential and the AI Router models it may use.",
+    "connections": "AI Router connections",
+    "connectionsDescription": "Connections are available to AI Router profiles in this workspace.",
+    "credentialKeepExisting": "Leave blank to keep the existing credential.",
+    "credentialRequired": "A provider credential is required.",
+    "defaultModel": "Default model",
+    "editConnection": "Edit AI Router connection",
+    "empty": "No AI Router connections yet.",
+    "endpoint": "Compatible endpoint",
+    "endpointDescription": "Use the provider's System One-compatible API endpoint.",
+    "modelCatalog": "Available models",
+    "modelCatalogDescription": "Enter one model ID per line, or separate model IDs with commas.",
+    "provider": "Provider",
+    "testFailed": "AI Router connection test failed.",
+    "testPassed": "AI Router connection test passed.",
+    "toolDescription": "Create reusable profiles for the AI Router flow step.",
+    "title": "AI Router",
+    "contactContext": "Contexto do contacto",
+    "contextProviderWarning": "Os valores de campos de contacto selecionados são enviados ao fornecedor de AI Router."
+  },
   "openrouter": {
     "autoReply": {
       "description": "Ative a resposta automática por IA fornecida pelo OpenRouter.",
@@ -3533,7 +4124,14 @@
     "signUpTitle": "Registar-se em {name}",
     "changePasswordTitle": "Alterar a palavra-passe",
     "changePasswordDescription": "Defina uma nova palavra-passe antes de continuar.",
-    "passwordChangeSuccess": "Palavra-passe alterada"
+    "passwordChangeSuccess": "Palavra-passe alterada",
+    "oauthError": {
+      "accountNotLinked": "Já existe uma conta com este e-mail e não foi possível associá-la. Inicie sessão da mesma forma que antes ou contacte o suporte.",
+      "unableToLinkAccount": "Não foi possível associar este início de sessão à conta existente. Inicie sessão da mesma forma que antes ou contacte o suporte.",
+      "sessionExpired": "A tentativa de início de sessão expirou. Tente novamente.",
+      "accessDenied": "O início de sessão foi cancelado.",
+      "generic": "Falha ao iniciar sessão. Tente novamente."
+    }
   },
   "emailTopics": {
     "title": "Tópicos de e-mail"
@@ -3554,7 +4152,17 @@
     "maxItemsReached": "É permitido um máximo de {max} {feature} por espaço de trabalho",
     "maxCharacters": "Máximo de {max} caracteres.",
     "invalidApiKey": "Chave da API inválida",
-    "maxMustBeGreaterThanMin": "{maxField} tem de ser maior ou igual a {minField}"
+    "maxMustBeGreaterThanMin": "{maxField} tem de ser maior ou igual a {minField}",
+    "inboundWebhook": {
+      "inboxRequired": "Escolha uma caixa de entrada.",
+      "inboxNotFound": "A caixa de entrada selecionada não foi encontrada.",
+      "inboxDisconnected": "A caixa de entrada selecionada não está ligada.",
+      "unsupportedInboxIdentifier": "Este canal não pode ser identificado por esse valor.",
+      "identifierRequired": "Adicione pelo menos uma identidade de contacto.",
+      "unknownFieldTarget": "Um campo de contacto mapeado já não existe.",
+      "actionReferenceNotFound": "Uma ação faz referência a um fluxo, etiqueta ou campo que já não existe.",
+      "fieldMappingRequired": "Adicione pelo menos um mapeamento de campo."
+    }
   },
   "webchat": {
     "chatUnavailable": "Este chat está atualmente indisponível.",
@@ -3741,7 +4349,8 @@
       "profile": "Perfil",
       "usefulLinks": "Ligações úteis",
       "conversionsApi": "Otimização de anúncios",
-      "settings": "Definições"
+      "settings": "Definições",
+      "calls": "Calls"
     },
     "accountHealths": {
       "title": "Gerir a sua conta do WhatsApp",
@@ -3873,7 +4482,261 @@
     "transferPhoneNumber": "Transferir telefone de outro fornecedor do WhatsApp",
     "selectPage": {
       "tryAgain": "Tentar ligar novamente"
-    }
+    },
+    "manualAppSecretMissingNotice": "As assinaturas de webhook não são verificadas até adicionares o teu Segredo da Aplicação Meta.",
+    "calls": {
+      "title": "WhatsApp Calls",
+      "description": "Let customers call your business on WhatsApp and control how calling works for this number.",
+      "enableLabel": "Enable calling",
+      "enableHelper": "Allow WhatsApp calls to and from this business number.",
+      "iconVisibilityLabel": "Show call icon",
+      "iconVisibilityHelper": "Show the call button in the chat and on your business profile.",
+      "callbackPermissionLabel": "Callback permission requests",
+      "callbackPermissionHelper": "Automatically ask customers for permission to call them back after a missed or completed call.",
+      "propagationNote": "Changes are applied by Meta immediately, but the WhatsApp app of your customers can take up to 7 days to reflect them.",
+      "loadFailed": "Failed to load calling settings from Meta. Check the connection of this number and try again.",
+      "errors": {
+        "notFound": "WhatsApp integration not found",
+        "notWhatsappConversation": "This conversation is not on WhatsApp",
+        "callNotFound": "Call not found",
+        "callNotReady": "The call is not ready to answer yet — try again",
+        "inAppCallingUnavailable": "In-app calling is not configured on this server",
+        "noCallPermission": "The contact has not granted call permission",
+        "permissionRequestLimitReached": "O WhatsApp permite apenas 2 pedidos de permissão de chamada por contacto a cada 7 dias. Este contacto atingiu o limite — tente novamente mais tarde.",
+        "audioConnectFailed": "Could not connect call audio",
+        "updateFailed": "A Meta rejeitou a alteração das definições de chamada",
+        "savedOnMetaOnly": "Meta saved the change but this workspace did not. Save again to finish.",
+        "bicUnavailable": "As chamadas iniciadas pela empresa não estão disponíveis para este país",
+        "callAlreadyInProgress": "Já existe uma chamada em curso com este contacto",
+        "hangupFailed": "Não foi possível terminar a chamada",
+        "voipCannotAnswer": "This call is no longer available to answer",
+        "voipCallEnded": "The call ended before it could be answered",
+        "voipAnswerFailed": "Could not answer the WhatsApp call",
+        "voipRejectFailed": "Não foi possível recusar a chamada do WhatsApp",
+        "voipHangupFailed": "Não foi possível terminar a chamada do WhatsApp",
+        "voipNotReservedAgent": "Não é o agente atribuído a esta chamada",
+        "voipCallAccessDenied": "Não tem permissão para gerir esta chamada",
+        "voipTurnCredentialsRateLimited": "Too many call setup requests. Please wait a moment and try again.",
+        "callNoLongerRinging": "Essa chamada já não está a tocar",
+        "transcriptionRequiresRecording": "Ative a gravação de chamadas antes de ativar a transcrição.",
+        "supportSessionCallingBlocked": "As chamadas não estão disponíveis durante uma sessão de suporte da plataforma.",
+        "callingAccessDenied": "Não tem acesso a chamadas neste espaço de trabalho.",
+        "callArtifactAccessDenied": "Não tem permissão para ver esta chamada.",
+        "callHistoryAccessDenied": "Não tem acesso ao histórico de chamadas neste espaço de trabalho."
+      },
+      "permissionRequestTitle": "Request call permission",
+      "permissionRequestDescription": "Ask this customer to allow calls from your business on WhatsApp. Meta limits requests to 1 per 24 hours and 2 per 7 days per customer.",
+      "permissionRequestBodyLabel": "Message",
+      "permissionRequestDefaultBody": "We would like to call you on WhatsApp to help you faster. Do you allow us to call you?",
+      "permissionRequestSent": "Call permission request sent",
+      "inAppCallingLabel": "In-app calling (beta)",
+      "inAppCallingHelper": "Route this number's WhatsApp calls to the inbox so agents can answer them in the browser.",
+      "recordingLabel": "Record calls",
+      "recordingHelper": "Grave as chamadas atendidas ou efetuadas a partir da caixa de entrada e adicione a gravação à conversa.",
+      "recordingInProgress": "Gravação solicitada",
+      "incomingCall": "Incoming WhatsApp call…",
+      "unknownCaller": "Unknown caller",
+      "incomingCallBanner": "Incoming WhatsApp call",
+      "answer": "Answer",
+      "reject": "Reject",
+      "ringingBadge": "Ringing",
+      "ringingCountdown": "{seconds}s",
+      "updateFailedTitle": "A Meta rejeitou a alteração",
+      "callContact": "Ligar pelo WhatsApp",
+      "dialing": "A ligar…",
+      "startCall": "Iniciar chamada do WhatsApp",
+      "retentionLabel": "Retenção de gravações (dias)",
+      "retentionHelper": "Durante quanto tempo as gravações de chamadas são guardadas antes de serem eliminadas permanentemente.",
+      "transcriptionLabel": "Transcrever chamadas",
+      "transcriptionHelper": "Adicione à conversa uma transcrição de cada chamada gravada.",
+      "preflight": {
+        "title": "Elegibilidade para chamadas",
+        "appSubscriptionMissing": "Configura primeiro o webhook do WhatsApp para esta aplicação no Meta App Dashboard e tenta novamente.",
+        "appSubscriptionFailed": "Não foi possível verificar a subscrição do webhook 'calls' da aplicação. Tenta novamente em breve.",
+        "callsNotSubscribed": "Esta aplicação não está subscrita ao campo de webhook 'calls', pelo que os eventos de chamada não conseguem chegar ao ChatbotX (erro da Meta 138018: os pré-requisitos técnicos não foram cumpridos — garante que pelo menos uma aplicação subscrita à WABA também tem o campo de webhook de chamadas).",
+        "fixButton": "Corrigir",
+        "fixSuccess": "A aplicação está agora subscrita aos webhooks de chamadas do WhatsApp.",
+        "manualIntegrationNotice": "Este número foi ligado manualmente e não tem credenciais de aplicação aqui. Subscreve o campo de webhook 'calls' da tua aplicação no Meta App Dashboard.",
+        "coexistenceWarning": "Este número utiliza a coexistência com a aplicação WhatsApp Business, que a Meta não suporta para chamadas. Move-o para usar apenas a Cloud API."
+      },
+      "voipConnecting": "Connecting…",
+      "recordingActivity": {
+        "showTranscript": "Mostrar transcrição",
+        "hideTranscript": "Ocultar transcrição"
+      },
+      "outbound": {
+        "needsPermission": "You need permission to call this contact. Request permission first.",
+        "permissionCheckFailed": "We could not check your call permission for this contact right now. Please try again in a moment.",
+        "businessCallingUnavailable": "O WhatsApp não ativou as chamadas iniciadas pela empresa para este número. Isto depende da disponibilidade no seu país e da elegibilidade da conta na Meta, pelo que não pode ser ativado aqui.",
+        "callAlreadyInProgress": "A call to this contact is already in progress.",
+        "dailyLimitReached": "You have reached the connected-call limit with this contact for now.",
+        "ineligibleNumber": "This number is not eligible for business-initiated calling.",
+        "recipientUncallable": "This contact cannot be called on WhatsApp right now.",
+        "temporarilyDisabled": "Calling is temporarily disabled for this number due to call quality.",
+        "rateLimited": "Too many call attempts. Please wait a moment and try again.",
+        "paymentIssue": "There is a billing issue with your WhatsApp Business account.",
+        "callingNotEnabled": "Calling is not enabled for this WhatsApp number.",
+        "callFailed": "The call could not be placed. Please try again.",
+        "calling": "Calling…",
+        "ringback": "Ringing…",
+        "micPermissionDenied": "O acesso ao microfone foi negado. Permita o acesso nas definições do navegador e tente novamente.",
+        "micNotFound": "Não foi encontrado nenhum microfone. Ligue um microfone e tente novamente.",
+        "callAccessDenied": "Não tem permissão para ligar a este contacto."
+      },
+      "card": {
+        "audioCall": "Chamada de voz",
+        "recordingUnavailable": "Gravação já não está disponível",
+        "recordingNotCaptured": "Gravação indisponível para esta chamada",
+        "recordingProcessing": "A processar a gravação…",
+        "moreOptions": "Mais opções",
+        "download": "Transferir",
+        "openCallInformation": "Abrir informação da chamada",
+        "transcript": "Transcrição",
+        "aiSummary": "Resumo de IA",
+        "transcriptUnavailable": "Transcrição ainda não disponível",
+        "summaryUnavailable": "Resumo de IA ainda não disponível",
+        "play": "Reproduzir",
+        "pause": "Pausa",
+        "seek": "Procurar",
+        "mute": "Sem som",
+        "unmute": "Ativar som",
+        "playbackFailed": "Falha na reprodução",
+        "answeredBy": "Atendida por {name}",
+        "calledBy": "Chamada por {name}",
+        "callFailed": "Problema na chamada",
+        "callBack": "Retornar chamada"
+      },
+      "sheet": {
+        "title": "Informações da chamada",
+        "summaryTab": "Resumo de IA",
+        "transcriptTab": "Transcrição",
+        "searchLabel": "Pesquisar na transcrição",
+        "searchPlaceholder": "Pesquisar na transcrição…",
+        "transcriptUnavailable": "Transcrição indisponível para o idioma desta chamada",
+        "transcriptError": "Não foi possível carregar a transcrição. Verifique a sua ligação e tente novamente.",
+        "noSearchResults": "Nenhum segmento correspondente",
+        "playSegment": "Reproduzir a partir daqui",
+        "summaryKeyPoints": "Pontos principais",
+        "summaryActionItems": "Itens de ação",
+        "regenerate": "Regenerar",
+        "regenerateConfirmTitle": "Regenerar o resumo de IA?",
+        "regenerateConfirmDescription": "Isto substitui o resumo atual por um novo resumo gerado.",
+        "summaryEmpty": "Ainda não existe um resumo de IA para esta chamada.",
+        "generateSummary": "Gerar resumo"
+      },
+      "summaryDialog": {
+        "title": "Gerar resumo de IA",
+        "description": "Escolha um fornecedor de IA associado para resumir esta chamada.",
+        "noProviderTitle": "Nenhum fornecedor de IA associado",
+        "noProviderDescription": "Associe uma integração de IA para gerar resumos de chamadas.",
+        "connectLink": "Ir para as definições de IA",
+        "generate": "Gerar",
+        "generating": "A gerar…",
+        "generateFailed": "Não foi possível gerar o resumo. Tente novamente.",
+        "retry": "Tentar novamente",
+        "emptyTranscriptTooltip": "Esta chamada ainda não tem uma transcrição para resumir"
+      },
+      "panel": {
+        "eyebrowCalling": "A CHAMAR…",
+        "eyebrowIncoming": "CHAMADA A RECEBER",
+        "eyebrowOnCall": "EM CHAMADA",
+        "statusPreparing": "A preparar…",
+        "statusWaitingForMic": "A aguardar acesso ao microfone…",
+        "statusDeclined": "Recusada",
+        "statusCallFailed": "Falha na chamada",
+        "statusCallEnded": "Chamada terminada",
+        "end": "Terminar",
+        "minimize": "Minimizar",
+        "goToConversation": "Ir para a conversa",
+        "expand": "Expandir",
+        "dismiss": "Fechar",
+        "statusNoAnswer": "Sem resposta",
+        "eyebrowCallEnded": "CHAMADA TERMINADA",
+        "statusConnectionLost": "Ligação perdida",
+        "answerFailed": "Não foi possível atender a chamada. Verifique se há um microfone ligado e permitido no navegador e tente novamente.",
+        "ringingListTitle": "{count, plural, one {# chamada a receber} other {# chamadas a receber}}"
+      },
+      "capability": {
+        "title": "Elegibilidade de chamadas",
+        "enableCalling": "Ative as chamadas em Definições > Canais > WhatsApp > Chamadas.",
+        "reconnectChannel": "Vá a Definições > Canais e volte a ligar o canal do WhatsApp.",
+        "ok": "OK",
+        "micPermissionTitle": "Permissão de microfone",
+        "dialFailureTitle": "Não foi possível efetuar a chamada"
+      },
+      "manualIntegrationCallWarning": {
+        "title": "Número ligado manualmente",
+        "callsSubscription": "Este número do WhatsApp foi ligado manualmente. Certifica-te de que a tua aplicação Meta está subscrita no campo de webhook calls (Meta App Dashboard → WhatsApp → Configuration → Webhook fields → calls) — caso contrário, as chamadas efetuadas não ligam e as chamadas recebidas não tocam.",
+        "unsignedWebhook": "Este número também não tem um Meta App Secret configurado, pelo que os webhooks recebidos não têm a assinatura verificada.",
+        "callAnyway": "Ligar mesmo assim"
+      },
+      "replaceConfirm": {
+        "title": "Terminar a chamada com {current}?",
+        "description": "Está numa chamada com {current}. Atender {incoming} termina essa chamada de imediato.",
+        "confirm": "Terminar e atender",
+        "cancel": "Continuar na chamada"
+      },
+      "answerCaller": "Atender a chamada de {name}",
+      "rejectCaller": "Rejeitar a chamada de {name}",
+      "hours": {
+        "title": "Horário de chamadas",
+        "description": "Os clientes só podem ligar para este número nestes horários. Fora deles, o WhatsApp propõe conversar por chat ou, se os pedidos de chamada de retorno estiverem ativos, pedir uma chamada de retorno, e mostra quando podem voltar a ligar.",
+        "enabledLabel": "Aceitar chamadas apenas no horário de chamadas",
+        "timezoneLabel": "Fuso horário",
+        "closed": "Fechado",
+        "openTimeLabel": "{day}: abre às",
+        "closeTimeLabel": "{day}: fecha às",
+        "addRangeLabel": "Adicionar horário em {day}",
+        "removeRangeLabel": "Remover horário de {day}",
+        "overnightHint": "Cada dia termina às 23:59. Para ficar aberto depois da meia-noite, adicione as horas restantes ao dia seguinte.",
+        "days": {
+          "monday": "Segunda-feira",
+          "tuesday": "Terça-feira",
+          "wednesday": "Quarta-feira",
+          "thursday": "Quinta-feira",
+          "friday": "Sexta-feira",
+          "saturday": "Sábado",
+          "sunday": "Domingo"
+        },
+        "errors": {
+          "rangeOrder": "A hora de fecho tem de ser posterior à hora de abertura.",
+          "rangeOverlap": "Os horários deste dia sobrepõem-se.",
+          "noOpenHours": "Adicione horários a pelo menos um dia."
+        }
+      },
+      "inboundLabel": "Accept incoming calls",
+      "inboundHelper": "Let customers call in. Turn off to keep dialling out without the inbox ringing.",
+      "page": {
+        "title": "Chamadas",
+        "subtitle": "Histórico de chamadas deste espaço de trabalho",
+        "emptyTitle": "Ainda não há chamadas",
+        "emptyDescription": "As chamadas aparecerão aqui assim que a sua equipa começar a fazer ou receber chamadas do WhatsApp.",
+        "loadMore": "Carregar mais",
+        "allActivity": "Todas as chamadas",
+        "filterMissed": "Perdidas",
+        "filterNoReply": "Sem resposta",
+        "allInboxes": "Todas as caixas de entrada",
+        "allAgents": "Todos os agentes",
+        "columnContact": "Contacto",
+        "columnInbox": "Caixa de entrada",
+        "columnDirection": "Direção",
+        "columnAgent": "Agente",
+        "columnDuration": "Duração",
+        "columnDate": "Data",
+        "directionInbound": "Recebida",
+        "directionOutbound": "Efetuada",
+        "kindOngoing": "Em curso",
+        "kindAnsweredInbound": "Atendida",
+        "kindAnsweredOutbound": "Atendida",
+        "openConversation": "Abrir conversa",
+        "unknownContact": "Contacto desconhecido",
+        "emptyFilteredTitle": "Nenhuma chamada corresponde a este filtro",
+        "emptyFilteredDescription": "Experimente outro filtro ou limpe-o para ver todas as chamadas.",
+        "loadMoreError": "Não foi possível carregar mais chamadas. Tente novamente.",
+        "callInformation": "Informações da chamada"
+      }
+    },
+    "credentialSecretsRequired": "Introduza o segredo da aplicação e o token de utilizador do sistema. Ainda não estão guardados."
   },
   "zalo": {
     "title": "Zalo OA",
@@ -3885,7 +4748,8 @@
       "toggleSuccess": "Definição de sincronização de etiquetas atualizada.",
       "enabledSince": "Ativada desde {date}",
       "disabled": "Desativada"
-    }
+    },
+    "refreshPermissions": "Atualizar permissões"
   },
   "telegram": {
     "description": "Esta integração permite-lhe criar bots do Telegram.",
@@ -3896,6 +4760,14 @@
     "chatbotInvitationDescription2": "{userName} convidou-o a juntar-se a {chatbotName}.",
     "invalidInvitation": "Este convite é inválido ou expirou.",
     "workspaceUnavailable": "Este espaço de trabalho já não está disponível."
+  },
+  "inboxes": {
+    "markReadOnOutbound": {
+      "label": "Marcar mensagens do bot como lidas",
+      "enabled": "Ativado",
+      "disabled": "Desativado",
+      "description": "Se ativado, o bot marca automaticamente as suas próprias mensagens como lidas"
+    }
   },
   "inboxTeams": {
     "title": "Equipas da caixa de entrada"
@@ -3908,7 +4780,47 @@
   },
   "reflinks": {
     "title": "Ligações de ponto de entrada",
-    "description": "Ligações de palavras-chave que iniciam fluxos e capturam payloads de referência dos canais."
+    "description": "Ligações de palavras-chave que iniciam fluxos e capturam payloads de referência dos canais.",
+    "chatWidget": {
+      "title": "Widget de chat",
+      "description": "Mostre botões dos seus canais de chat no seu site. O visitante clica num para iniciar uma conversa e executar o fluxo deste link ref.",
+      "authorizedDomains": {
+        "label": "Domínios autorizados",
+        "placeholder": "example.com",
+        "description": "Apenas estes domínios e os respetivos subdomínios podem mostrar o widget. Deixe vazio para permitir qualquer site.",
+        "invalid": "Estes domínios não são válidos: {domains}. Introduza apenas o domínio, como example.com."
+      },
+      "channels": {
+        "label": "Canais",
+        "description": "Desative um canal para o ocultar do widget.",
+        "empty": "Ainda não há nenhum canal com link de chat ligado.",
+        "profileLinkOnly": "Abre a página de perfil — o fluxo da ligação ref não é executado."
+      },
+      "preview": "Pré-visualização",
+      "embedCodeDescription": "Cole este código antes da etiqueta de fecho body do seu site. As alterações guardadas aplicam-se automaticamente, não é preciso colar de novo.",
+      "savedSuccess": "Definições do widget de chat guardadas",
+      "poweredBy": "por",
+      "toggleLabel": "Fale connosco",
+      "logo": {
+        "description": "O botão redondo em que os visitantes clicam para abrir o widget. Escolha uma imagem quadrada ou deixe vazio para usar o ícone de chat predefinido.",
+        "choose": "Escolher da Biblioteca de multimédia",
+        "notImage": "O logótipo tem de ser uma imagem."
+      },
+      "brandUrl": {
+        "label": "URL de redirecionamento",
+        "placeholder": "https://example.com",
+        "description": "Para onde o nome da sua marca na linha \"por\" do widget aponta. Obrigatório quando existe um nome de marca.",
+        "requiredWithName": "Introduza um URL de redirecionamento para este nome de marca."
+      },
+      "brandName": {
+        "description": "Apresentado na linha \"por\" do widget. Obrigatório quando existe um URL de redirecionamento. Deixe ambos vazios para ocultar essa linha.",
+        "requiredWithUrl": "Introduza um nome de marca para este URL de redirecionamento."
+      },
+      "logoBackgroundColor": {
+        "label": "Cor de fundo do ícone",
+        "description": "Fundo do ícone de chat predefinido. O ícone fica branco ou preto para se manter legível."
+      }
+    }
   },
   "qrCodes": {
     "title": "Códigos QR",
@@ -3979,6 +4891,216 @@
     "title": "Ligações mágicas",
     "description": "Crie ligações diretas que redirecionam para o seu URL com parâmetros de consulta."
   },
+  "inboundWebhooks": {
+    "title": "Webhooks de entrada",
+    "feature": "Webhook de entrada",
+    "description": "Permita que sistemas externos enviem dados para o seu workspace: encontrar ou criar um contacto, guardar valores nos respetivos campos e executar ações.",
+    "createDescription": "Um novo webhook começa inativo. Configure-o no editor e depois ative-o.",
+    "deleteDescription": "Os sistemas que ainda enviam para este URL receberão um erro. Esta ação não pode ser anulada.",
+    "editorDescription": "Envie um pedido POST com JSON para o URL abaixo para executar este webhook.",
+    "configure": "Configurar",
+    "getLink": "Obter ligação",
+    "activeToggle": "Ativar {name}",
+    "columns": {
+      "active": "Ativo",
+      "createdAt": "Criado",
+      "requests": "Pedidos"
+    },
+    "link": {
+      "title": "URL do webhook",
+      "description": "Envie JSON por POST para este URL. Contém um token secreto, por isso trate-o como uma palavra-passe."
+    },
+    "endpoint": {
+      "label": "URL do webhook",
+      "show": "Mostrar URL",
+      "hide": "Ocultar URL"
+    },
+    "regenerate": {
+      "button": "Regenerar",
+      "title": "Regenerar o URL do webhook?",
+      "description": "O URL atual deixa de funcionar imediatamente. Atualize todos os sistemas que enviam para ele.",
+      "cancel": "Cancelar",
+      "confirm": "Regenerar",
+      "success": "URL do webhook regenerado",
+      "failed": "Não foi possível regenerar o URL"
+    },
+    "activation": {
+      "incomplete": "Preencha a caixa de entrada, pelo menos um campo do contacto e pelo menos um mapeamento, e guarde, antes de ativar este webhook."
+    },
+    "sample": {
+      "title": "JSON de exemplo",
+      "description": "Cole um corpo de pedido de exemplo para explorar os campos e pré-visualizar os valores.",
+      "load": "Carregar JSON de exemplo",
+      "status": {
+        "loaded": "Exemplo carregado",
+        "invalid": "Este JSON não é válido",
+        "tooLarge": "O exemplo é maior do que {max} KB",
+        "unsupported": "O exemplo contém carateres não suportados ou está demasiado aninhado"
+      },
+      "format": "Formatar JSON"
+    },
+    "contact": {
+      "title": "Encontrar ou criar contacto",
+      "description": "Escolha a caixa de entrada a que o contacto pertence e como o encontrar. Se ninguém corresponder, é criado um novo contacto quando o pedido tiver o que este canal precisa."
+    },
+    "inbox": {
+      "modeLabel": "Caixa de entrada",
+      "mode": {
+        "inbox": "Caixa de entrada específica",
+        "payload": "Do payload"
+      },
+      "modeDescription": {
+        "inbox": "Cada pedido usa a caixa de entrada que escolher.",
+        "payload": "Cada pedido indica a sua caixa de entrada, por exemplo o id de uma página do Messenger ou o id de um número do WhatsApp."
+      },
+      "inboxLabel": "Caixa de entrada",
+      "inboxPlaceholder": "Selecione uma caixa de entrada",
+      "noInboxes": "Nenhuma caixa de entrada ligada encontrada.",
+      "savedInboxMissing": "A caixa de entrada guardada já não está ligada. Escolha outra.",
+      "channelLabel": "Canal",
+      "channelPlaceholder": "Selecione um canal",
+      "noPayloadChannels": "Ligue primeiro um canal compatível.",
+      "identifierKindLabel": "Identificador da caixa de entrada",
+      "identifierKindPlaceholder": "Selecione o identificador enviado no payload",
+      "identifierPathHint": "Caminho JSON deste valor no pedido."
+    },
+    "identity": {
+      "hint": "Preencha pelo menos um. O contacto é procurado pelo primeiro encontrado no pedido, por esta ordem.",
+      "phone": "Telefone",
+      "email": "E-mail",
+      "channelUserId": "ID de utilizador do canal",
+      "fullName": "Nome completo",
+      "creationHint": "Sem {identities}, um pedido para um contacto desconhecido é ignorado. Apenas os contactos existentes são atualizados."
+    },
+    "inboxIdentifierKinds": {
+      "pageId": "ID da página do Facebook",
+      "igId": "ID da conta do Instagram",
+      "phoneNumberId": "ID do número de telefone do WhatsApp",
+      "displayPhoneNumber": "Número de telefone do WhatsApp (menos preciso)",
+      "botId": "ID do bot do Telegram",
+      "oaId": "ID do Zalo OA",
+      "openId": "Open ID da conta do TikTok",
+      "threadsUserId": "ID de utilizador do Threads"
+    },
+    "channelUserIdKinds": {
+      "psid": "PSID do Messenger",
+      "igsid": "IGSID do Instagram",
+      "telegramChatId": "ID do chat do Telegram",
+      "zaloUserId": "ID de utilizador do Zalo",
+      "tiktokCustomerOpenId": "Open ID do cliente do TikTok",
+      "threadsUsername": "Nome de utilizador do Threads",
+      "apiSourceId": "ID da origem do contacto",
+      "whatsappId": "ID do WhatsApp (wa_id)"
+    },
+    "mappings": {
+      "title": "Guardar dados recebidos",
+      "description": "Copie valores do pedido para campos do contacto.",
+      "empty": "Ainda não há campos mapeados.",
+      "add": "Adicionar campo",
+      "remove": "Remover campo",
+      "target": "Campo do contacto",
+      "targetPlaceholder": "Selecione um campo",
+      "path": "Caminho JSON",
+      "rowTitle": "Mapeamento {number}"
+    },
+    "actions": {
+      "title": "Depois de guardar os dados",
+      "description": "Ações a executar para o contacto depois de os dados serem guardados."
+    },
+    "picker": {
+      "title": "Explorar JSON",
+      "description": "Pesquise e clique num valor, ou introduza um JSONPath abaixo",
+      "browse": "Explorar",
+      "noSample": "Carregue primeiro um JSON de exemplo para explorar os respetivos campos.",
+      "pathLabel": "Caminho JSON",
+      "use": "Usar caminho",
+      "cancel": "Cancelar",
+      "result": "Resultado:",
+      "noValue": "sem valor",
+      "searchLabel": "Pesquisar no JSON",
+      "searchPlaceholder": "Pesquisar chaves, caminhos ou valores",
+      "noMatches": "Nenhuma chave ou valor correspondente.",
+      "moreResults": "A mostrar as primeiras {count} correspondências. Refine a pesquisa para ver outras.",
+      "pathHint": "Suporta nomes de propriedades e índices de array, incluindo $[\"customer-data\"][\"email\"]",
+      "invalidPath": "Este não é um JSONPath suportado."
+    },
+    "requests": {
+      "title": "Pedidos",
+      "description": "As últimas entregas recebidas por este webhook (mantidas durante 30 dias).",
+      "refresh": "Atualizar",
+      "empty": "Ainda não foi recebido nenhum pedido.",
+      "previous": "Página anterior",
+      "next": "Página seguinte",
+      "pageOf": "Página {page} de {pageCount}",
+      "contact": "Contacto n.º {id}",
+      "showDetails": "Mostrar detalhes",
+      "hideDetails": "Ocultar detalhes",
+      "loadingDetails": "A carregar detalhes…",
+      "detailsFailed": "Não foi possível carregar os detalhes.",
+      "fieldErrors": "Campos não guardados",
+      "actionResults": "Ações",
+      "payload": "Payload",
+      "status": {
+        "received": "Recebido",
+        "processing": "A processar",
+        "processed": "Processado",
+        "completedWithErrors": "Concluído com erros",
+        "skipped": "Ignorado",
+        "failed": "Falhou"
+      },
+      "skipReason": {
+        "webhookInactive": "O webhook estava inativo.",
+        "missingInboxIdentifier": "O pedido não continha o identificador da caixa de entrada.",
+        "inboxNotFound": "Nenhuma caixa de entrada corresponde ao identificador do pedido.",
+        "inboxAmbiguous": "Mais do que uma caixa de entrada corresponde ao identificador do pedido.",
+        "inboxDisconnected": "A caixa de entrada está desligada.",
+        "missingIdentifier": "O pedido não continha qualquer identidade de contacto.",
+        "workspaceBlocked": "O proprietário do espaço de trabalho está bloqueado.",
+        "contactNotFound": "Nenhum contacto correspondeu, e o pedido não continha o necessário para criar um.",
+        "contactAmbiguous": "Mais do que um contacto tem este nome na caixa de entrada, por isso o pedido foi ignorado."
+      },
+      "fieldErrorCode": {
+        "invalidValue": "Valor inválido",
+        "invalidPhone": "Número de telefone inválido",
+        "unknownField": "O campo já não existe"
+      },
+      "actionStatus": {
+        "succeeded": "concluída",
+        "skipped": "ignorada",
+        "failed": "falhou"
+      },
+      "errorCode": {
+        "abandoned": "Abandonada: não processada em 24 horas"
+      },
+      "actionSkipReason": {
+        "noConversation": "O contacto não tem conversa",
+        "noContactInbox": "O contacto não está ligado a esta caixa de entrada",
+        "flowInactive": "O fluxo não está publicado",
+        "unsupportedAction": "Esta ação não é suportada aqui",
+        "unsupportedChannel": "O canal não suporta esta ação",
+        "invalidAction": "A ação não está configurada corretamente",
+        "unknownAction": "Ação desconhecida",
+        "unsupportedSource": "Não suportado para esta origem"
+      }
+    },
+    "save": {
+      "invalid": "Algumas definições são inválidas. Corrija os campos destacados e guarde novamente."
+    },
+    "viewAnalytics": "Ver análises",
+    "analytics": {
+      "title": "Análises",
+      "back": "Voltar ao webhook",
+      "totalRequests": "Total de pedidos recebidos",
+      "totalRequestsHint": "Todos os pedidos aceites desde a criação do webhook. Os duplicados não são contados. O registo abaixo guarda os últimos 30 dias."
+    },
+    "issues": {
+      "inboxRequired": "Escolha uma caixa de entrada.",
+      "identifierRequired": "Preencha pelo menos um dos quatro campos do contacto.",
+      "fieldMappingRequired": "Adicione pelo menos um campo em \"Guardar dados recebidos\".",
+      "required": "Este campo é obrigatório.",
+      "unsupportedPath": "Caminho JSON não suportado."
+    }
+  },
   "trigger": {
     "when": "Quando isto acontecer",
     "conditions": {
@@ -4005,8 +5127,8 @@
       "ticketPriorityChanged": "Prioridade do ticket alterada",
       "subscribedToSequence": "Subscrito numa sequência",
       "unsubscribedFromSequence": "Subscrição da sequência cancelada",
-      "WhatsappShoppingCartSent": "Carrinho de compras do WhatsApp enviado",
-      "userAskedAboutProduct": "Utilizador perguntou sobre um produto",
+      "shoppingCartSent": "Contacto enviou carrinho de compras",
+      "userAskedAboutProduct": "Contacto perguntou sobre um produto",
       "cartAbandoned": "Carrinho abandonado",
       "newOrder": "Nova encomenda",
       "orderAccepted": "Encomenda aceite",
@@ -4018,7 +5140,10 @@
       "productRemovedFromCart": "Produto removido do carrinho",
       "productOrdered": "Produto encomendado",
       "contactReferredANewContact": "Contacto recomendou um novo contacto",
-      "contactReferredExistingContact": "Contacto recomendou um contacto existente"
+      "contactReferredExistingContact": "Contacto recomendou um contacto existente",
+      "callRecorded": "Chamada gravada",
+      "callTranscribed": "Chamada transcrita",
+      "anyProduct": "Qualquer produto"
     },
     "actions": {
       "addTag": "Adicionar etiqueta",
@@ -4028,7 +5153,8 @@
       "startAnotherFlow": "Iniciar outro fluxo",
       "notifyAdmins": "Notificar administradores",
       "transferConversationToHuman": "Transferir conversa para um humano",
-      "sendMetaCapiEvent": "Enviar evento Meta CAPI"
+      "sendMetaCapiEvent": "Enviar evento Meta CAPI",
+      "sendGoogleAdsConversion": "Enviar conversão do Google Ads"
     },
     "triggerGoesOff": "O acionador é ativado",
     "before": "Antes",
@@ -4254,7 +5380,8 @@
     "afterText": "Depois"
   },
   "tools": {
-    "title": "Ferramentas"
+    "title": "Ferramentas",
+    "beta": "Beta"
   },
   "aiProviders": {
     "openai": "OpenAI",
@@ -4275,7 +5402,26 @@
   },
   "botSimulator": {
     "title": "Simulador do bot",
-    "description": "Simule o comportamento do seu bot num ambiente em tempo real."
+    "description": "Simule o comportamento do seu bot num ambiente em tempo real.",
+    "formDescription": "Obtenha uma ligação que mostra um site com o seu webchat, para demonstrar o bot a um cliente.",
+    "websiteLink": "Ligação do site",
+    "websiteLinkPlaceholder": "https://example.com",
+    "websiteLinkHint": "O site apresentado atrás do webchat. Alguns sites não permitem ser apresentados dentro de outra página.",
+    "selectWebchat": "Selecione um webchat",
+    "webchatRequired": "Selecione um webchat",
+    "invalidUrl": "Introduza uma ligação completa a começar por http:// ou https://",
+    "getLink": "Obter ligação",
+    "linkCopied": "Ligação copiada para a área de transferência",
+    "copyFailed": "Não foi possível copiar a ligação",
+    "noWebchat": "Este espaço de trabalho ainda não tem webchat.",
+    "createWebchat": "Criar um webchat",
+    "websitePreview": "Pré-visualização do site",
+    "webchatDisabled": "Este webchat está desativado. Ative-o ou escolha outro.",
+    "domainNotAllowed": "Este site não está entre os domínios permitidos do webchat.",
+    "disabledWebchatLabel": "{name} (desativado)",
+    "allowedDomainsHint": "Funciona apenas com sites em: {domains}",
+    "noEnabledWebchat": "Nenhum webchat está ativado neste espaço de trabalho.",
+    "enableWebchat": "Ativar um webchat"
   },
   "pollManager": {
     "title": "Gestor de sondagens",
@@ -4357,13 +5503,13 @@
     "privateReply": "Resposta privada (caixa de entrada)",
     "privateReplyDescription": "Envie uma mensagem privada para a caixa de entrada do autor do comentário. Escolha um agente de IA, um modelo de texto fixo, um fluxo do chatbot ou desative a resposta.",
     "publicReply": "Resposta pública ao comentário",
-    "publicReplyDescription": "Publique uma resposta pública diretamente sob o comentário. Suporta até 10 modelos de texto, um agente de IA, um fluxo do chatbot ou nenhuma resposta. Cada mensagem é publicada como uma resposta separada.",
+    "publicReplyDescription": "Publique uma resposta pública diretamente sob o comentário. Suporta até 10 modelos de texto, um agente de IA, um fluxo do chatbot ou nenhuma resposta. Cada mensagem é publicada como uma resposta separada. Suporta spintax.",
     "replyMessage": "Mensagem de resposta",
     "replyMessagePlaceholder": "Introduza a mensagem de resposta...",
     "includeKeywordsType": "Responder a",
     "includeKeywordsTypeDescription": "Escolha os comentários aos quais esta automatização responde.",
     "includeKeywords": "Palavras-chave a corresponder",
-    "excludeKeywords": "Excluir comentários com estas palavras-chave",
+    "excludeKeywords": "Excluir comentários que contêm",
     "excludeKeywordsDescription": "Os comentários que contenham qualquer uma destas palavras-chave serão ignorados pelas automatizações de resposta privada e pública.",
     "keywordsPlaceholder": "Escreva e prima Enter...",
     "replyAfter": "Responder após",
@@ -4426,7 +5572,7 @@
       "ignoreCommentReplies": "Não responder a respostas a comentários",
       "ignoreCommentRepliesDescription": "Ignorar a automatização em comentários que sejam respostas a outros comentários e não comentários de nível superior.",
       "trackUserTags": "Registar se um utilizador marca outros utilizadores",
-      "trackUserTagsDescription": "Use '{{total_tagged}}' para saber quantos utilizadores foram marcados. Use '{{total_new_tagged}}' para saber quantas das pessoas marcadas não estão na lista de contactos."
+      "trackUserTagsDescription": "Conta as contas identificadas em cada comentário e soma-as aos totais do contacto em todos os comentários. Utilize '{{total_tagged}}' para todas as contas identificadas e '{{total_new_tagged}}' para contas que nunca enviaram mensagem à sua página nem foram contactos."
     },
     "hideComments": {
       "all": "Ocultar todos os comentários",
@@ -4446,7 +5592,13 @@
     "chooseSpecificPosts": "Escolher publicações...",
     "postIdTab": "ID da publicação",
     "postIdPlaceholder": "Introduza os IDs das publicações, um por linha...",
-    "noPostsFound": "Não foram encontradas publicações"
+    "noPostsFound": "Não foram encontradas publicações",
+    "postTypeDialog": {
+      "liveTitle": "Transmissão em direto",
+      "liveDescription": "Automatize comentários em transmissões em direto. Suporta respostas públicas, respostas privadas, ocultar e gostar de comentários.",
+      "postsTitle": "Publicações da Página",
+      "postsDescription": "Automatize comentários em publicações e reels da Página. Suporta respostas públicas, respostas privadas, ocultar e gostar de comentários."
+    }
   },
   "instagramCommentAutomation": {
     "title": "Automatização de comentários do Instagram",
@@ -4460,13 +5612,13 @@
     "privateReply": "Resposta privada (caixa de entrada)",
     "privateReplyDescription": "Envie uma mensagem privada para a caixa de entrada do autor do comentário. Escolha um agente de IA, um modelo de texto fixo, um fluxo do chatbot ou desative a resposta.",
     "publicReply": "Resposta pública ao comentário",
-    "publicReplyDescription": "Publique uma resposta pública diretamente sob o comentário. Suporta até 10 modelos de texto, um agente de IA, um fluxo do chatbot ou nenhuma resposta. Cada mensagem é publicada como uma resposta separada.",
+    "publicReplyDescription": "Publique uma resposta pública diretamente sob o comentário. Suporta até 10 modelos de texto, um agente de IA, um fluxo do chatbot ou nenhuma resposta. Cada mensagem é publicada como uma resposta separada. Suporta spintax.",
     "replyMessage": "Mensagem de resposta",
     "replyMessagePlaceholder": "Introduza a mensagem de resposta...",
     "includeKeywordsType": "Responder a",
     "includeKeywordsTypeDescription": "Escolha os comentários aos quais esta automatização responde.",
     "includeKeywords": "Palavras-chave a corresponder",
-    "excludeKeywords": "Excluir comentários com estas palavras-chave",
+    "excludeKeywords": "Excluir comentários que contêm",
     "excludeKeywordsDescription": "Os comentários que contenham qualquer uma destas palavras-chave serão ignorados pelas automatizações de resposta privada e pública.",
     "keywordsPlaceholder": "Escreva e prima Enter...",
     "replyAfter": "Responder após",
@@ -4528,7 +5680,7 @@
       "ignoreCommentReplies": "Não responder a respostas a comentários",
       "ignoreCommentRepliesDescription": "Ignorar a automatização em comentários que sejam respostas a outros comentários e não comentários de nível superior.",
       "trackUserTags": "Registar se um utilizador marca outros utilizadores",
-      "trackUserTagsDescription": "Use '{{total_tagged}}' para saber quantos utilizadores foram marcados. Use '{{total_new_tagged}}' para saber quantas das pessoas marcadas não estão na lista de contactos."
+      "trackUserTagsDescription": "Conta as contas identificadas em cada comentário e soma-as aos totais do contacto em todos os comentários. Utilize '{{total_tagged}}' para todas as contas identificadas e '{{total_new_tagged}}' para contas que nunca enviaram mensagem à sua página nem foram contactos."
     },
     "hideComments": {
       "all": "Ocultar todos os comentários",
@@ -4553,7 +5705,14 @@
       "instagramDescription": "Ligação através do início de sessão do Instagram. Suporta respostas públicas e privadas e a ocultação de comentários. Não permite colocar Gosto em comentários.",
       "instagramFacebookTitle": "Início de sessão do Instagram com o Facebook",
       "instagramFacebookDescription": "Instagram ligado através de uma Página do Facebook. Suporta respostas públicas e privadas, a ocultação de comentários e a colocação de Gosto em comentários."
-    }
+    },
+    "postTypeDialog": {
+      "liveTitle": "Instagram Live",
+      "liveDescription": "Automatize comentários no Instagram Live. Envia uma resposta privada a cada pessoa que comenta enquanto está em direto.",
+      "postsTitle": "Publicações e reels",
+      "postsDescription": "Automatize comentários em publicações e reels. Suporta respostas públicas, respostas privadas e ocultar comentários."
+    },
+    "liveReplyNote": "O Instagram só permite uma resposta privada a um comentário em direto, e apenas enquanto está em direto. Respostas públicas, ocultar e gostar não estão disponíveis."
   },
   "threadsCommentAutomation": {
     "title": "Threads Comment Automation",
@@ -4564,22 +5723,23 @@
     "publicOnlyNote": "Threads currently supports public replies only.",
     "trackCommentsOn": "Track comments on",
     "publicReply": "Public reply to comment",
-    "publicReplyDescription": "Send a public reply to matching Threads comments.",
+    "publicReplyDescription": "Send a public reply to matching Threads comments. Até 10 mensagens de texto (suporta spintax), cada uma publicada como uma resposta separada.",
     "replyMessage": "Reply message",
     "replyFlow": "Reply flow",
     "replyAIAgent": "Reply AI Agent",
     "includeKeywordsType": "Reply to",
     "includeKeywords": "Keywords to match",
-    "excludeKeywords": "Exclude comments with these keywords",
+    "excludeKeywords": "Excluir comentários que contêm",
     "keywordsPlaceholder": "Type and press Enter...",
     "replyAfter": "Reply after",
     "replyAfterValue": "Value",
     "specificPostIds": "Specific post IDs",
-    "postIdPlaceholder": "Enter post IDs and press Enter...",
+    "postIdPlaceholder": "Introduza os IDs numéricos das publicações e prima Enter (não o código do link)...",
     "card": {
       "targeting": "Targeting & Reply",
       "filters": "Filters & Options",
-      "replyTiming": "Reply Timing"
+      "replyTiming": "Reply Timing",
+      "hideComments": "Ocultar comentários"
     },
     "postType": {
       "all": "All posts",
@@ -4621,16 +5781,161 @@
       "keywordsRequired": "Enter at least one keyword for the selected match type.",
       "delayMustBePositive": "Delay value must be greater than zero.",
       "delayMustBeZero": "Delay value must be zero for the selected timing option.",
-      "atLeastOneFieldRequired": "At least one field is required."
+      "atLeastOneFieldRequired": "At least one field is required.",
+      "replyTextRequired": "Introduza pelo menos uma mensagem de resposta.",
+      "hideKeywordsRequired": "Enter at least one keyword to hide comments by keyword."
+    },
+    "hideCommentsDescription": "Apenas as respostas de primeiro nível às suas publicações podem ser ocultadas.",
+    "hideComments": {
+      "all": "Ocultar todos os comentários",
+      "hasPhoneNumber": "Contém um número de telefone",
+      "hasLink": "Contém uma ligação",
+      "hasKeywords": "Contém palavras-chave",
+      "keywords": "Palavras-chave",
+      "showCommentsAfter": "Mostrar comentários após"
+    },
+    "showCommentsAfter": {
+      "none": "Nunca"
+    },
+    "chooseSpecificPosts": "Escolher publicações...",
+    "selectPosts": "Selecionar publicações",
+    "selectAccountAll": "Todas as contas",
+    "postsTab": "Publicações",
+    "postIdTab": "ID da publicação",
+    "noPostsFound": "Não foram encontradas publicações",
+    "loadPostsError": "Não foi possível carregar as publicações. Ainda pode introduzir os IDs manualmente."
+  },
+  "tiktokCommentAutomation": {
+    "title": "TikTok Comment Automation",
+    "description": "Automate replies, likes and hiding on comments under your TikTok videos.",
+    "create": "Create Automation",
+    "replies": "Replies",
+    "empty": "No TikTok comment automations yet.",
+    "deliveryDelayNote": "TikTok delivers comment events within five minutes, so replies are not instant. Any reply delay you set is added on top of that.",
+    "trackCommentsOn": "Track comments on",
+    "publicReply": "Public reply to comment",
+    "publicReplyDescription": "Send a public reply to matching TikTok comments. Até 10 mensagens de texto (suporta spintax), cada uma publicada como uma resposta separada.",
+    "replyMessage": "Reply message",
+    "replyFlow": "Reply flow",
+    "replyAIAgent": "Reply AI Agent",
+    "includeKeywordsType": "Reply to",
+    "includeKeywords": "Keywords to match",
+    "excludeKeywords": "Excluir comentários que contêm",
+    "keywordsPlaceholder": "Type and press Enter...",
+    "replyAfter": "Reply after",
+    "replyAfterValue": "Value",
+    "specificPostIds": "Specific video IDs",
+    "postIdPlaceholder": "Enter video IDs and press Enter...",
+    "hideCommentsDescription": "Hidden comments stay visible to their author only.",
+    "card": {
+      "targeting": "Targeting & Reply",
+      "filters": "Filters & Options",
+      "hideComments": "Hide Comments",
+      "replyTiming": "Reply Timing"
+    },
+    "postType": {
+      "all": "All videos",
+      "specificPosts": "Specific videos"
+    },
+    "replyType": {
+      "text": "Text message",
+      "flow": "Flow",
+      "AIAgent": "AI Agent",
+      "none": "No reply"
+    },
+    "keywordsType": {
+      "all": "All comments",
+      "equal": "Exact match",
+      "contain": "Contains"
+    },
+    "replyAfterType": {
+      "immediately": "Immediately",
+      "seconds": "After X seconds",
+      "minutes": "After X minutes",
+      "hours": "After X hours",
+      "randomWithin3Minutes": "Random within 3 minutes",
+      "randomWithin5Minutes": "Random within 5 minutes",
+      "randomWithin10Minutes": "Random within 10 minutes",
+      "randomWithin20Minutes": "Random within 20 minutes",
+      "randomWithin30Minutes": "Random within 30 minutes",
+      "randomWithin60Minutes": "Random within 60 minutes"
+    },
+    "options": {
+      "replyToNewContactsOnly": "Only reply to new contacts",
+      "replyOncePerUserPerPost": "Reply only once to each user per video",
+      "replyToUsersWhoCommentedOnOtherPosts": "Reply to users who commented on other videos",
+      "ignoreCommentReplies": "Don't reply to replies to comments",
+      "likeUserComment": "Like the user's comment"
+    },
+    "hide": {
+      "all": "Hide every comment",
+      "hasPhoneNumber": "Hide comments containing a phone number",
+      "hasLink": "Hide comments containing a link",
+      "hasKeywords": "Hide comments containing keywords",
+      "keywords": "Keywords to hide",
+      "showCommentsAfter": "Show hidden comments again after"
+    },
+    "showCommentsAfter": {
+      "none": "Never",
+      "6h": "6 hours",
+      "12h": "12 hours",
+      "1d": "1 day",
+      "2d": "2 days",
+      "3d": "3 days",
+      "4d": "4 days",
+      "5d": "5 days",
+      "6d": "6 days",
+      "7d": "7 days",
+      "8d": "8 days",
+      "9d": "9 days",
+      "10d": "10 days"
+    },
+    "validation": {
+      "postIdsMustBeEmptyForAll": "Video IDs must be empty when targeting all videos.",
+      "postIdsRequired": "Select at least one video ID when targeting specific videos.",
+      "keywordsMustBeEmptyForAll": "Keywords must be empty when matching all comments.",
+      "keywordsRequired": "Enter at least one keyword for the selected match type.",
+      "delayMustBePositive": "Delay value must be greater than zero.",
+      "delayMustBeZero": "Delay value must be zero for the selected timing option.",
+      "hideKeywordsRequired": "Enter at least one keyword to hide comments by keyword.",
+      "atLeastOneFieldRequired": "At least one field is required.",
+      "replyTextRequired": "Introduza pelo menos uma mensagem de resposta."
+    },
+    "privateReply": "Private reply (Comment-to-Message)",
+    "privateReplyDescription": "Send a direct message to the commenter. TikTok only allows this for comments it flags as high intent, so it will not fire for every matching comment.",
+    "privateReplyMessage": "Private reply message",
+    "privateReplyHighIntentTitle": "TikTok decides which comments can be messaged",
+    "privateReplyHighIntentNotice": "Comment-to-Message must be enabled on the connected TikTok account, and the account must be a Business Account registered in Vietnam, Indonesia or Thailand. TikTok sends the direct message only for first-level comments it flags as high intent, within 48 hours, once per comment, and not if the commenter already messaged you in the past 24 hours."
+  },
+  "commentAutomationMissedComments": {
+    "action": "Processar comentários perdidos",
+    "processing": "A processar comentários perdidos",
+    "title": "Processar comentários perdidos",
+    "description": "Analisa os comentários desta publicação dos últimos 7 dias e processa-os com esta automação de comentários. Os comentários já processados são ignorados. Esta ação envia mensagens e respostas reais.",
+    "success": "{scanned} comentários analisados: {skipped} já processados, {queued} em fila para processamento, {failed} falharam.",
+    "errors": {
+      "notSinglePost": "Disponível apenas para uma automação que tenha exatamente uma publicação específica como alvo.",
+      "inactive": "Ative esta automação antes de processar comentários perdidos.",
+      "outsideSchedule": "Esta automação está fora do horário de funcionamento. Tente novamente dentro do agendamento.",
+      "workspaceInactive": "Este workspace está desativado ou fora do horário de funcionamento, pelo que nenhum comentário seria processado. Tente novamente quando o workspace estiver ativo.",
+      "alreadyRunning": "Os comentários perdidos desta automação já estão a ser processados. Tente novamente dentro de alguns minutos.",
+      "integrationNotFound": "Não foi encontrada nenhuma conta ligada para este canal.",
+      "fetchFailed": "Não foi possível carregar os comentários da publicação. Verifique a ligação do canal e tente novamente."
     }
   },
   "instagramStoryAutomation": {
-    "title": "Automação de resposta a Stories do Instagram",
-    "description": "Automatize respostas às respostas de Stories do Instagram para os seus contactos.",
+    "title": "Automação de Stories do Instagram",
+    "description": "Automatize respostas quando os contactos respondem aos seus Stories do Instagram ou o mencionam nos deles.",
     "create": "Criar automação",
     "replies": "Respostas",
     "activated": "Automação ativada",
     "deactivated": "Automação desativada",
+    "trigger": "Acionador",
+    "triggerDescription": "Escolha o que inicia esta automação. Não pode ser alterado depois de a automação ser criada.",
+    "triggerType": {
+      "storyReply": "Responde ao seu Story",
+      "storyMention": "Menciona-o no Story dele"
+    },
     "trackStoryReplyOn": "Monitorizar respostas de Story em",
     "trackStoryReplyOnDescription": "Aplique esta automação a respostas em todos os seus Stories, ou restrinja-a a Stories específicos que selecionar.",
     "reply": "Resposta",
@@ -4694,7 +5999,6 @@
     "allForms": "Todos os formulários",
     "allFormsNote": "Os leads de todos os formulários desta página serão capturados. Os campos padrão (e-mail, telefone, nome e género) são guardados automaticamente nos campos correspondentes do contacto.",
     "leadData": "Dados do lead",
-    "whatFlow": "Fluxo acionado",
     "addNewPage": "Adicionar novo",
     "noEligiblePages": "Não existem páginas elegíveis. Utilize «Adicionar novo» para conceder acesso aos leads.",
     "duplicateError": "Já existe uma automatização para esta página e este formulário.",
@@ -4924,6 +6228,21 @@
     "invalidDescription": "Esta ligação é inválida ou expirou.",
     "unavailableTitle": "Cancelamento de subscrição indisponível.",
     "unavailableDescription": "Este espaço de trabalho já não está disponível."
+  },
+  "connectSessionPage": {
+    "metadataTitle": "Connecting…",
+    "processingTitle": "Finishing up…",
+    "processingDescription": "You can close this window. The application that started this connection will finish setting things up shortly.",
+    "completedTitle": "Connected!",
+    "completedDescription": "You can close this window now.",
+    "failedTitle": "Connection failed.",
+    "failedDescription": "Something went wrong while connecting. Please try again from the application that started this.",
+    "cancelledTitle": "Connection cancelled.",
+    "cancelledDescription": "You can close this window.",
+    "expiredTitle": "This link has expired.",
+    "expiredDescription": "Please start the connection again from the application that started this.",
+    "invalidTitle": "This link is no longer valid.",
+    "invalidDescription": "This connection link is invalid or has already been used."
   },
   "templatesPublicPage": {
     "invalidTitle": "Esta ligação já não está disponível.",
@@ -5667,22 +6986,21 @@
     "connectViaFacebook": "Ligar através do Facebook",
     "unsupportedExplanation": "Esta conta do Instagram foi ligada com o Instagram Business Login. Ligue a conta através do Facebook para utilizar o Meta Conversions API.",
     "flowStep": {
-      "whatsappNote": "Os eventos do WhatsApp só são enviados para conversas iniciadas a partir de um anúncio click-to-WhatsApp."
+      "whatsappNote": "Os eventos do WhatsApp só são enviados para conversas iniciadas a partir de um anúncio click-to-WhatsApp.",
+      "description": "Coloque na fila um evento LeadSubmitted para o Messenger, Instagram ou WhatsApp."
     },
     "status": {
       "title": "Meta Conversions API",
       "ready": "Pronto",
-      "missingPermission": "Permissão necessária",
-      "unverified": "Não verificado",
       "unsupported": "Não suportado",
-      "notConnected": "Não ligado"
+      "notConnected": "Não ligado",
+      "reconnect": "Reconexão necessária"
     },
     "statusDescriptions": {
-      "ready": "Esta integração tem a permissão da Meta necessária para os eventos do Conversions API.",
-      "missingPermission": "Ligue novamente esta integração e conceda a permissão da Meta solicitada.",
-      "unverified": "As definições da aplicação da plataforma não estão disponíveis, pelo que a permissão CAPI não pode ser verificada.",
+      "ready": "Os eventos da Conversions API desta integração são enviados para a Meta.",
       "unsupported": "O Meta Conversions API para o Instagram requer uma conta ligada através do Facebook Login for Business.",
-      "notConnected": "O Conversions API é uma ferramenta empresarial da Meta que lhe permite partilhar dados com a Meta para melhorar o desempenho dos anúncios."
+      "notConnected": "O Conversions API é uma ferramenta empresarial da Meta que lhe permite partilhar dados com a Meta para melhorar o desempenho dos anúncios.",
+      "reconnect": "A permissão da Conversions API expirou, pelo que os eventos estão em pausa. O seu dataset e as definições de teste foram mantidos; volte a ligar para retomar o envio."
     },
     "errors": {
       "reconnect": "Falha ao iniciar a reconexão do Meta CAPI.",
@@ -5692,11 +7010,14 @@
       "saveFailed": "Não foi possível guardar. Tente novamente.",
       "datasetRequired": "Guarde um ID do conjunto de dados antes de adicionar um token de acesso.",
       "invalidToken": "Este token não conseguiu aceder ao conjunto de dados.",
-      "invalidDatasetId": "Introduza um Dataset ID válido (apenas números).",
       "whatsappNotFound": "Integração do WhatsApp não encontrada.",
       "testEventCodeRequired": "Guarde um código de evento de teste antes de enviar um evento de teste.",
-      "noContactForTest": "Ainda não existe um contacto elegível neste canal. Um evento de teste precisa de um contacto real para atribuição (no WhatsApp, um que veio de um anúncio click-to-WhatsApp).",
-      "invalidTestEventCode": "O código do evento de teste só pode conter letras, números, hífenes ou sublinhados (máx. 64)."
+      "invalidTestEventCode": "O código do evento de teste só pode conter letras, números, hífenes ou sublinhados (máx. 64).",
+      "invalidMessagingId": "O ID de mensagem só pode conter letras, dígitos, hífenes ou sublinhados (máx. 512).",
+      "capiDisconnected": "O Meta CAPI está desligado para este canal. Volte a ligá-lo antes de enviar um evento de teste.",
+      "appNotConfigured": "A aplicação da Meta para este canal ainda não está configurada.",
+      "capiNotConfigured": "A ligação à Conversions API não está configurada. Peça ao administrador para definir o Config ID da Conversions API.",
+      "wabaMismatch": "A conta do WhatsApp Business autorizada não é aquela a que este número pertence. Ligue-se com a mesma conta."
     },
     "fields": {
       "eventType": {
@@ -5781,32 +7102,13 @@
     "disconnect": "Desligar",
     "openEventManager": "Abrir Gestor de Eventos",
     "methods": {
-      "oauth": {
-        "title": "Ligar através do Facebook",
-        "description": "Utilize a ligação já existente da sua página e escolha um ID do conjunto de dados.",
-        "connect": "Criar conjunto de dados",
-        "connectedLabel": "via Facebook"
-      },
       "custom": {
         "title": "Ligação personalizada",
         "description": "Utilize um ID do conjunto de dados e um token de acesso do Gestor de Eventos da Meta.",
         "start": "Configurar ligação personalizada",
         "connect": "Ligar",
         "connectedLabel": "Personalizada"
-      },
-      "whatsapp": {
-        "title": "Ligar através do WhatsApp",
-        "description": "Utilize a sua ligação do WhatsApp e escolha um ID do conjunto de dados.",
-        "connect": "Criar conjunto de dados",
-        "connectedLabel": "via WhatsApp"
       }
-    },
-    "finalize": {
-      "title": "Escolha um ID do conjunto de dados",
-      "description": "Introduza um ID do conjunto de dados existente ou deixe em branco para criar um automaticamente.",
-      "save": "Guardar",
-      "createDataset": "Criar conjunto de dados",
-      "caveat": "Um ID do conjunto de dados que não esteja associado a esta Página ou conta do Instagram pode não atribuir os eventos corretamente. Deixe este campo em branco para criar um conjunto de dados associado automaticamente."
     },
     "whatsapp": {
       "connect": "Ligar"
@@ -5840,10 +7142,480 @@
       "saved": "Código do evento de teste guardado.",
       "cleared": "Código do evento de teste limpo. Os eventos estão novamente ao vivo.",
       "send": "Enviar evento de teste",
-      "sent": "Evento de teste em fila. Aparece em Test events no Events Manager dentro de um minuto.",
-      "sendHint": "Envia um exemplo de Purchase (100 USD) para o contacto mais recente deste canal.",
+      "sent": "Evento de teste enviado. Aparece em Test events no Events Manager dentro de um minuto.",
+      "sendHint": "Envia um Purchase de exemplo (100 USD) para um ID de mensagem que introduzir. Não é usado nenhum contacto guardado.",
       "activeNotice": "O modo de teste está ativo: os eventos deste canal não são contabilizados nos relatórios até o código ser limpo.",
-      "openTestEvents": "Abrir Test events"
+      "openTestEvents": "Abrir Test events",
+      "dialogTitle": "Enviar evento de teste",
+      "dialogDescription": "Um Purchase de exemplo (100 USD) é enviado com o seu código de evento de teste. Cole o ID de mensagem de exemplo de Events Manager → Test events → Messaging → Graph API Explorer, para que nada seja atribuído a um contacto real.",
+      "messagingIdLabel": {
+        "messenger": "ID do contacto (page_scoped_user_id)",
+        "instagram": "ID do contacto (ig_sid)",
+        "whatsapp": "ID do clique (ctwa_clid)"
+      },
+      "messagingIdPlaceholder": "Cole o valor de exemplo da Meta",
+      "messagingIdHint": "Apenas letras, dígitos, hífenes e sublinhados (máx. 512).",
+      "cancel": "Cancelar",
+      "confirmSend": "Enviar"
+    },
+    "connect": {
+      "button": "Ligar a Conversions API",
+      "success": "Conversions API ligada.",
+      "title": "Ligar com a Meta",
+      "description": "Inicie sessão na Meta e conceda acesso aos eventos de conversão. Isto cria uma ligação separada para a Conversions API e não altera a forma como este canal inicia sessão.",
+      "reconnect": "Voltar a ligar"
+    },
+    "connectResult": {
+      "errors": {
+        "cancelled": "Ligação cancelada. Nada foi alterado.",
+        "notFound": "Este canal não foi encontrado.",
+        "pageNotFound": "A conta do Facebook que utilizou não administra esta Página. Inicie sessão com uma conta que a administre.",
+        "accountNotFound": "A conta do Facebook que utilizou não administra esta conta do Instagram. Inicie sessão com uma conta que a administre.",
+        "datasetFailed": "A Meta não permitiu criar um conjunto de dados com esta ligação. Conceda todas as permissões pedidas e tente novamente.",
+        "sessionExpired": "A ligação demorou demasiado ou foi iniciada noutro separador. Tente novamente.",
+        "failed": "Não foi possível ligar a Conversions API. Tente novamente."
+      }
+    }
+  },
+  "googleAds": {
+    "title": "Google Ads",
+    "description": "Envie conversões offline para o Google Ads relativas a contactos que chegaram através de um clique num anúncio do Google.",
+    "notAvailable": {
+      "description": "As credenciais do Google Ads da plataforma (ID de cliente e segredo OAuth) não estão configuradas. Peça ao administrador da plataforma que as adicione nas definições do Google Ads da plataforma."
+    },
+    "connect": {
+      "scopes": "Pedimos autorização para ler as suas contas e ações de conversão do Google Ads e para enviar conversões em seu nome.",
+      "button": "Ligar o Google Ads",
+      "reconnect": "Voltar a ligar",
+      "unnamedAccount": "Conta do Google Ads",
+      "viaManager": "através do gestor {manager}",
+      "statusLabel": "Estado da ligação",
+      "needsReauthDescription": "O acesso ao Google foi revogado ou expirou. Volte a ligar para continuar a enviar conversões.",
+      "pausedDescription": "Esta ligação está em pausa, pelo que as conversões não estão a ser enviadas.",
+      "degradedDescription": "O Google Ads está a responder com erros. As conversões serão reenviadas automaticamente.",
+      "howItWorks": "Como funciona",
+      "steps": {
+        "signIn": "Inicie sessão com a conta Google que gere os seus anúncios.",
+        "chooseAccount": "Escolha a conta do Google Ads.",
+        "pickAction": "Escolha a ação de conversão nos seus fluxos."
+      },
+      "uploadMethod": "Método de envio: {method}"
+    },
+    "status": {
+      "connected": "Ligado",
+      "degraded": "Degradado",
+      "needsReauth": "Requer nova ligação",
+      "paused": "Em pausa",
+      "disconnected": "Desligado"
+    },
+    "picker": {
+      "title": "Escolha uma conta do Google Ads",
+      "legend": "Contas do Google Ads",
+      "loading": "A carregar a ligação do Google Ads",
+      "loadError": "Não foi possível carregar a tentativa de ligação do Google Ads.",
+      "waiting": "A aguardar que o Google confirme o início de sessão…",
+      "noTargets": "Não foram encontradas contas do Google Ads para esta conta Google.",
+      "alreadyThisWorkspace": "Já ligada a este espaço de trabalho",
+      "alreadyOtherWorkspace": "Já ligada a outro espaço de trabalho",
+      "notSelectable": "Esta conta não pode ser selecionada",
+      "connectSelected": "Ligar conta",
+      "sessionExpired": "A tentativa de ligação expirou. Ligue novamente para continuar.",
+      "sessionCancelled": "A tentativa de ligação foi cancelada.",
+      "stalled": "O início de sessão não foi concluído. Use «Ligar o Google Ads» para tentar novamente.",
+      "dismiss": "Dispensar",
+      "cancelFailed": "Não foi possível cancelar a tentativa de ligação. Tente novamente.",
+      "connectErrorTitle": "Não foi possível ligar o Google Ads",
+      "errors": {
+        "stateMismatch": "Não foi possível verificar o início de sessão. Ligue novamente para continuar.",
+        "expired": "A tentativa de ligação expirou. Ligue novamente para continuar.",
+        "providerDenied": "O acesso ao Google não foi concedido. Ligue novamente e permita as permissões solicitadas.",
+        "exchangeFailed": "Não foi possível concluir o início de sessão no Google. Ligue novamente para continuar.",
+        "providerError": "O Google devolveu um erro. Tente ligar novamente dentro de instantes.",
+        "noCandidates": "Não foi encontrada nenhuma conta ativa do Google Ads para este utilizador do Google. As contas canceladas, suspensas ou não totalmente configuradas não podem ser utilizadas. Inicie sessão com uma conta Google que gira uma conta ativa do Google Ads.",
+        "alreadyConnected": "Essa conta do Google Ads já está ligada.",
+        "quotaExceeded": "O limite de ligações do seu plano foi atingido.",
+        "trialExpired": "O seu período de avaliação terminou, pelo que não é possível adicionar novas ligações.",
+        "internalError": "Ocorreu um erro ao ligar. Tente novamente.",
+        "providerUnavailable": "O Google Ads está temporariamente indisponível, pelo que a ligação não pôde ser concluída. Tente novamente dentro de instantes.",
+        "developerTokenMissing": "O Google Ads não está totalmente configurado: a credencial Google da plataforma está incompleta. Peça ao administrador que verifique a credencial do Google Ads.",
+        "developerTokenNotApproved": "O Google rejeitou o token de programador guardado na credencial do Google Ads. O token é opcional: peça ao administrador que o remova ou o substitua por um válido.",
+        "projectNotApproved": "O seu projeto do Google Cloud ainda não foi aprovado para contas de produção do Google Ads. Peça acesso Explorer ou Basic para o projeto na Google Cloud Console (Google Ads API → Overview) e ligue novamente.",
+        "permissionDenied": "Este utilizador do Google não tem permissão para aceder a contas do Google Ads. Inicie sessão com um utilizador do Google que tenha acesso a uma conta do Google Ads.",
+        "apiNotEnabled": "A API do Google Ads não está ativada no projeto do Google Cloud. Peça ao administrador que a ative e tente novamente.",
+        "credentialsInvalid": "O Google rejeitou as credenciais de início de sessão. Ligue novamente para continuar.",
+        "scopeMissing": "Nem todas as permissões foram concedidas. O Google Ads precisa de acesso à sua conta do Google Ads e de autorização para enviar conversões. Ligue novamente e selecione todas as permissões.",
+        "legacyUploadNotAllowed": "A Google não permite a API de envio legada para esta conta. Mude a credencial para o Data Manager e volte a ligar este espaço de trabalho."
+      }
+    },
+    "setup": {
+      "conversionCustomer": "Conta de conversão",
+      "notResolved": "Ainda não resolvido",
+      "retry": "Repetir configuração",
+      "dataTermsWarning": "Os termos de dados do cliente não foram aceites para esta conta. Aceite-os no Google Ads e repita a configuração.",
+      "errors": {
+        "conversionCustomerInaccessible": "Não é possível aceder à conta de conversão com este início de sessão Google. Verifique o seu acesso no Google Ads e tente novamente.",
+        "customerDataTermsNotAccepted": "Os termos de dados do cliente não foram aceites para esta conta. Aceite-os no Google Ads e repita a configuração.",
+        "syncFailed": "Não foi possível ler as ações de conversão do Google Ads. Repita a configuração dentro de instantes.",
+        "developerTokenMissing": "As credenciais do Google Ads da plataforma (ID de cliente e segredo OAuth) não estão configuradas."
+      }
+    },
+    "conversionActions": {
+      "title": "Ações de conversão",
+      "description": "Apenas as ações ativadas que importam conversões de cliques podem receber conversões.",
+      "helpLink": "Ajuda do Google Ads",
+      "sync": "Sincronizar ações de conversão",
+      "syncedAt": "Última sincronização: {date}",
+      "neverSynced": "Ainda não sincronizado",
+      "empty": "Não foram encontradas ações de conversão. Crie uma ação de conversão de importação offline no Google Ads e sincronize.",
+      "name": "Nome",
+      "category": "Categoria",
+      "counting": "Contagem",
+      "status": "Estado",
+      "onePerClickNote": "Os cliques do iOS (gbraid) não podem ser enviados para esta ação. Utilize a contagem \"Todas\" para os receber.",
+      "externalNote": "Não suportada: esta ação utiliza atribuição externa, que não pode ser enviada através do Google Data Manager.",
+      "count": "{count, plural, one {# ação de conversão} other {# ações de conversão}}"
+    },
+    "events": {
+      "title": "Histórico de conversões",
+      "description": "Conversões recentes enviadas para o Google Ads. Os IDs de clique estão mascarados.",
+      "empty": "As conversões aparecem aqui quando um fluxo ou acionador enviar uma.",
+      "emptyFiltered": "Nenhuma conversão corresponde a este estado.",
+      "loadError": "Não foi possível carregar o histórico de conversões.",
+      "page": "Página {page} de {pages}",
+      "filter": {
+        "label": "Estado",
+        "all": "Todos os estados"
+      },
+      "columns": {
+        "status": "Estado",
+        "action": "Ação de conversão",
+        "channel": "Canal",
+        "clickId": "ID de clique",
+        "occurredAt": "Ocorrida em",
+        "actions": "Ações",
+        "dedup": "Deduplicação",
+        "consent": "Instantâneo do consentimento",
+        "matching": "Correspondência",
+        "properties": "Propriedades"
+      },
+      "status": {
+        "pending": "Pendente",
+        "sending": "A enviar",
+        "sent": "Enviada",
+        "processed": "Processada",
+        "failed": "Falhou",
+        "skippedNoAccount": "Ignorada: sem conta",
+        "skippedExpired": "Ignorada: expirada"
+      },
+      "processing": {
+        "processing": "O Google está a processar",
+        "success": "Aceite",
+        "partialSuccess": "Parcialmente aceite",
+        "failed": "Rejeitada",
+        "unknown": "Resultado desconhecido",
+        "timedOut": "Tempo esgotado"
+      },
+      "stage": {
+        "delivery": "Falha na entrega",
+        "processing": "Falha no processamento",
+        "timeout": "Tempo esgotado"
+      },
+      "consent": {
+        "adUserDataFull": "Dados do utilizador para anúncios: {status}",
+        "adPersonalizationFull": "Personalização de anúncios: {status}",
+        "status": {
+          "granted": "Concedido",
+          "denied": "Recusado",
+          "notProvided": "Não fornecido",
+          "notSupported": "Não suportado (envio legado)"
+        },
+        "adUserDataShort": "Dados: {status}",
+        "adPersonalizationShort": "Pers.: {status}",
+        "delivery": {
+          "toSend": "A enviar",
+          "notSent": "Não enviado",
+          "unknown": "Não confirmado"
+        }
+      },
+      "dedup": {
+        "click": "Por clique",
+        "id": "ID: {id}",
+        "event": "Cada execução"
+      },
+      "matching": {
+        "enabled": "Configurado: {fields}",
+        "withheldConsent": "Retido (sem consentimento): {fields}",
+        "unsupportedTransport": "Não enviado (legado): {fields}"
+      },
+      "timeProvided": "Hora indicada",
+      "timeProvidedTooltip": "Esta hora de conversão veio do passo, não do momento em que foi executado."
+    },
+    "validate": {
+      "open": "Validar pedido",
+      "title": "Validar pedido",
+      "description": "Uma verificação de configuração: o Google valida o pedido sem registar uma conversão.",
+      "conversionAction": "Ação de conversão",
+      "clickIdType": "Tipo de ID de clique",
+      "clickIdTypes": {
+        "gclid": "GCLID",
+        "gbraid": "GBRAID"
+      },
+      "clickId": "ID de clique",
+      "submit": "Executar verificação",
+      "ok": "O Google aceitou esta configuração. Nada foi registado.",
+      "reasons": {
+        "accountNotReady": "O Google Ads ainda não está pronto. Conclua a ligação e a configuração da sua conta e tente novamente.",
+        "needsReauth": "A ligação ao Google Ads tem de ser refeita.",
+        "rejected": "O Google rejeitou este pedido",
+        "legacyUploadNotAllowed": "A Google não permite a API de envio legada para esta conta. Mude a credencial para o Data Manager e volte a ligar este espaço de trabalho."
+      },
+      "invalid": "Escolha uma ação de conversão e introduza um ID de clique válido.",
+      "consentIncluded": "Inclui consentimento: {values}.",
+      "consentNone": "Nenhum consentimento está incluído neste teste.",
+      "consentVariableSkipped": "O consentimento de um campo de contacto não pode ser testado e é omitido.",
+      "consentNotSentLegacy": "A personalização de anúncios ({status}) não é enviada com o método de carregamento antigo."
+    },
+    "conversionFields": {
+      "conversionAction": "Ação de conversão",
+      "unavailableOption": "{id} (indisponível)",
+      "unavailableWarning": "A ação de conversão selecionada já não está disponível ou não está ativada. Escolha outra antes de publicar.",
+      "externalOption": "{name} (atribuição externa, não suportada)",
+      "loading": "A carregar ações de conversão",
+      "loadError": "Não foi possível carregar as suas ações de conversão do Google Ads.",
+      "notConnected": "Ligue o Google Ads para enviar conversões.",
+      "noActions": "Não foram encontradas ações de conversão ativadas. Sincronize-as nas definições do Google Ads.",
+      "openSettings": "Abrir definições do Google Ads",
+      "needsReauth": "A ligação ao Google Ads tem de ser refeita.",
+      "dedupModeClick": "Uma vez por clique no anúncio",
+      "dedupModeClickHelp": "Conta esta ação de conversão uma vez por cada clique no anúncio.",
+      "dedupModeIdHelp": "Conta uma vez por cada ID diferente.",
+      "dedupModeId": "Uma vez por ID de encomenda ou evento",
+      "dedupModeEvent": "Em cada execução",
+      "dedupModeEventHelp": "Regista uma nova conversão em cada execução, mesmo para o mesmo clique no anúncio. Uma nova tentativa da mesma execução não é contada duas vezes.",
+      "dedupId": "ID da encomenda ou evento",
+      "dedupIdPlaceholder": "p. ex. '{{order_number}}'",
+      "dedupIdHelp": "Reutilize o mesmo ID em novas tentativas e importações. Use um ID diferente para cada compra ou evento.",
+      "dedupIdExample": "Sem ID de encomenda nas vendas por chat? Combine o contacto com um campo que define em cada venda, p. ex. {example}. Não use a hora atual: muda a cada execução.",
+      "dedupIdInfoLabel": "Sobre o ID da encomenda ou evento",
+      "dedupLeadIdNote": "Cada ID diferente conta como um novo lead do mesmo clique.",
+      "dedupClickNote": "As compras repetidas do mesmo clique não serão contadas.",
+      "dedupLegacyNote": "Envio legado: a Google recebe um ID baralhado.",
+      "additionalOptions": "Opções adicionais",
+      "additionalOptionsCount": "{count} definida",
+      "customerMatching": "Correspondência de clientes",
+      "customerMatchingCount": "{count} ativado",
+      "customerMatchingLegacy": "Não suportado pelo método de envio legado. Mude a ligação para a Data Manager API para o usar.",
+      "customerMatchingTermsNotAccepted": "Não é enviado até que os termos de dados do cliente sejam aceites nas definições de conversão do Google Ads.",
+      "learnMore": "Saber mais",
+      "matchEmailLabel": "E-mail",
+      "matchPhoneLabel": "Telefone",
+      "matchEmailPlaceholder": "'{{email}}'",
+      "matchPhonePlaceholder": "'{{phone}}'",
+      "customerTypeLabel": "Tipo de cliente",
+      "customerValueBucketLabel": "Valor do cliente",
+      "customerPropertiesLegacy": "Não suportado pelo método de envio legado. Mude a ligação para a Data Manager API para o usar.",
+      "conversionTime": "Hora da conversão",
+      "conversionTimePlaceholder": "Deixe em branco para usar a hora a que este passo é executado",
+      "valuePlaceholder": "Opcional, p. ex. 250",
+      "currencyPlaceholder": "Opcional, USD",
+      "validation": {
+        "dedupIdRequired": "Introduza um ID ou escolha Uma vez por clique no anúncio.",
+        "dedupIdTooLong": "Use 64 carateres ou menos.",
+        "matchTemplateInvalid": "Use apenas uma variável, como '{{email}}'. Um valor fixo não é permitido.",
+        "customerTypeInvalid": "Use NEW ou RETURNING, ou uma variável como '{{customer_type}}'.",
+        "customerValueBucketInvalid": "Use LOW, MEDIUM ou HIGH, ou uma variável como '{{customer_value}}'.",
+        "timeFormat": "Use uma data com fuso horário, p. ex. 2026-10-08T14:30:00+07:00.",
+        "timeInvalidDate": "Esta data não existe.",
+        "currencyRequired": "Adicione uma moeda ao definir um valor.",
+        "valueRequired": "Adicione um valor ao definir uma moeda.",
+        "conversionActionRequired": "Escolha uma ação de conversão.",
+        "valueInvalid": "Utilize um número simples, p. ex. 19.99.",
+        "valueTooLarge": "Este valor é demasiado grande.",
+        "currencyInvalid": "Utilize um código de moeda de 3 letras, p. ex. USD."
+      },
+      "consentInvalid": "Não foi possível ler as definições de consentimento, pelo que este passo vai falhar.",
+      "consentFixLink": "Corrija-as nas definições",
+      "dedupModeLabel": "Evitar conversões duplicadas"
+    },
+    "summary": {
+      "conversionAction": "Ação de conversão {id}",
+      "notConfigured": "Escolha uma ação de conversão",
+      "dedupClick": "Uma vez por clique no anúncio",
+      "dedupId": "ID: {id}",
+      "dedupEvent": "Em cada execução"
+    },
+    "consent": {
+      "title": "Consentimento para dados de conversão",
+      "description": "Se os clientes aceitaram partilhar os seus dados para anúncios. Aplica-se a todas as conversões enviadas por este workspace.",
+      "learnMore": "Saber mais",
+      "notConnected": "Aplica-se às conversões depois de ligar uma conta do Google Ads.",
+      "adUserData": {
+        "label": "Dados do utilizador para anúncios"
+      },
+      "adPersonalization": {
+        "label": "Personalização de anúncios"
+      },
+      "source": {
+        "notProvided": "Não indicado",
+        "granted": "Sempre concedido",
+        "denied": "Sempre recusado",
+        "variable": "A partir de um campo do contacto"
+      },
+      "help": {
+        "notProvided": "Omitido. A Google usa o consentimento predefinido da sua conta.",
+        "granted": "Todas as conversões indicam que o cliente aceitou.",
+        "denied": "Todas as conversões indicam que o cliente recusou.",
+        "variable": "Use \"{granted}\" ou \"{denied}\". Vazio é ignorado; qualquer outro valor faz o passo falhar."
+      },
+      "templatePlaceholder": "ex.: '{{gdpr_consent}}'",
+      "templateLabel": "Campo do contacto para {setting}",
+      "validation": {
+        "templateRequired": "Insira um campo do contacto, ex.: '{{gdpr_consent}}'.",
+        "templateTooLong": "Utilize no máximo 200 carateres."
+      },
+      "legacy": {
+        "title": "Não enviado com o carregamento legado",
+        "body": "O carregamento legado só aceita o consentimento de dados de utilizador para anúncios. Volte a ligar com o Data Manager para o enviar."
+      },
+      "save": "Guardar",
+      "saved": "Definições de consentimento guardadas",
+      "invalidStored": "Não foi possível ler as definições de consentimento guardadas. Os passos que enviam conversões falham até guardar novas definições."
+    },
+    "errors": {
+      "supportSession": "As sessões de suporte da plataforma não podem alterar a ligação do Google Ads nem enviar conversões.",
+      "developerTokenMissing": "O Google Ads ainda não está disponível: as credenciais do Google Ads da plataforma (ID de cliente e segredo OAuth) não estão configuradas.",
+      "notConnected": "O Google Ads não está ligado a este espaço de trabalho.",
+      "sessionNotFound": "Esta tentativa de ligação do Google Ads não foi encontrada ou expirou. Comece novamente.",
+      "pickFailed": "Não foi possível ligar essa conta do Google Ads. Pode já estar ligada noutro local ou a tentativa expirou.",
+      "notRetryable": "Esta conversão não pode ser repetida: apenas as conversões falhadas podem ser repetidas.",
+      "authorizationUnavailable": "Não foi possível iniciar o início de sessão no Google. Tente novamente dentro de instantes.",
+      "credentialSecretsRequired": "Introduza o segredo do cliente. Ainda não está guardado."
+    },
+    "enums": {
+      "category": {
+        "default": "Predefinição",
+        "purchase": "Compra",
+        "addToCart": "Adicionar ao carrinho",
+        "beginCheckout": "Início do checkout",
+        "subscribePaid": "Subscrição paga",
+        "phoneCallLead": "Lead por chamada telefónica",
+        "importedLead": "Lead importado",
+        "submitLeadForm": "Envio de formulário de lead",
+        "bookAppointment": "Marcação de consulta",
+        "signup": "Registo",
+        "requestQuote": "Pedido de orçamento",
+        "getDirections": "Obter indicações",
+        "outboundClick": "Clique de saída",
+        "contact": "Contacto",
+        "engagement": "Envolvimento",
+        "storeVisit": "Visita à loja",
+        "storeSale": "Venda na loja",
+        "qualifiedLead": "Lead qualificado",
+        "convertedLead": "Lead convertido",
+        "pageView": "Visualização de página",
+        "download": "Transferência",
+        "lead": "Lead"
+      },
+      "countingType": {
+        "onePerClick": "Uma por clique",
+        "manyPerClick": "Várias por clique"
+      },
+      "actionStatus": {
+        "enabled": "Ativada",
+        "removed": "Removida",
+        "hidden": "Oculta"
+      },
+      "unknown": "Outro ({value})"
+    },
+    "uploadMethods": {
+      "dataManager": "Data Manager",
+      "legacy": "Envio legado"
+    },
+    "stepErrors": {
+      "google_ads_unsupported_channel": "O canal deste contacto não pode enviar conversões do Google Ads.",
+      "google_ads_no_click": "O contacto não chegou através de um clique num anúncio do Google.",
+      "google_ads_no_account": "Não existe nenhuma conta do Google Ads pronta ligada.",
+      "google_ads_unknown_conversion_action": "A ação de conversão já não existe. Sincronize e escolha outra.",
+      "google_ads_action_disabled": "A ação de conversão não está ativada no Google Ads.",
+      "google_ads_incompatible_action": "Esta ação conta uma conversão por clique, o que o Google não permite para este clique do iOS.",
+      "google_ads_unsupported_action": "Esta ação usa atribuição externa e não pode receber estas conversões.",
+      "google_ads_invalid_value": "O valor ou a moeda não era válido.",
+      "google_ads_invalid_input": "As definições do passo não eram válidas.",
+      "google_ads_record_failed": "Não foi possível guardar a conversão.",
+      "google_ads_missing_dedup_id": "O ID da encomenda ou do evento estava vazio.",
+      "google_ads_invalid_dedup_id": "O ID da encomenda ou do evento tinha mais de 64 carateres.",
+      "google_ads_missing_occurrence_key": "Esta execução não tinha um identificador estável, por isso a conversão não foi registada.",
+      "google_ads_invalid_customer_property": "O tipo ou o valor do cliente não era um valor permitido.",
+      "google_ads_invalid_consent_config": "Não foi possível ler as definições de consentimento guardadas.",
+      "google_ads_invalid_consent_value": "Um campo de consentimento tinha um valor diferente de \"granted\" ou \"denied\".",
+      "google_ads_invalid_conversion_time": "A hora da conversão não era uma data válida com fuso horário, ou estava no futuro."
+    },
+    "stats": {
+      "filters": {
+        "allChannels": "Todos os canais",
+        "allActions": "Todas as ações",
+        "channelLabel": "Canal",
+        "actionLabel": "Ação de conversão"
+      },
+      "tiles": {
+        "confirmed": "Confirmadas",
+        "awaitingGoogle": "A aguardar o Google",
+        "queued": "Em fila",
+        "failed": "Falhadas",
+        "skipped": "Ignoradas",
+        "deliveryRate": "Taxa de entrega",
+        "confirmedHelp": "O Google confirmou que registou estas conversões.",
+        "awaitingGoogleHelp": "Enviadas ao Google, a aguardar que o Google conclua o processamento.",
+        "queuedHelp": "A aguardar envio.",
+        "failedHelp": "Não aceites ou não processadas pelo Google.",
+        "skippedHelp": "Não enviadas: sem conta pronta, ou demasiado antigas para o Google.",
+        "deliveryRateHelp": "Confirmadas ÷ (confirmadas + falhadas). As que estão em fila, a aguardar e as ignoradas não são contadas."
+      },
+      "confirmedValue": "Valor confirmado",
+      "confirmedValueItem": "{value} ({count, plural, one {# conversão} other {# conversões}})",
+      "moreCurrencies": "+{count} mais",
+      "chart": {
+        "title": "Conversões por dia",
+        "viewAsTable": "Ver como tabela",
+        "tableCaption": "Conversões por dia",
+        "dateColumn": "Data"
+      },
+      "byAction": {
+        "title": "Por ação de conversão",
+        "truncated": "A mostrar as 50 ações com mais conversões."
+      },
+      "byChannel": {
+        "title": "Por canal",
+        "confirmedCount": "{count, plural, one {# confirmadas} other {# confirmadas}}"
+      },
+      "failures": {
+        "title": "Falhas por fase",
+        "unknown": "Desconhecido"
+      },
+      "empty": {
+        "title": "Sem conversões neste período",
+        "description": "As conversões aparecem aqui quando um passo do fluxo ou um acionador envia uma."
+      },
+      "error": {
+        "title": "Não foi possível carregar as estatísticas",
+        "retry": "Tentar novamente"
+      },
+      "viewStatistics": "Ver estatísticas",
+      "deliveryRateNone": "—",
+      "deliveryRateNoneHelp": "Sem conversões confirmadas ou falhadas neste período.",
+      "actionFallback": "Ação {id}",
+      "openSettings": "Abrir as definições do Google Ads",
+      "outcome": {
+        "title": "Distribuição dos resultados"
+      },
+      "googleReport": {
+        "title": "Reported by Google Ads",
+        "description": "Conversions Google Ads itself recorded for these days, next to what ChatbotX sent and Google confirmed.",
+        "sent": "Confirmed by ChatbotX",
+        "reported": "Reported by Google",
+        "note": "Google can take hours to update its reports, and counts follow the action's own settings, so small gaps are normal.",
+        "unavailable": "Google Ads reporting is not available right now."
+      }
     }
   },
   "minigames": {
@@ -6204,5 +7976,945 @@
   },
   "accountFields": {
     "title": "Campos do bot"
+  },
+  "aiAgentActions": {
+    "title": "AI Actions",
+    "description": "Let the AI automatically take actions while talking to customers.",
+    "when": "When",
+    "whenPlaceholder": "Describe when the AI should do this...",
+    "whatShouldAIDo": "What should the AI do?",
+    "action": "Action {number}",
+    "actionType": "Action type",
+    "addRule": "Add action rule",
+    "addAction": "Add action",
+    "duplicateRule": "Duplicate rule",
+    "removeRule": "Remove rule",
+    "removeAction": "Remove action",
+    "moveUp": "Move action up",
+    "moveDown": "Move action down",
+    "flow": "Flow",
+    "admin": "Admin",
+    "tag": "Tag",
+    "customField": "Custom field",
+    "actionPrompt": {
+      "label": "Action prompt",
+      "description": "Private instructions used only when the AI evaluates action rules.",
+      "placeholder": "Add optional instructions for matching action rules...",
+      "open": "Configure action prompt",
+      "reset": "Reset"
+    },
+    "actionTypes": {
+      "sendFlow": "Enviar fluxo",
+      "assignConversation": "Atribuir conversa",
+      "removeAssignment": "Remover atribuição",
+      "transferToHuman": "Transferir para um agente",
+      "addTag": "Adicionar etiqueta",
+      "removeTag": "Remover etiqueta",
+      "setCustomField": "Definir campo personalizado",
+      "clearCustomField": "Limpar campo personalizado",
+      "markFollowUp": "Acompanhamento",
+      "removeFollowUp": "Remover acompanhamento",
+      "transferToBot": "Transferir conversa para o bot",
+      "archive": "Arquivar",
+      "blockContact": "Bloquear contacto"
+    }
+  },
+  "openLink": {
+    "title": "Abrir ligação",
+    "invalidTitle": "Ligação inválida.",
+    "invalidDescription": "Esta ligação é inválida ou expirou.",
+    "openZaloGroup": "Abrir grupo do Zalo",
+    "openZalo": "Abrir Zalo",
+    "openMessenger": "Abrir Messenger"
+  },
+  "conversationRouting": {
+    "owner": {
+      "metaAi": "Meta AI",
+      "partner": "Parceiro",
+      "partnerWithRole": "Parceiro · {role}",
+      "self": "si"
+    },
+    "roles": {
+      "ai_agent": "Meta AI",
+      "ctwa": "Anúncios Click-to-WhatsApp",
+      "customer_service": "Atendimento ao cliente",
+      "escalation": "Escalonamento",
+      "marketing": "Marketing",
+      "utility": "Utilidade"
+    },
+    "pill": {
+      "standby": "Standby ({owner})",
+      "owned": "Ativo",
+      "tooltip": "Tratada por {owner}"
+    },
+    "release": {
+      "label": "Libertar",
+      "tooltip": "Liberte esta conversa para que outras apps possam responder",
+      "success": "Conversa libertada"
+    },
+    "pass": {
+      "menuItem": "Passar para escalonamento",
+      "title": "Passar para o parceiro de escalonamento?",
+      "description": "Passar esta conversa ao seu parceiro de escalonamento? As suas respostas ficarão em pausa até a conversa regressar.",
+      "confirm": "Passar",
+      "success": "Conversa passada ao parceiro de escalonamento"
+    },
+    "aiHandover": {
+      "label": "BizAI",
+      "tooltip": "Devolver esta conversa ao assistente de IA",
+      "title": "Devolver ao assistente de IA?",
+      "description": "O assistente de IA voltará a responder a este cliente. As suas respostas ficarão em pausa até a conversa voltar para si. A Meta não garante que o assistente responda a todas as mensagens.",
+      "confirm": "Devolver",
+      "success": "Conversa devolvida ao assistente de IA"
+    },
+    "composer": {
+      "aiStandbyHint": "Replying takes over this conversation from the AI assistant.",
+      "title": "Está em standby (apenas escuta)",
+      "description": "Um parceiro terceiro está a tratar desta conversa. A caixa de mensagem está bloqueada para evitar respostas duplicadas.",
+      "takeOver": "Assumir",
+      "takeOverSuccess": "Agora está a tratar desta conversa",
+      "notEscalation": "Apenas o parceiro de escalonamento pode assumir. O encaminhamento é configurado no Meta Business Suite.",
+      "notPrimaryReceiver": "Esta app tem de ser o recetor principal da Página para assumir. Defina-o nas definições do Handover Protocol da Página.",
+      "learnMore": "Saiba mais",
+      "dismiss": "Enviar mesmo assim"
+    },
+    "divider": {
+      "ownerHandling": "{owner} está agora a tratar desta conversa",
+      "handedOver": "{previousOwner} devolveu esta conversa a si",
+      "selfHandling": "Está agora a tratar desta conversa",
+      "takenOver": "Assumiu esta conversa",
+      "released": "Conversa libertada",
+      "passed": "Conversa passada ao parceiro de escalonamento",
+      "serviceRejected": "Mensagem não enviada: {owner} está a tratar desta conversa"
+    },
+    "context": {
+      "title": "Contexto da conversa",
+      "summaryBadge": "Resumo da IA",
+      "historyBadge": "Histórico",
+      "customer": "Cliente",
+      "business": "Empresa",
+      "handoverNote": "Nota de transferência: {note}",
+      "showAll": "Mostrar tudo ({count})",
+      "showLess": "Mostrar menos"
+    },
+    "echo": {
+      "partner": "Parceiro"
+    },
+    "panel": {
+      "title": "Encaminhamento da conversa",
+      "threadState": "Estado da conversa",
+      "threadStateOwned": "Atribuída",
+      "threadStateStandby": "Em espera",
+      "threadStateIdle": "Livre",
+      "currentOwner": "Responsável atual",
+      "noOwner": "Sem responsável",
+      "roleLabel": "O seu papel",
+      "selfOwned": "A tratar da conversa",
+      "selfStandby": "Em espera — apenas a ouvir",
+      "selfIdle": "A aguardar a próxima mensagem do cliente",
+      "hintOwned": "Liberte quando terminar para que outras apps possam responder.",
+      "hintStandby": "Enquanto um parceiro trata desta conversa, as suas mensagens ficam retidas para o cliente não receber respostas duplicadas. Assuma a partir da caixa de mensagem para responder.",
+      "hintIdle": "A próxima mensagem do cliente decide quem responde.",
+      "syncOwner": "Sincronizar proprietário",
+      "syncOwnerSuccess": "Proprietário sincronizado"
+    },
+    "settings": {
+      "title": "Fluxo de retoma após a transferência",
+      "description": "A automatização que é executada quando um parceiro devolve uma conversa.",
+      "resumeFlowLabel": "Escolha um fluxo",
+      "resumeFlowPlaceholder": "Selecione um fluxo",
+      "info": "Este fluxo é iniciado automaticamente quando o controlo é devolvido. O resumo da conversa e o histórico do chat são então apresentados aos seus agentes no chat em direto.",
+      "save": "Guardar alterações",
+      "clearFlow": "Limpar fluxo",
+      "adminOnly": "Apenas administradores do espaço de trabalho podem alterar o encaminhamento",
+      "flowNotFound": "O fluxo selecionado não foi encontrado ou não está ativo",
+      "integrationNotFound": "Número do WhatsApp não encontrado",
+      "messengerIntegrationNotFound": "Página do Messenger não encontrada"
+    },
+    "errors": {
+      "unsupported": "O encaminhamento de conversas não está disponível neste canal",
+      "notFound": "Esta conversa não está nesse canal",
+      "actionFailed": "Não foi possível atualizar o encaminhamento da conversa. Tente novamente."
+    },
+    "step": {
+      "action": "Ação",
+      "release": "Libertar a conversa",
+      "pass": "Passar para o parceiro de escalonamento",
+      "helper": "Apenas WhatsApp. Noutros canais, ou quando a conversa não é gerida aqui, o passo segue o caminho de erro."
+    },
+    "template": {
+      "sent": "Modelo enviado"
+    }
+  },
+  "miniApps": {
+    "title": "Mini Apps",
+    "description": "Crie formulários WhatsApp Flow e partilhe-os como ligação em qualquer canal.",
+    "feature": "Mini App",
+    "deleteWhatsappChoice": "«Eliminar» mantém os Flows já publicados no WhatsApp. «Eliminar e remover WhatsApp Flow» também os remove da Meta: os Flows em rascunho são eliminados e os publicados são descontinuados, pois a Meta não permite eliminá-los.",
+    "deleteWhatsappFailed": "Mini App eliminada, mas não foi possível remover {count} WhatsApp Flow(s) da Meta. Remova-os no WhatsApp Manager.",
+    "deleteWithWhatsapp": "Eliminar e remover WhatsApp Flow",
+    "publicUrl": {
+      "label": "URL Pública",
+      "hint": "Copie e cole o URL no seu fluxo, difusão ou sequência. Enviado assim, cada resposta fica associada ao contacto que o abriu."
+    },
+    "table": {
+      "whatsapp": "WhatsApp",
+      "notPublished": "Não publicado",
+      "submissions": "Respostas",
+      "copyJson": "Copiar JSON"
+    },
+    "submissions": {
+      "title": "Respostas",
+      "submittedAt": "Submetido em",
+      "contact": "Contacto",
+      "anonymous": "Anónimo",
+      "yes": "Sim",
+      "no": "Não",
+      "unknownContact": "Contacto desconhecido",
+      "conversationNotFound": "Este contacto ainda não tem conversa.",
+      "openConversationFailed": "Não foi possível abrir a conversa."
+    },
+    "editor": {
+      "namePlaceholder": "Nome da Mini App",
+      "undo": "Anular",
+      "redo": "Refazer",
+      "preview": "Pré-visualizar",
+      "viewJson": "Ver JSON",
+      "saveFailed": "Não foi possível guardar a Mini App",
+      "noIssues": "Sem problemas",
+      "issuesCount": "{count, plural, one {# problema} other {# problemas}}",
+      "addScreen": "Adicionar ecrã",
+      "newScreenTitle": "Novo ecrã",
+      "searchComponents": "Pesquisar componentes",
+      "paletteHint": "Clique para adicionar ou arraste para o ecrã",
+      "dropHere": "Largue os componentes aqui",
+      "emptyScreen": "Arraste componentes da esquerda ou clique num para o adicionar",
+      "slotThen": "Então",
+      "slotElse": "Senão",
+      "slotCase": "Caso: {value}",
+      "noCondition": "Ainda sem condição",
+      "drag": "Arraste para mover",
+      "duplicate": "Duplicar",
+      "remove": "Remover",
+      "cannotDropHere": "Este componente não pode ser colocado aqui",
+      "previewSubmitted": "Pré-visualização submetida: {answers}"
+    },
+    "screen": {
+      "title": "Ecrã",
+      "screenTitle": "Título",
+      "screenId": "ID do ecrã",
+      "screenIdHint": "Apenas letras e sublinhados. Usado na navegação e no Flow JSON.",
+      "remove": "Eliminar ecrã"
+    },
+    "inspector": {
+      "default": "Predefinição",
+      "commaSeparated": "Separe os valores com vírgulas.",
+      "uploadImage": "Selecionar imagem",
+      "imageTooLarge": "A imagem é demasiado grande, mesmo após a compressão. Tente uma mais pequena.",
+      "moveUp": "Mover para cima",
+      "moveDown": "Mover para baixo",
+      "removeItem": "Remover",
+      "optionTitle": "Título",
+      "optionId": "ID",
+      "addOption": "Adicionar opção",
+      "addImage": "Adicionar imagem",
+      "noAction": "Sem ação",
+      "chooseAction": "Escolha uma ação",
+      "noOtherScreen": "Adicione outro ecrã para onde navegar.",
+      "completeHint": "Conclui o flow e envia todas as respostas.",
+      "endText": "Texto à direita",
+      "badge": "Distintivo",
+      "conditionHint": "Mostra “Então” quando verdadeiro, caso contrário “Senão”. Exemplo: {example}",
+      "switchValueHint": "Mostra o caso cujo nome é igual a este valor.",
+      "cases": "Casos",
+      "addCase": "Adicionar caso",
+      "casesHint": "O nome de cada caso é comparado com o valor acima.",
+      "nameHint": "Chave do campo nas respostas. Letras, números e sublinhados.",
+      "markdownHint": "Suporta # títulos, **negrito**, *itálico*, ~~rasurado~~, listas e [ligações](https://…).",
+      "patternHint": "Expressão regular opcional a que a resposta deve corresponder.",
+      "saveToCustomField": "Guardar em campo personalizado",
+      "chooseCustomField": "Escolha um campo personalizado",
+      "customFieldHint": "Quando um contacto submete a ligação da Mini App, a resposta é guardada neste campo.",
+      "imageLoadFailed": "Não foi possível carregar esta imagem. Escolha uma imagem JPEG, PNG, WebP ou GIF.",
+      "answerReference": "Referência da resposta",
+      "answerReferenceHint": "Cole num texto ou condição para usar esta resposta.",
+      "copyReference": "Copiar",
+      "variablesHint": "Escreva {open} ou clique em {button} para inserir um campo personalizado. Os valores só aparecem na ligação web para um contacto conhecido."
+    },
+    "json": {
+      "title": "Flow JSON",
+      "description": "Flow JSON do WhatsApp (versão 7.3). Cole-o no WhatsApp Manager ou no Flows Playground.",
+      "copy": "Copiar JSON",
+      "contactVariablesWarning": "Este JSON ainda contém campos personalizados como '{{first_name}}'. O WhatsApp mostra-os exatamente como estão escritos, por isso remova-os antes de colar no WhatsApp."
+    },
+    "publish": {
+      "open": "Publicar no WhatsApp",
+      "title": "Publicar no WhatsApp",
+      "description": "Cria ou atualiza esta Mini App como WhatsApp Flow e publica-a. Depois pode enviá-la com o passo “Enviar WhatsApp Flow”.",
+      "number": "Número de WhatsApp",
+      "noNumbers": "Ligue primeiro um número de WhatsApp.",
+      "unsavedChanges": "Tem alterações por guardar. Guarde primeiro para o WhatsApp receber a versão mais recente.",
+      "submit": "Publicar",
+      "success": "Publicado no WhatsApp",
+      "draftOnly": "A Meta manteve o Flow como rascunho devido a erros",
+      "failed": "Não foi possível publicar no WhatsApp",
+      "contactVariables": "Esta Mini App mostra campos personalizados nos textos. Por agora só funcionam na ligação web — remova-os antes de publicar no WhatsApp.",
+      "notOnNumber": "A Mini App não está neste número do WhatsApp.",
+      "onlyDraftDeletable": "O Flow está publicado na Meta, por isso não pode ser eliminado. Só um rascunho pode ser eliminado.",
+      "flowIsLive": "A Mini App está ativa neste número do WhatsApp. Guardar um rascunho iria desativá-la — publique para a atualizar.",
+      "saveDraft": "Guardar como rascunho",
+      "draftSaved": "Guardado no WhatsApp como rascunho",
+      "preview": "Pré-visualizar",
+      "previewUnavailable": "A Meta não devolveu uma ligação de pré-visualização",
+      "deleteDraft": "Eliminar rascunho no WhatsApp",
+      "draftDeleted": "Rascunho eliminado do WhatsApp"
+    },
+    "status": {
+      "draft": "Rascunho",
+      "published": "Publicado"
+    },
+    "runner": {
+      "back": "Voltar",
+      "doneTitle": "Obrigado!",
+      "doneDescription": "As suas respostas foram enviadas.",
+      "errors": {
+        "required": "Este campo é obrigatório",
+        "invalidEmail": "Introduza um endereço de e-mail válido",
+        "invalidFormat": "O formato não é válido",
+        "tooShort": "A resposta é demasiado curta",
+        "selectMore": "Selecione mais opções",
+        "selectFewer": "Selecione menos opções",
+        "uploadMore": "Adicione mais ficheiros"
+      }
+    },
+    "public": {
+      "notFoundTitle": "Mini App indisponível",
+      "notFoundDescription": "Esta ligação é inválida ou a Mini App foi desativada.",
+      "rateLimited": "Demasiadas submissões. Aguarde um momento e tente novamente.",
+      "submitFailed": "Não foi possível enviar as suas respostas. Tente novamente."
+    },
+    "view": {
+      "selectPlaceholder": "Selecionar",
+      "calendarSingle": "Calendário",
+      "calendarRange": "Intervalo de datas",
+      "readMore": "Ler mais",
+      "takePhoto": "Tirar ou escolher uma fotografia",
+      "uploadDocument": "Carregar um documento",
+      "previousImage": "Imagem anterior",
+      "nextImage": "Imagem seguinte"
+    },
+    "categories": {
+      "text": "Texto",
+      "input": "Entrada",
+      "selection": "Seleção",
+      "media": "Multimédia",
+      "navigation": "Navegação",
+      "container": "Contentores"
+    },
+    "components": {
+      "TextHeading": "Título",
+      "TextSubheading": "Subtítulo",
+      "TextBody": "Texto do corpo",
+      "TextCaption": "Legenda",
+      "RichText": "Texto formatado",
+      "TextInput": "Campo de texto",
+      "TextArea": "Área de texto",
+      "Dropdown": "Lista pendente",
+      "RadioButtonsGroup": "Escolha única",
+      "CheckboxGroup": "Escolha múltipla",
+      "ChipsSelector": "Chips",
+      "DatePicker": "Seletor de data",
+      "CalendarPicker": "Calendário",
+      "OptIn": "Aceitação",
+      "PhotoPicker": "Carregamento de fotografias",
+      "DocumentPicker": "Carregamento de documentos",
+      "Image": "Imagem",
+      "ImageCarousel": "Carrossel de imagens",
+      "EmbeddedLink": "Ligação",
+      "NavigationList": "Lista de navegação",
+      "Footer": "Botão Footer",
+      "Form": "Formulário",
+      "If": "Se / Senão",
+      "Switch": "Switch"
+    },
+    "actions": {
+      "navigate": "Ir para o ecrã",
+      "complete": "Concluir o flow",
+      "open_url": "Abrir um URL"
+    },
+    "defaults": {
+      "heading": "Título",
+      "subheading": "Subtítulo",
+      "body": "Texto do corpo",
+      "caption": "Legenda",
+      "richText": "## Título\n\nUm pouco de texto **formatado**.",
+      "textInputLabel": "A sua resposta",
+      "textAreaLabel": "Detalhes",
+      "dropdownLabel": "Escolha uma opção",
+      "radioLabel": "Escolha uma opção",
+      "checkboxLabel": "Escolha as que quiser",
+      "chipsLabel": "Escolha as que quiser",
+      "dateLabel": "Data",
+      "calendarLabel": "Data",
+      "optInLabel": "Aceito os termos",
+      "photoLabel": "Carregue fotografias",
+      "documentLabel": "Carregue documentos",
+      "linkText": "Saber mais",
+      "footerLabel": "Continuar",
+      "option": "Opção",
+      "navigationItem": "Item",
+      "imageAlt": "Imagem"
+    },
+    "properties": {
+      "text": "Texto",
+      "label": "Etiqueta",
+      "name": "Chave do campo",
+      "description": "Descrição",
+      "title": "Título",
+      "required": "Obrigatório",
+      "helperText": "Texto de ajuda",
+      "errorMessage": "Mensagem de erro",
+      "initValue": "Valor inicial",
+      "inputType": "Tipo de entrada",
+      "labelVariant": "Etiqueta grande",
+      "pattern": "Padrão",
+      "minChars": "Mínimo de carateres",
+      "maxChars": "Máximo de carateres",
+      "maxLength": "Comprimento máximo",
+      "fontWeight": "Estilo do tipo de letra",
+      "strikethrough": "Rasurado",
+      "markdown": "Markdown",
+      "dataSource": "Opções",
+      "mediaSize": "Tamanho da imagem",
+      "minSelectedItems": "Mínimo selecionado",
+      "maxSelectedItems": "Máximo selecionado",
+      "minDate": "Data mais antiga",
+      "maxDate": "Data mais recente",
+      "unavailableDates": "Datas indisponíveis",
+      "mode": "Modo",
+      "minDays": "Mínimo de dias",
+      "maxDays": "Máximo de dias",
+      "includeDays": "Dias da semana selecionáveis",
+      "photoSource": "Origem da fotografia",
+      "minUploadedPhotos": "Mínimo de fotografias",
+      "maxUploadedPhotos": "Máximo de fotografias",
+      "minUploadedDocuments": "Mínimo de documentos",
+      "maxUploadedDocuments": "Máximo de documentos",
+      "maxFileSizeKb": "Tamanho máximo do ficheiro (KB)",
+      "allowedMimeTypes": "Tipos de ficheiro permitidos",
+      "src": "Imagem",
+      "width": "Largura",
+      "height": "Altura",
+      "scaleType": "Escala",
+      "aspectRatio": "Proporção",
+      "altText": "Texto alternativo",
+      "images": "Imagens",
+      "listItems": "Itens",
+      "leftCaption": "Legenda à esquerda",
+      "centerCaption": "Legenda ao centro",
+      "rightCaption": "Legenda à direita",
+      "enabled": "Ativado",
+      "condition": "Condição",
+      "value": "Valor",
+      "action": "Ao clicar",
+      "screenId": "ID do ecrã"
+    },
+    "options": {
+      "inputType": {
+        "text": "Texto",
+        "number": "Número",
+        "email": "E-mail",
+        "password": "Palavra-passe",
+        "passcode": "Código",
+        "phone": "Telefone",
+        "date": "Data",
+        "datetime": "Data e hora"
+      },
+      "fontWeight": {
+        "normal": "Normal",
+        "bold": "Negrito",
+        "italic": "Itálico",
+        "bold_italic": "Negrito itálico"
+      },
+      "scaleType": {
+        "cover": "Preencher",
+        "contain": "Ajustar"
+      },
+      "mediaSize": {
+        "regular": "Normal",
+        "large": "Grande"
+      },
+      "mode": {
+        "single": "Data única",
+        "range": "Intervalo de datas"
+      },
+      "photoSource": {
+        "camera_gallery": "Câmara e galeria",
+        "camera": "Apenas câmara",
+        "gallery": "Apenas galeria"
+      },
+      "weekday": {
+        "Mon": "Seg",
+        "Tue": "Ter",
+        "Wed": "Qua",
+        "Thu": "Qui",
+        "Fri": "Sex",
+        "Sat": "Sáb",
+        "Sun": "Dom"
+      }
+    },
+    "issues": {
+      "definition_invalid": "Os dados da Mini App não são válidos.",
+      "screen_id_invalid": "O ID do ecrã só pode conter letras e sublinhados.",
+      "screen_id_reserved": "“SUCCESS” está reservado pelo WhatsApp. Escolha outro ID de ecrã.",
+      "screen_id_duplicate": "Outro ecrã já usa este ID.",
+      "no_terminal_screen": "Adicione ao último ecrã um Footer que conclua o fluxo.",
+      "screen_without_exit": "Este ecrã não tem forma de continuar. Adicione um Footer ou ligação que vá para outro ecrã.",
+      "screen_unreachable": "Nenhum ecrã navega para este.",
+      "too_many_components": "Um ecrã pode conter no máximo {max} componentes.",
+      "component_limit": "Um ecrã pode conter no máximo {max} × {type}.",
+      "picker_conflict": "Um ecrã não pode ter carregamento de fotografias e de documentos em simultâneo.",
+      "picker_multiple_in_complete": "Defina {property} como 1: o WhatsApp só envia um ficheiro quando o flow é concluído.",
+      "footer_not_last": "O Footer tem de ser o último componente do ecrã.",
+      "footer_in_nested_branch": "Um Footer só pode estar diretamente num ramo If de primeiro nível.",
+      "footer_missing_in_branch": "Se um ramo tem Footer, o outro ramo também precisa de um.",
+      "navigation_list_with_footer": "Uma lista de navegação não pode partilhar o ecrã com um Footer.",
+      "navigation_list_on_terminal": "Uma lista de navegação não pode estar no último ecrã.",
+      "if_too_deep": "Os blocos If podem ser aninhados no máximo {max} níveis.",
+      "if_then_empty": "O ramo “Então” precisa de pelo menos um componente.",
+      "switch_no_cases": "Adicione pelo menos um caso.",
+      "child_not_allowed": "Este componente não pode ser colocado dentro de {parent}.",
+      "name_invalid": "Use letras, números e sublinhados na chave do campo.",
+      "name_duplicate": "A chave de campo “{name}” já está a ser usada.",
+      "property_required": "{property} é obrigatório.",
+      "property_too_long": "{property} pode ter no máximo {max} carateres.",
+      "property_too_short": "{property} precisa de pelo menos {min} itens.",
+      "property_invalid": "{property} não é válido.",
+      "option_duplicate_id": "Cada opção precisa de um ID único.",
+      "min_greater_than_max": "{property} não pode ser maior do que o máximo.",
+      "action_required": "Escolha o que acontece ao clicar.",
+      "action_not_allowed": "Esta ação não é permitida aqui.",
+      "navigate_target_missing": "O ecrã de destino já não existe.",
+      "navigate_self": "Um ecrã não pode navegar para si próprio.",
+      "expression_invalid": "Não foi possível ler a expressão. Verifique as aspas e os parênteses.",
+      "reference_invalid": "{reference} não é uma referência válida.",
+      "reference_unknown": "{reference} não corresponde a nenhum campo.",
+      "data_reference_unsupported": "{reference}: os dados do ecrã não são suportados. Use campos do formulário.",
+      "property_unknown": "O WhatsApp não aceita a propriedade “{name}” neste componente.",
+      "footer_captions_invalid": "Use uma legenda central, ou uma legenda esquerda e uma direita em conjunto.",
+      "options_with_images_limit": "Com imagens, uma lista pendente pode ter no máximo {max} opções.",
+      "navigation_badge_multiple": "Apenas um item de uma lista de navegação pode ter selo.",
+      "contact_variable_whatsapp": "Os campos personalizados só aparecem na ligação web; o WhatsApp ainda não os suporta. Remova-os antes de publicar no WhatsApp."
+    },
+    "upload": {
+      "choosePhotos": "Escolha ou tire fotografias",
+      "chooseDocuments": "Escolha ficheiros",
+      "remove": "Remover",
+      "count": "{count}/{max}",
+      "errors": {
+        "empty": "O ficheiro está vazio.",
+        "too_large": "O ficheiro é demasiado grande.",
+        "type_not_allowed": "Este tipo de ficheiro não é permitido.",
+        "rate_limited": "Demasiados envios. Aguarde um momento e tente novamente.",
+        "upload_failed": "Não foi possível enviar o ficheiro. Tente novamente."
+      }
+    }
+  },
+  "leaderboards": {
+    "title": "Classificações",
+    "public": {
+      "points": "{points} pts",
+      "endsIn": "Termina dentro de {days}d {hours}h {minutes}min {seconds}s",
+      "finished": "Terminado",
+      "empty": "Ainda não há jogadores — seja o primeiro!",
+      "myRank": "A sua posição: #{rank}",
+      "unranked": "Ainda sem posição",
+      "shareToEarn": "Partilhe e ganhe pontos",
+      "linkCopied": "Ligação copiada",
+      "unavailableTitle": "Esta classificação já não está disponível",
+      "unavailableDescription": "Pode ter terminado ou sido removida. Peça a ligação mais recente à página que segue."
+    },
+    "description": "Crie campanhas de classificação por pontos em que os clientes competem pelos primeiros lugares e por recompensas.",
+    "feature": "Classificação",
+    "create": "Criar classificação",
+    "kpi": {
+      "total": "Total de campanhas",
+      "active": "A decorrer"
+    },
+    "tabs": {
+      "all": "Todas",
+      "active": "Ativas",
+      "paused": "Em pausa",
+      "finished": "Terminadas"
+    },
+    "status": {
+      "draft": "Rascunho",
+      "active": "Ativa",
+      "paused": "Em pausa",
+      "finished": "Terminada"
+    },
+    "platforms": {
+      "messenger": "Messenger",
+      "instagram": "Instagram",
+      "whatsapp": "WhatsApp",
+      "zalo": "Zalo OA",
+      "telegram": "Telegram",
+      "tiktok": "TikTok",
+      "threads": "Threads",
+      "email": "Email SMTP",
+      "gamification": "Gamification"
+    },
+    "list": {
+      "campaign": "Campanha",
+      "searchPlaceholder": "Pesquisar classificações...",
+      "platformFilter": "Plataforma",
+      "participants": "Participantes",
+      "totalPoints": "Total de pontos",
+      "newToday": "+{count} hoje",
+      "average": "média {value} / jogador",
+      "daysLeft": "{days, plural, one {falta # dia} other {faltam # dias}}",
+      "ended": "Terminada"
+    },
+    "scope": {
+      "allPosts": "Todas as publicações",
+      "specificPosts": "Publicações específicas",
+      "specificPostsCount": "{count, plural, one {# publicação} other {# publicações}}",
+      "telegramChatsCount": "{count, plural, one {# grupo} other {# grupos}}"
+    },
+    "menu": {
+      "start": "Iniciar",
+      "pause": "Pausar",
+      "finish": "Terminar",
+      "resetPoints": "Repor pontos",
+      "triggerRewards": "Enviar recompensas",
+      "viewParticipants": "Ver participantes",
+      "copyLink": "Copiar ligação pública"
+    },
+    "confirm": {
+      "publishTitle": "Publicar esta classificação?",
+      "publishDescription": "A pontuação começa de imediato e os jogadores podem ver a página pública.",
+      "pauseTitle": "Pausar esta classificação?",
+      "pauseDescription": "A pontuação automática e por fluxo é interrompida. Continua a poder ajustar os pontos manualmente.",
+      "startTitle": "Retomar esta classificação?",
+      "startDescription": "A pontuação volta a funcionar para todas as regras.",
+      "finishTitle": "Terminar esta classificação?",
+      "finishDescription": "Todas as pontuações ficam congeladas e já não podem mudar. As recompensas automáticas são enviadas, se estiverem ativadas.",
+      "resetPointsTitle": "Repor todos os pontos?",
+      "resetPointsDescription": "Todos os participantes de \"{name}\" voltam a 0 pontos. Isto fica registado e não pode ser anulado."
+    },
+    "toast": {
+      "published": "Classificação publicada",
+      "paused": "Classificação em pausa",
+      "started": "Classificação retomada",
+      "finished": "Classificação terminada",
+      "pointsReset": "Todos os pontos foram repostos"
+    },
+    "export": {
+      "title": "Exportar participantes",
+      "description": "Transfira todos os participantes com a posição e a pontuação num ficheiro CSV.",
+      "preparing": "A preparar o seu ficheiro...",
+      "ready": "O seu ficheiro está pronto ({count} linhas).",
+      "failed": "A exportação falhou. Tente novamente."
+    },
+    "rewards": {
+      "title": "Enviar recompensas",
+      "description": "Envie o fluxo de recompensa aos melhores jogadores. As recompensas só podem ser enviadas uma vez.",
+      "flow": "Fluxo de recompensa",
+      "topN": "Número de vencedores (top N)",
+      "noFlow": "Nenhum fluxo de recompensa escolhido — defina um nas definições da classificação.",
+      "alreadySent": "As recompensas já foram enviadas para esta classificação.",
+      "confirm": "Enviar recompensas",
+      "result": "Enviado a {sent} vencedores, {skipped} ignorados (sem conversa neste canal)."
+    },
+    "wizard": {
+      "steps": {
+        "info": "Informações",
+        "config": "Canal e regras",
+        "review": "Rever e publicar"
+      },
+      "namePlaceholder": "ex.: Maiores fãs de outubro",
+      "coverImage": "Imagem de capa",
+      "coverImageHint": "JPG ou PNG, até 5 MB. Tamanho recomendado: 1200×630.",
+      "coverImageRejected": "Escolha uma imagem JPG ou PNG até 5 MB.",
+      "description": "Regras e recompensas",
+      "descriptionPlaceholder": "Explique como os jogadores ganham pontos e o que ganham os melhores.",
+      "startsAt": "Começa a",
+      "endsAt": "Termina a",
+      "startLocked": "A hora de início não pode ser alterada depois da publicação.",
+      "channelTitle": "Plataforma e canal",
+      "platform": "Plataforma",
+      "hostChannel": "Canal",
+      "hostLocked": "A plataforma e o canal não podem ser alterados depois da publicação.",
+      "noChannel": "Nenhum canal {platform} ligado. Ligue um primeiro em Definições → Canais.",
+      "openMinigameSettings": "Abrir definições do jogo",
+      "postScope": "Publicações que pontuam",
+      "choosePosts": "Escolher publicações",
+      "telegramChats": "Grupos e canais",
+      "telegramChatsHint": "Adicione o seu bot ao grupo ou canal como administrador para que possa ver os membros e as mensagens.",
+      "telegramChatsEmpty": "Nenhum grupo encontrado — adicione primeiro o bot como administrador",
+      "rulesTitle": "Regras de pontuação",
+      "rulesHint": "Ative as ações que dão pontos e defina quantos.",
+      "allPlatforms": "Todas as plataformas",
+      "points": "Pontos",
+      "maxPerDay": "Máximo por dia",
+      "maxPerDayHint": "Deixe em branco para ilimitado.",
+      "minChars": "Mínimo de carateres",
+      "bonusPoints": "Pontos de bónus da hora de ouro",
+      "bonusPointsHint": "Pontos extra para comentários logo após a publicação.",
+      "bonusMinutes": "Duração da hora de ouro (minutos)",
+      "emailTopicNote": "Só os e-mails enviados com um Email Topic têm aberturas e cliques monitorizados.",
+      "generalTitle": "Definições gerais",
+      "followersOnly": "Apenas seguidores",
+      "followersOnlyHint": "Só quem segue a sua conta ganha pontos.",
+      "tagFilter": "Filtro de etiquetas",
+      "tagFilterHint": "Só os contactos com pelo menos uma destas etiquetas ganham pontos.",
+      "everyone": "Todos",
+      "resetTime": "Hora de reposição diária (UTC)",
+      "resetTimeHint": "Os limites diários reiniciam a esta hora. = {time} hora do Vietname (UTC+7).",
+      "cooldown": "Intervalo antispam (segundos)",
+      "cooldownHint": "Mínimo de segundos entre duas atribuições automáticas à mesma pessoa. 0 desativa.",
+      "referralFlow": "Fluxo de boas-vindas de recomendação",
+      "referralFlowAuto": "Criar automaticamente",
+      "referralFlowHint": "Enviado a um amigo que entra através de uma ligação de recomendação. Pode usar '{{referral_name}}' e a ligação pública da classificação. Deixe em branco para criar automaticamente uma mensagem de boas-vindas que pode editar no Flow Builder.",
+      "publicLink": "Ligação pública",
+      "publicLinkHint": "Envie esta ligação a partir de um fluxo para que cada jogador veja a sua posição.",
+      "publicLinkAfterSave": "A ligação pública fica disponível depois de guardar.",
+      "rewardsTitle": "Recompensas",
+      "autoOnFinish": "Enviar automaticamente ao terminar",
+      "autoOnFinishHint": "Executa o fluxo de recompensa para o top N assim que a classificação termina.",
+      "backToStep2": "Voltar ao passo 2",
+      "notEditable": "As classificações terminadas não podem ser editadas."
+    },
+    "review": {
+      "infoCard": "Informações",
+      "yes": "Sim",
+      "no": "Não",
+      "off": "Desativado",
+      "seconds": "{seconds} segundos",
+      "resetTimeValue": "{utc} UTC (= {local} no Vietname)",
+      "noRules": "Ainda não há nenhuma regra ativada.",
+      "rulePoints": "{points} pts",
+      "maxPerDay": "máx. {count}/dia",
+      "unlimited": "ilimitado"
+    },
+    "preview": {
+      "sampleName": "Jogador {rank}",
+      "placeholderName": "Nome da sua classificação",
+      "pinnedBar": "#{rank} · {points} pts"
+    },
+    "validation": {
+      "nameRequired": "Introduza um nome",
+      "dateRequired": "Escolha uma data e hora",
+      "endsAfterStart": "A hora de fim tem de ser posterior à hora de início",
+      "channelRequired": "Escolha um canal",
+      "minigameRequired": "Escolha um minijogo",
+      "pointsRequired": "Introduza os pontos que esta regra atribui",
+      "bonusMinutesRequired": "Defina quantos minutos dura a hora de ouro",
+      "postsRequired": "Escolha pelo menos uma publicação",
+      "telegramChatsRequired": "Escolha pelo menos um grupo ou canal",
+      "enableOneRule": "Ative pelo menos uma regra de pontuação antes de publicar",
+      "fixErrors": "Corrija os campos destacados"
+    },
+    "rules": {
+      "comments": {
+        "label": "Comentários",
+        "description": "Pontos por cada comentário nas suas publicações."
+      },
+      "liveComments": {
+        "label": "Comentários em direto",
+        "description": "Pontos por cada comentário durante uma transmissão em direto."
+      },
+      "keywords": {
+        "label": "Keywords",
+        "description": "Pontos quando uma mensagem corresponde a qualquer palavra-chave da ferramenta Keywords deste canal."
+      },
+      "storyMention": {
+        "label": "Menção no story",
+        "description": "Pontos quando alguém identifica a sua conta no próprio story."
+      },
+      "storyReaction": {
+        "label": "Reação ao story",
+        "description": "Pontos quando alguém reage ao seu story."
+      },
+      "ctwaReactions": {
+        "label": "Clique CTWA e reações",
+        "description": "Pontos por clicar num anúncio Click-to-WhatsApp ou reagir a uma mensagem."
+      },
+      "survey": {
+        "label": "Inquérito e quiz",
+        "description": "Pontos por concluir um Questionnaire ou submeter um formulário do WhatsApp Flow."
+      },
+      "follow": {
+        "label": "Seguir OA e QR",
+        "description": "Pontos por seguir a sua Official Account ou ler o respetivo código QR. Deixar de seguir retira os pontos."
+      },
+      "message": {
+        "label": "Mensagem no Zalo",
+        "description": "Pontos por cada mensagem enviada à sua Official Account."
+      },
+      "joinGroup": {
+        "label": "Entrar no canal e no grupo",
+        "description": "Pontos por entrar no seu grupo ou canal. Sair retira os pontos."
+      },
+      "groupDiscussion": {
+        "label": "Conversa no grupo",
+        "description": "Pontos por cada mensagem no seu grupo."
+      },
+      "emailOpen": {
+        "label": "Abertura de e-mail",
+        "description": "Pontos quando um e-mail é aberto."
+      },
+      "emailClick": {
+        "label": "Clique em e-mail",
+        "description": "Pontos quando uma ligação num e-mail é clicada."
+      },
+      "minigameWin": {
+        "label": "Vitória no minijogo",
+        "description": "Pontos por cada prémio ganho no minijogo."
+      },
+      "inGameShare": {
+        "label": "Partilha no jogo",
+        "description": "Pontos por partilhar o jogo para obter mais jogadas."
+      },
+      "referral": {
+        "label": "Recomendação",
+        "description": "Pontos para quem convidou quando um novo amigo entra através da sua ligação."
+      }
+    },
+    "breakdown": {
+      "comments": "{count} comentários",
+      "liveComments": "{count} comentários em direto",
+      "keywords": "{count} palavras-chave",
+      "storyMention": "{count} menções no story",
+      "storyReaction": "{count} reações ao story",
+      "ctwaReactions": "{count} CTWA",
+      "survey": "{count} inquéritos",
+      "follow": "{count} seguidores",
+      "message": "{count} mensagens",
+      "joinGroup": "{count} entradas",
+      "groupDiscussion": "{count} mensagens no grupo",
+      "emailOpen": "{count} aberturas",
+      "emailClick": "{count} cliques",
+      "minigameWin": "{count} vitórias",
+      "inGameShare": "{count} partilhas",
+      "referral": "{count} recomendações",
+      "flow": "{count} fluxo",
+      "manual": "{count} manual"
+    },
+    "participants": {
+      "title": "Participantes",
+      "switcher": "Mudar de classificação",
+      "count": "{count, plural, one {# jogador} other {# jogadores}}",
+      "searchPlaceholder": "Pesquisar nome, ID de utilizador ou telefone...",
+      "filters": {
+        "all": "Todos",
+        "top10": "Top 10",
+        "top50": "Top 50",
+        "banned": "Banidos"
+      },
+      "columns": {
+        "rank": "Posição",
+        "participant": "Participante",
+        "score": "Pontuação total",
+        "breakdown": "Detalhes",
+        "lastActivity": "Última atividade"
+      },
+      "unknown": "Desconhecido",
+      "contactId": "ID {id}",
+      "lockedFinished": "Esta classificação terminou — as pontuações estão bloqueadas.",
+      "lockedDraft": "Publique a classificação antes de editar as pontuações.",
+      "actions": {
+        "adjust": "Ajustar pontos",
+        "ban": "Banir",
+        "unban": "Remover banimento",
+        "reset": "Repor a 0",
+        "history": "Ver histórico"
+      },
+      "adjust": {
+        "title": "Ajustar pontos",
+        "description": "Adicione ou subtraia pontos a {name}. A alteração fica guardada no registo de auditoria.",
+        "delta": "Pontos (+/-)",
+        "deltaPlaceholder": "ex.: 50 ou -20",
+        "reason": "Motivo",
+        "reasonPlaceholder": "Porque está a alterar esta pontuação?",
+        "success": "Pontos ajustados"
+      },
+      "banConfirm": "{name} é removido da classificação e deixa de ganhar pontos.",
+      "unbanConfirm": "{name} volta à classificação com a pontuação atual.",
+      "resetConfirm": "A pontuação de {name} volta a 0. Isto fica registado.",
+      "banned": "Participante banido",
+      "unbanned": "Banimento do participante removido",
+      "resetDone": "Pontuação reposta a 0",
+      "history": {
+        "title": "Histórico de pontuação — {name}",
+        "empty": "Ainda não há alterações de pontuação.",
+        "sources": {
+          "rule": "Regra",
+          "flow": "Fluxo",
+          "referral": "Recomendação",
+          "manual": "Ajuste manual",
+          "reset": "Reposição"
+        }
+      },
+      "conversationNotFound": "Nenhuma conversa encontrada para este contacto",
+      "popupBlocked": "Permita janelas pop-up neste site e tente novamente."
+    },
+    "auditLog": {
+      "title": "Registo de auditoria",
+      "admin": "Admin",
+      "change": "Alteração",
+      "time": "Hora",
+      "reason": "Motivo",
+      "api": "API",
+      "empty": "Ainda não há alterações manuais.",
+      "actions": {
+        "adjust": "Ajuste",
+        "resetOne": "Repor jogador",
+        "resetAll": "Repor tudo",
+        "ban": "Banir",
+        "unban": "Remover banimento"
+      }
+    }
+  },
+  "recurrence": {
+    "title": "Repetir",
+    "every": "Repetir a cada",
+    "unit": "{count, plural, one {{frequency, select, daily {dia} weekly {semana} monthly {mês} other {}}} other {{frequency, select, daily {dias} weekly {semanas} monthly {meses} other {}}}}",
+    "weekdays": "Repetir em",
+    "time": "Hora",
+    "timezone": "Fuso horário",
+    "noTimezone": "Nenhum fuso horário encontrado",
+    "searchTimezone": "Pesquisar fuso horário…",
+    "startsOn": "Começa em",
+    "end": {
+      "label": "Termina",
+      "never": "Nunca",
+      "onDate": "Em",
+      "after": "Após",
+      "pickDate": "Escolher data",
+      "occurrences": "{count, plural, one {execução} other {execuções}}"
+    },
+    "monthDay": {
+      "label": "Dia do mês",
+      "day": "Dia {day}",
+      "last": "Último dia",
+      "hint": "Nos meses mais curtos, o envio acontece no último dia."
+    },
+    "summary": {
+      "sentence": "{interval, plural, one {Todos os {frequency, select, daily {dia} weekly {semana} monthly {mês} other {}}} other {A cada # {frequency, select, daily {dias} weekly {semanas} monthly {meses} other {}}}}{frequency, select, weekly { em {weekdays}} monthly { no {monthDay, select, last {último dia} other {dia {monthDay}}}} other {}} às {time} ({timezone}), a partir de {startsOn}{endKind, select, onDate {, termina em {endDate}} afterOccurrences {, termina após {endCount, plural, one {# execução} other {# execuções}}} other {}}"
+    },
+    "firstRunLater": "O primeiro envio será {when}, pois a hora de hoje já passou.",
+    "nextRuns": "Próximos envios",
+    "noUpcomingRuns": "Sem envios próximos.",
+    "skipping": "A ignorar {dates}{more, plural, =0 {} one { (+# mais)} other { (+# mais)}}",
+    "excludeDates": {
+      "label": "Ignorar datas",
+      "hint": "Nada será enviado nestas datas. A série continua.",
+      "add": "Adicionar datas",
+      "remove": "Remover {date}",
+      "showAll": "Mostrar mais {count}",
+      "showLess": "Mostrar menos",
+      "clearAll": "Limpar tudo"
+    }
   }
 }

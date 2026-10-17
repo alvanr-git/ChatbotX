@@ -174,7 +174,9 @@ const WorkspaceCard = ({
             ) : null}
             {isScheduledForDeletion ? (
               <div className="line-clamp-1 text-center text-destructive text-xs">
-                {t("workspace.deletion.badge")}
+                {workspace.purgeStartedAt
+                  ? t("workspace.deletion.purging")
+                  : t("workspace.deletion.badge")}
               </div>
             ) : null}
           </div>
@@ -197,6 +199,7 @@ const WorkspacesList = async ({
   const createLabel = t("actions.createFeature", {
     feature: t("fields.workspace.label"),
   })
+  // Self-hosted fork: allow creating multiple workspaces without community limitation
   const showCreateCard = true
   const ownerIds = new Set(ownerWorkspaceIds)
   const superAdminIds = new Set(superAdminWorkspaceIds)

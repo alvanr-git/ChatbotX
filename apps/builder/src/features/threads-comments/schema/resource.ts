@@ -1,8 +1,17 @@
 import {
+  commentExcludeKeywordsTypes,
+  commentHideCommentsSchema,
+  commentIncludeKeywordsSchema,
+} from "@chatbotx.io/database/partials"
+import {
+  commentAutomationModel,
   createSelectSchema,
-  fbCommentAutomationModel,
 } from "@chatbotx.io/database/schema"
 import z from "zod"
+import {
+  automationInboxIdResourceSchema,
+  postAccountInboxIdSchema,
+} from "@/features/shared/comment-automation/schema/account"
 
 const threadsReplySchema = z.discriminatedUnion("type", [
   z.object({
@@ -12,6 +21,7 @@ const threadsReplySchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("text"),
     value: z.string(),
+    values: z.array(z.object({ value: z.string() })).optional(),
   }),
   z.object({
     type: z.literal("flow"),
@@ -24,10 +34,11 @@ const threadsReplySchema = z.discriminatedUnion("type", [
 ])
 
 export const threadsCommentResource = createSelectSchema(
-  fbCommentAutomationModel,
+  commentAutomationModel,
   {
     id: z.string(),
     workspaceId: z.string(),
+    inboxId: automationInboxIdResourceSchema,
     post: z.object({
       type: z.enum(["all", "postIds"]),
       value: z.array(z.string()),
@@ -37,11 +48,9 @@ export const threadsCommentResource = createSelectSchema(
       value: z.null(),
     }),
     publicReply: threadsReplySchema,
-    includeKeywords: z.object({
-      type: z.enum(["all", "equal", "contain"]),
-      value: z.array(z.string()),
-    }),
+    includeKeywords: commentIncludeKeywordsSchema,
     excludeKeywords: z.array(z.string()),
+    excludeKeywordsType: commentExcludeKeywordsTypes,
     options: z.object({
       replyToNewContactsOnly: z.boolean(),
       replyOncePerUserPerPost: z.boolean(),
@@ -50,16 +59,7 @@ export const threadsCommentResource = createSelectSchema(
       ignoreCommentReplies: z.boolean(),
       trackUserTags: z.boolean(),
     }),
-    hideComments: z.object({
-      all: z.boolean(),
-      hasPhoneNumber: z.boolean(),
-      hasImage: z.boolean(),
-      hasVideo: z.boolean(),
-      hasLink: z.boolean(),
-      hasKeywords: z.boolean(),
-      keywords: z.array(z.string()),
-      showCommentsAfter: z.literal("none"),
-    }),
+    hideComments: commentHideCommentsSchema,
     replyAfter: z.object({
       type: z.enum([
         "immediately",
@@ -79,3 +79,22 @@ export const threadsCommentResource = createSelectSchema(
 )
 
 export type ThreadsCommentResource = z.infer<typeof threadsCommentResource>
+
+export const listThreadsPostsResponse = z.object({
+  posts: z
+    .array(
+      z.object({
+        id: z.string(),
+        message: z.string().optional(),
+        full_picture: z.string().optional(),
+        created_time: z.string(),
+        permalink_url: z.string().optional(),
+        accountId: z.string(),
+        inboxId: postAccountInboxIdSchema,
+      }),
+    )
+    .describe("Recent posts across every connected Threads account."),
+  accounts: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .describe("Connected Threads accounts the posts belong to."),
+})

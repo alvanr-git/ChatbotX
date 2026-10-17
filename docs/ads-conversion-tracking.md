@@ -52,6 +52,65 @@ The rule engine:
   idempotent. If the insert lands but the enqueue fails, the caller's find-or-create
   recovery path (`findBySourceEventId`) re-enqueues any row still `pending`.
 
+## Connecting the Conversions API
+
+Each Meta channel — Messenger, Instagram connected with Facebook login, and
+WhatsApp — has an **Ads** tab with exactly two states: *not connected* (a
+**Connect** button) and *connected* (dataset id, Test events, Disconnect). The
+tab never asks Meta about permissions: Connect stores everything sending needs, so
+there is nothing left to verify. Instagram Business Login accounts have no
+Conversions API and show an explanation instead.
+
+- **A separate token.** Connect runs an OAuth that asks only for the Conversions
+  API permission and stores the result in the integration's encrypted
+  `capiAccessToken`, never in the channel's own `auth`. `resolveCapiAccessToken`
+  prefers it (`source: "manual"`), so the worker needs no scope check for such rows.
+  - *Messenger*: a Facebook dialog for `page_events` + `pages_show_list`
+    (`MESSENGER_CAPI_SCOPES`); the callback exchanges the code for the connected
+    page's long-lived page token.
+  - *Instagram*: `instagram_manage_events` + `instagram_basic` + `pages_show_list`
+    (`INSTAGRAM_CAPI_SCOPES`); the callback stores the linked page's token.
+  - *WhatsApp*: an Embedded Signup v4 popup opened with the `capiConfigId` set on
+    the WhatsApp platform credential (Admin → Platform credentials; leave it empty
+    and Connect explains that it is not configured). The code is exchanged for a
+    token that must belong to the integration's own WABA.
+- **Dataset first, then store.** `metaConversionsService.connectCapiWithToken`
+  settles the dataset with the new token — keeping a stored one the token can
+  read, else creating or finding the linked one — and only then writes dataset id,
+  token and a cleared disconnect flag in one update. If Meta refuses, nothing
+  is stored — the worker treats a stored token without a dataset as "no scope" and
+  drops the event for good, so a half-connected row must never exist. WhatsApp
+  keeps the agency System User as the dataset creator, with the new token as its
+  fallback.
+- **The OAuth callback is an API boundary.** The state carries a single-use nonce
+  that must match an httpOnly cookie set when Connect was pressed; the caller must
+  be a super admin; the integration must belong to the workspace; and the page,
+  Instagram account or WABA is matched against the *stored* ids, never against
+  anything in the state (`completeMetaCapiConnect`). A missing or stale nonce sends
+  the admin back to the Ads tab with a "try again" toast.
+- **Rows connected before this existed** carry no token of their own and keep
+  working unchanged. `resolveCapiConnection` reads stored columns only: a dataset
+  plus the stored `hasCapiScope` flag (WhatsApp is exempt from the scope) is
+  connected; a Custom connection (token + dataset) is connected; a user disconnect
+  always wins. A legacy Messenger/Instagram row that has a dataset but whose
+  stored permission is missing or lapsed reads as `reconnect`: the tab keeps its
+  dataset, Test events and Disconnect, and shows a Reconnect button (events are
+  paused until it is used; the public API reports `capiConnected: false`). A row
+  with no dataset shows Connect. Pressing Connect/Reconnect keeps the dataset the
+  row already stores when the new token can read it, and otherwise uses the
+  dataset Meta has linked to the page / account / WABA.
+- **Agents.** The browser OAuth step is exempt from the public-API rule. Read the
+  state from `*Channels.list` (`capiConnected`; `hasCapiScope` is a legacy flag) and
+  disconnect with `*Channels.disconnectCapi`, which also removes the dedicated
+  token. `*Channels.setCapiDataset` still clears a disconnect, but sending only
+  resumes when `capiConnected` reads true afterwards.
+- **Channel logins no longer request the permission** (`page_events`,
+  `instagram_manage_events`). For WhatsApp, remove the Conversions API product from
+  the main Embedded Signup configuration and create a dedicated configuration for
+  `capiConfigId`. WhatsApp numbers that never pressed Connect keep the previous
+  behaviour: the worker tries the WABA token and Meta's refusal is recorded as a
+  failed event.
+
 ## Separate from the `sendMetaCapiEvent` / `MetaCapiEvent` pipeline
 
 The flow step and Trigger action `sendMetaCapiEvent` — sharing one field
@@ -117,13 +176,18 @@ can supply.
   Meta `test_event_code` (Events Manager → Test events) stores it on the
   integration row (`capiTestEventCode`); while set, the worker sends it with
   every event of that integration, so Meta shows the full payload under Test
-  events and does not count the events in reporting. *Send test event* queues
-  one sample `Purchase` (100 USD) through the real pipeline as
-  `MetaCapiEvent.source = "manualTest"`, attributed to the inbox's most recent
-  contact. Both the business layer and the worker refuse to send a
-  `manualTest` event without a saved code, so a test can never become a
-  production conversion. Meta's Test events view lists only `_eventName` and
-  `_valueToSum`; `content_*` parameters show up under *Sampled activities*.
+  events and does not count the events in reporting. *Send test event* opens a
+  dialog asking for the person's messaging id for that channel
+  (`page_scoped_user_id`, `ig_sid`, or `ctwa_clid` — Meta's Test events tab
+  hands out sample values via *Messaging → channel → Graph API Explorer*) and
+  `metaConversionsService.sendTestEvent` posts one sample `Purchase` (100 USD)
+  synchronously with that id. It never reads a stored contact, never sends
+  hashed customer data, and never writes a `MetaCapiEvent` row, so a test can
+  neither be attributed to a real person nor become a production conversion;
+  the business layer refuses to send without a saved code. (Rows with
+  `source = "manualTest"` predate this and are only historical.) Meta's Test
+  events view lists only `_eventName` and `_valueToSum`; `content_*`
+  parameters show up under *Sampled activities*.
 
 ## Where Ads dashboard metrics come from
 

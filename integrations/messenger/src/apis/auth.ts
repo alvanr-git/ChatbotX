@@ -1,7 +1,10 @@
 import { fetchAllCursorPages } from "@chatbotx.io/utils"
 import { DEFAULT_API_VERSION } from "../constants"
-import { rescue } from "../exception"
-import { facebookGraphClient } from "../lib/http-client"
+import { MessengerAPIException, rescue } from "../exception"
+import {
+  facebookGraphClient,
+  isDataTooLargeGraphError,
+} from "../lib/http-client"
 import { logger } from "../lib/logger"
 import type { ConnectableFacebookPage, FacebookPage } from "../schema"
 
@@ -15,6 +18,20 @@ type SourcedFacebookPage = {
 
 const MAX_PAGES = 20
 const GRAPH_PAGE_LIMIT = 100
+/**
+ * Page sizes tried for `/me/accounts`, largest first. Meta rejects a page
+ * whose pages carry too much data with error code 1 ("Please reduce the
+ * amount of data you're asking for, then retry your request"); each retry
+ * asks for less. 10 is the floor — below that the error is reported as-is.
+ */
+const DIRECT_PAGES_PAGE_LIMITS = [50, 25, 10] as const
+/**
+ * Most Facebook Pages one walk of `/me/accounts` will read, whatever the page
+ * size — the same ceiling the previous fixed `limit=100 × 20 pages` gave, so
+ * shrinking the page never shortens the list a user used to see.
+ */
+const DIRECT_PAGES_MAX_ROWS = GRAPH_PAGE_LIMIT * MAX_PAGES
+const DIRECT_PAGES_FIELDS = "id,name,access_token,category,tasks"
 const BUSINESS_PAGE_BATCH_SIZE = 5
 const ADMIN_PAGE_TASKS = [
   "ADVERTISE",
@@ -28,6 +45,10 @@ function fetchAllPages<T>(
   endpoint: string,
   fields: string,
   accessToken: string,
+  pagination: { limit: number; maxPages: number } = {
+    limit: GRAPH_PAGE_LIMIT,
+    maxPages: MAX_PAGES,
+  },
 ): Promise<T[]> {
   return fetchAllCursorPages({
     endpoint,
@@ -37,9 +58,57 @@ function fetchAllPages<T>(
     // method reference directly detaches it and crashes at call time.
     get: (pageEndpoint, options) =>
       facebookGraphClient.get(pageEndpoint, options),
-    limit: GRAPH_PAGE_LIMIT,
-    maxPages: MAX_PAGES,
+    limit: pagination.limit,
+    maxPages: pagination.maxPages,
   })
+}
+
+/**
+ * Error code 1 with no subcode is Meta's "response too large" reply. The
+ * http client deliberately does not retry it (`shouldRetryGraphRequest`) —
+ * the identical request never succeeds — so the only remedy is a smaller page.
+ */
+function isDataTooLargeException(
+  error: unknown,
+): error is MessengerAPIException {
+  return (
+    error instanceof MessengerAPIException && isDataTooLargeGraphError(error)
+  )
+}
+
+/**
+ * Walks `/me/accounts` with progressively smaller pages. A retry always
+ * starts over from the first page: the cursor that came with a failed walk
+ * was minted for the old page size and cannot be resumed, and starting over
+ * is what keeps rows read before the failure from appearing twice.
+ */
+async function fetchDirectPages(
+  endpoint: string,
+  accessToken: string,
+): Promise<FacebookPage[]> {
+  let lastError: unknown
+
+  for (const limit of DIRECT_PAGES_PAGE_LIMITS) {
+    try {
+      return await fetchAllPages<FacebookPage>(
+        endpoint,
+        DIRECT_PAGES_FIELDS,
+        accessToken,
+        { limit, maxPages: Math.ceil(DIRECT_PAGES_MAX_ROWS / limit) },
+      )
+    } catch (error) {
+      if (!isDataTooLargeException(error)) {
+        throw error
+      }
+      lastError = error
+      logger.warn(
+        { limit, code: error.code },
+        "Graph rejected /me/accounts page size, retrying from the first page with a smaller one",
+      )
+    }
+  }
+
+  throw lastError
 }
 
 function getUserBusinesses(
@@ -181,7 +250,6 @@ export const MESSENGER_SCOPES = [
   "pages_show_list",
   "business_management",
   "pages_utility_messaging",
-  "page_events",
 ]
 
 /**
@@ -192,8 +260,7 @@ export const MESSENGER_SCOPES = [
  * page-connect step can reuse it instead of re-running OAuth.
  */
 export const MESSENGER_REUSE_REQUIRED_SCOPES = MESSENGER_SCOPES.filter(
-  (scope) =>
-    scope !== "email" && scope !== "public_profile" && scope !== "page_events",
+  (scope) => scope !== "email" && scope !== "public_profile",
 )
 
 /**
@@ -211,6 +278,14 @@ export const LEAD_ADS_SCOPES = [
 
 export const LEADS_RETRIEVAL_SCOPE = "leads_retrieval"
 export const PAGE_EVENTS_SCOPE = "page_events"
+
+/**
+ * Scopes requested by the Conversions API connect on the Ads tab: the events
+ * permission itself plus `pages_show_list`, which is what lets the callback read
+ * the page access token of the one page being connected. Kept apart from
+ * `MESSENGER_SCOPES` so the channel login does not carry the CAPI permission.
+ */
+export const MESSENGER_CAPI_SCOPES = [PAGE_EVENTS_SCOPE, "pages_show_list"]
 
 export function generateAuthUrl({
   clientId,
@@ -257,6 +332,34 @@ export function generateLeadAdsAuthUrl({
     client_id: clientId,
     redirect_uri: redirectUrl,
     scope: LEAD_ADS_SCOPES.join(","),
+    response_type: "code",
+    state: Buffer.from(JSON.stringify(stateParams ?? {})).toString("base64"),
+  })
+  return `${FACEBOOK_OAUTH_BASE}/${version}/dialog/oauth?${params.toString()}`
+}
+
+/**
+ * OAuth dialog URL for the dedicated Conversions API connect. Same shape as
+ * `generateLeadAdsAuthUrl`, requesting only `MESSENGER_CAPI_SCOPES`. Callers pass
+ * `flow: "metaCapi"` in `stateParams` so the callback stores a separate CAPI
+ * token instead of running the Messenger page picker or a reconnect.
+ */
+export function generateCapiAuthUrl({
+  clientId,
+  version = DEFAULT_API_VERSION,
+  redirectUrl,
+  stateParams,
+}: {
+  clientId: string
+  version?: string
+  redirectUrl: string
+  stateParams?: Record<string, unknown>
+}): string {
+  const params = new URLSearchParams({
+    auth_type: "rerequest",
+    client_id: clientId,
+    redirect_uri: redirectUrl,
+    scope: MESSENGER_CAPI_SCOPES.join(","),
     response_type: "code",
     state: Buffer.from(JSON.stringify(stateParams ?? {})).toString("base64"),
   })
@@ -438,11 +541,7 @@ export async function getUserPages(
 ): Promise<{ pages: ConnectableFacebookPage[]; bmLookupFailed: boolean }> {
   const directPagesEndpoint = `${version}/me/accounts`
   const directPages = await rescue(directPagesEndpoint, () =>
-    fetchAllPages<FacebookPage>(
-      directPagesEndpoint,
-      "id,name,access_token,category,tasks",
-      userAccessToken,
-    ),
+    fetchDirectPages(directPagesEndpoint, userAccessToken),
   )
 
   // const businessPagesResult = await getBusinessManagedPages(

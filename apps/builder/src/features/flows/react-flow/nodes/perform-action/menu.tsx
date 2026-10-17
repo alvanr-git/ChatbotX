@@ -8,6 +8,7 @@ import {
 } from "@icons-pack/react-simple-icons"
 import {
   ArchiveIcon,
+  ArrowRightLeftIcon,
   BellOffIcon,
   BellRingIcon,
   BotIcon,
@@ -26,6 +27,7 @@ import {
   Layers2,
   LayersPlus,
   MailIcon,
+  MailOpenIcon,
   MegaphoneIcon,
   MessageCircleMoreIcon,
   MessageCirclePlusIcon,
@@ -41,6 +43,7 @@ import {
   StarOffIcon,
   TagIcon,
   TicketPercentIcon,
+  TrophyIcon,
   UserIcon,
   UserRoundXIcon,
   WebhookIcon,
@@ -327,6 +330,11 @@ export const performActionMenus = (t: TranslationFn): MenuItem[] => [
         stepType: stepTypes.enum.enableBot,
       },
       {
+        label: t("flows.actions.threadControl"),
+        icon: ArrowRightLeftIcon,
+        stepType: stepTypes.enum.threadControl,
+      },
+      {
         label: t("flows.actions.assignConversation"),
         icon: MessageCirclePlusIcon,
         stepType: stepTypes.enum.assignConversation,
@@ -340,6 +348,16 @@ export const performActionMenus = (t: TranslationFn): MenuItem[] => [
         label: t("flows.actions.unassignConversation"),
         icon: MessageCircleXIcon,
         stepType: stepTypes.enum.unassignConversation,
+      },
+      {
+        label: t("flows.actions.markConversationAsUnread"),
+        icon: MailIcon,
+        stepType: stepTypes.enum.markConversationAsUnread,
+      },
+      {
+        label: t("flows.actions.markConversationAsRead"),
+        icon: MailOpenIcon,
+        stepType: stepTypes.enum.markConversationAsRead,
       },
       {
         label: t("flows.actions.followConversation"),
@@ -550,6 +568,11 @@ export const performActionMenus = (t: TranslationFn): MenuItem[] => [
         stepType: stepTypes.enum.setUpCoupon,
       },
       {
+        label: t("flows.actions.changeGamificationScore"),
+        icon: TrophyIcon,
+        stepType: stepTypes.enum.changeGamificationScore,
+      },
+      {
         label: t("flows.actions.getDataFromJson"),
         icon: CodeIcon,
         stepType: stepTypes.enum.getDataFromJson,
@@ -578,6 +601,11 @@ export const performActionMenus = (t: TranslationFn): MenuItem[] => [
         label: t("flows.actions.executeJavascript"),
         icon: CodeIcon,
         stepType: stepTypes.enum.executeJavascript,
+      },
+      {
+        label: t("decision.evaluateDecision"),
+        icon: BotIcon,
+        stepType: stepTypes.enum.evaluateDecision,
       },
     ],
   },
@@ -622,6 +650,11 @@ export const performActionMenus = (t: TranslationFn): MenuItem[] => [
     label: t("flows.actions.sendMetaCapiEvent"),
     icon: MegaphoneIcon,
     stepType: stepTypes.enum.sendMetaCapiEvent,
+  },
+  {
+    label: t("flows.actions.sendGoogleAdsConversion"),
+    icon: MegaphoneIcon,
+    stepType: stepTypes.enum.sendGoogleAdsConversion,
   },
   {
     label: t("flows.actions.triggers"),

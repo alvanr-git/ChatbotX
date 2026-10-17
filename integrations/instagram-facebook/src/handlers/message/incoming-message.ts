@@ -5,12 +5,13 @@ import {
   type IncomingAttachment,
   type IncomingContact,
   type IncomingMessage,
+  type MessageHandlers,
   type MessageReferral,
   messageTypes,
   type ReceivedMessageResult,
 } from "@chatbotx.io/sdk"
 
-import { getMessageAttachmentEntity } from "../../apis/page"
+import { getMessageAttachmentEntity } from "../../apis/attachment"
 import { InstagramException } from "../../exception"
 import { logger } from "../../lib/logger"
 import {
@@ -18,7 +19,7 @@ import {
   type InstagramMessage,
   type InstagramMessagingEvent,
   instagramWebhookEventSchema,
-} from "../../schemas"
+} from "../../schema"
 
 const getMessageAttachments = async (
   ctx: Context<InstagramAuthValue>,
@@ -51,32 +52,29 @@ const getMessageAttachments = async (
   }
 }
 
-export const receiveMessage = async ({
-  ctx,
-  data,
-}: {
-  ctx: Context<InstagramAuthValue>
-  data: {
-    integrationType: string
-    integrationIdentifier: string
-    payload: unknown
-  }
-}): Promise<ReceivedMessageResult> => {
-  const validatedData = instagramWebhookEventSchema.parse(data.payload)
+export const receiveMessage: MessageHandlers<InstagramAuthValue>["receiveMessage"] =
+  async ({ ctx, data }) => {
+    const validatedData = instagramWebhookEventSchema.parse(data.payload)
 
-  const entry = validatedData.entry[0]
+    const entry = validatedData.entry[0]
 
-  if (!entry.messaging?.[0]) {
-    throw new InstagramException("No messaging found")
-  }
+    if (!entry.messaging?.[0]) {
+      throw new InstagramException("No messaging found")
+    }
 
-  const messaging = entry.messaging[0]
-  if (!(messaging.message || messaging.postback || messaging.referral)) {
-    throw new InstagramException("No message found")
+    const messaging = entry.messaging[0]
+    if (!(messaging.message || messaging.postback || messaging.referral)) {
+      throw new InstagramException("No message found")
+    }
+
+    return await getMessageEntity(ctx, messaging)
   }
 
-  return await getMessageEntity(ctx, messaging)
-}
+/** A `story_mention` attachment means the contact tagged the account in their story. */
+export const hasStoryMention = (message: InstagramMessage): boolean =>
+  message.attachments?.some(
+    (attachment) => attachment.type === "story_mention",
+  ) ?? false
 
 const getMessageEntity = async (
   ctx: Context<InstagramAuthValue>,
@@ -99,6 +97,12 @@ const getMessageEntity = async (
 
   if (messaging.message) {
     const storyReply = messaging.message.reply_to?.story
+    let contentAttributes: Record<string, unknown> | undefined
+    if (storyReply) {
+      contentAttributes = { type: "story_reply", story: storyReply }
+    } else if (hasStoryMention(messaging.message)) {
+      contentAttributes = { type: "story_mention" }
+    }
     message = {
       sourceId: messaging.message.mid,
       messageType:
@@ -107,9 +111,7 @@ const getMessageEntity = async (
           : messageTypes.enum.incoming,
       text: messaging.message.text,
       contentType: contentTypes.enum.text,
-      contentAttributes: storyReply
-        ? { type: "story_reply", story: storyReply }
-        : undefined,
+      contentAttributes,
       attachments: await getMessageAttachments(ctx, messaging.message),
     }
     quickReplyAction = messaging.message.quick_reply?.payload ?? null

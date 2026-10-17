@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { automatedResponseService } from "@chatbotx.io/automated-response"
 import { broadcastService } from "@chatbotx.io/business"
 import { and, db, eq } from "@chatbotx.io/database/client"
@@ -18,6 +19,7 @@ import {
   type EdgeSchema,
   type FlowActionTargetType,
   type FlowNode,
+  findWhatsappFlowStepByButtonId,
   flowActionTargetTypes,
   flowEventTypeSchema,
   isQuickReplyCarrierStep,
@@ -33,7 +35,6 @@ import {
   SdkException,
   type Variables,
 } from "@chatbotx.io/sdk"
-import { createId } from "@chatbotx.io/utils"
 import {
   type BotResponseTrackingContext,
   IntegrationJobAction,
@@ -49,10 +50,19 @@ import {
 } from "../../lib/db"
 import { logger } from "../../lib/logger"
 import {
+  isDurableFlowExecutionKey,
+  mintRandomFlowExecutionKey,
+} from "../flow-execution-key"
+import {
   type ExecuteMultipleStepsProps,
   MESSAGE_PRODUCING_STEP_TYPES,
   seekConnectedNode,
 } from "./flow-utils"
+import {
+  armQuickReplySettings,
+  clearQuickReplyChallengeOnTap,
+  clearQuickReplyPendingOnFlowEntry,
+} from "./quick-reply-settings"
 import { executeRichActions } from "./rich-response/action-executor"
 import { richButtonPayloadSchema } from "./rich-response/button-payload"
 import {
@@ -60,16 +70,40 @@ import {
   flowStepHandlers,
   type StepRoutingStatus,
 } from "./step"
-import {
-  applyWhatsappFlowResponseSideEffects,
-  findWhatsappFlowStepByButtonId,
-} from "./whatsapp-flow-response"
+import { applyWhatsappFlowResponseSideEffects } from "./whatsapp-flow-response"
 
 const ROUTING_STATUSES = new Set<StepRoutingStatus>([
   "success",
   "error",
   "skip",
 ])
+
+/**
+ * A state branch is enqueued after its parent step finishes. Reusing this id
+ * on a parent-job retry prevents the same completed decision/action from
+ * starting the target node twice. Node visits are part of the identity so a
+ * deliberate loop can still revisit the same state in a later iteration.
+ */
+function getStateContinuationJobId(input: {
+  flowExecutionKey: string | undefined
+  nodeVisits: NodeVisits | undefined
+  sourceStepId: string
+  stateId: string
+  targetNodeId: string
+}): string | undefined {
+  if (!isDurableFlowExecutionKey(input.flowExecutionKey)) {
+    return
+  }
+
+  const identity = JSON.stringify({
+    flowExecutionKey: input.flowExecutionKey,
+    nodeVisits: input.nodeVisits,
+    sourceStepId: input.sourceStepId,
+    stateId: input.stateId,
+    targetNodeId: input.targetNodeId,
+  })
+  return `flow-state-${createHash("sha256").update(identity).digest("hex")}`
+}
 
 function findQuickReplyCarrierStep(props: {
   channel: string | null | undefined
@@ -116,6 +150,7 @@ type ExecuteStepsAndQuickRepliesProps = {
   }
   trackingContext?: BotResponseTrackingContext
   metadata?: MetadataPayload
+  isBulkBroadcast?: boolean
   sendFrom?: "inbox"
   nodeVisits?: NodeVisits
   triggerMessageId?: string
@@ -145,7 +180,7 @@ function resolveFlowExecutionKey(
     return options.flowExecutionKey
   }
 
-  const flowExecutionKey = `flow-inline-${createId()}`
+  const flowExecutionKey = mintRandomFlowExecutionKey("flow-inline-")
   logger.warn(
     { ...context, flowExecutionKey },
     "Flow execution is missing parent job id; generated fallback key",
@@ -296,6 +331,8 @@ export const runFlowNode = async (
       },
       trackingContext,
       metadata,
+      isBulkBroadcast:
+        props.isBulkBroadcast ?? props.initialBroadcastDispatch === true,
       sendFrom,
       nodeVisits: props.nodeVisits,
       commentAnchor,
@@ -392,6 +429,15 @@ export async function runStepsAndQuickReplies(
     nodeVisits = { ...props.nodeVisits, [props.targetNodeId]: count }
   }
 
+  if (targetType === "node" && !props.startFromStepId && props.targetNodeId) {
+    await clearQuickReplyPendingOnFlowEntry({
+      workspaceId: props.conversation.workspaceId,
+      conversation: props.conversation,
+      contactInboxId: props.contactInbox.id,
+      flowId: flowVersion.flowId,
+    })
+  }
+
   // run before step
   // Skip startAnotherNode beforeStep for buttons/quickReplies: the edge-following below
   // already navigates to the same target node, so running beforeStep would execute it twice.
@@ -444,6 +490,26 @@ export async function runStepsAndQuickReplies(
     })
     remainingAnchor = result?.commentAnchor
 
+    if (
+      targetType === "node" &&
+      quickReplies.length > 0 &&
+      quickReplyCarrier?.id === currentStep.id &&
+      result?.status !== "wait" &&
+      result?.status !== "retry"
+    ) {
+      await armQuickReplySettings({
+        workspaceId: props.conversation.workspaceId,
+        conversation: props.conversation,
+        contactInboxId: props.contactInbox.id,
+        flowId: flowVersion.flowId,
+        flowVersionId: props.useLatestFlowVersion ? null : flowVersion.id,
+        nodeId: targetId,
+        details,
+        metadata: props.metadata,
+        sendFrom: props.sendFrom,
+      })
+    }
+
     if (result?.status === "wait" || result?.status === "retry") {
       return result
     }
@@ -475,11 +541,20 @@ export async function runStepsAndQuickReplies(
               : undefined,
           startFromStepId: nextStep.id,
           metadata: props.metadata,
+          isBulkBroadcast: props.isBulkBroadcast,
           appointmentId: props.appointmentId,
           trackingContext: props.trackingContext,
           sendFrom: props.sendFrom,
           nodeVisits,
+          triggerMessageId: props.triggerMessageId,
+          triggerMessageCreatedAt: props.triggerMessageCreatedAt,
           commentAnchor: remainingAnchor,
+          // The continuation keeps the parent's key: a retried parent enqueues a
+          // second continuation with another job id, and the conversion step
+          // derives its event-mode occurrence from this key.
+          flowExecutionKey: isDurableFlowExecutionKey(props.flowExecutionKey)
+            ? props.flowExecutionKey
+            : undefined,
           origin: webhookChannelOrigin(),
         },
       })
@@ -537,10 +612,13 @@ export async function runStepsAndQuickReplies(
         flowVersionId: props.useLatestFlowVersion ? undefined : flowVersion.id,
         nodeId: nextNode.id,
         metadata: props.metadata,
+        isBulkBroadcast: props.isBulkBroadcast,
         appointmentId: props.appointmentId,
         trackingContext: props.trackingContext,
         sendFrom: props.sendFrom,
         nodeVisits,
+        triggerMessageId: props.triggerMessageId,
+        triggerMessageCreatedAt: props.triggerMessageCreatedAt,
         commentAnchor: remainingAnchor,
         origin: webhookChannelOrigin(),
       },
@@ -592,6 +670,16 @@ async function* executeMultipleStepsGenerator(
       step.stepType as StepType,
     )
     const stepAnchor = isMessageProducingStep ? anchorAvailable : undefined
+
+    const rawResult = await flowStepHandlers[step.stepType as StepType]?.({
+      ...rest,
+      commentAnchor: stepAnchor,
+      step: stepWithNodeId,
+    })
+
+    // void handlers are treated as implicit success (fire-and-forget, no routing)
+    const result = rawResult ?? { status: "success" as const, result: null }
+
     // Only a `private` anchor is one-shot: Meta allows a single
     // comment_id-anchored DM per comment (a second one fails with "The comment
     // is invalid for a private reply"), so the first message-producing step
@@ -606,22 +694,24 @@ async function* executeMultipleStepsGenerator(
     // channel handler needs it to know this run started from a comment, so a
     // follow-up outside the contact's 24-hour window fails with a readable
     // reason instead of an opaque Send API rejection.
+    //
+    // The claim happens HERE, after the handler has run, and never on an
+    // `error` result. Claiming up-front burned the comment's single anchored DM
+    // on a step that ended up sending nothing: a handler can fail before its
+    // send (`getUserData` writes its challenge row first, and that DB write can
+    // fail), and since `getUserData` declares only `[success, skip]` states an
+    // error does not branch — so the loop moved on to the next step with a
+    // spent anchor and the guard rejected a follow-up for a private reply that
+    // was never actually sent. Must stay after the `await` above; the branch
+    // dispatch below reads `anchorAvailable`.
     if (
       isMessageProducingStep &&
+      result.status !== "error" &&
       anchorAvailable?.replyChannel === "private" &&
       !anchorAvailable.spent
     ) {
       anchorAvailable = { ...anchorAvailable, spent: true }
     }
-
-    const rawResult = await flowStepHandlers[step.stepType as StepType]?.({
-      ...rest,
-      commentAnchor: stepAnchor,
-      step: stepWithNodeId,
-    })
-
-    // void handlers are treated as implicit success (fire-and-forget, no routing)
-    const result = rawResult ?? { status: "success" as const, result: null }
 
     // Route to a connected node based on the step's outcome state
     let branched = false
@@ -639,7 +729,7 @@ async function* executeMultipleStepsGenerator(
           targetState.id,
         )
         if (connectedNodeId) {
-          await integrationQueue.add(IntegrationJobAction.sendFlow, {
+          const job = {
             type: IntegrationJobAction.sendFlow,
             data: {
               conversationId: props.conversation.id,
@@ -650,14 +740,36 @@ async function* executeMultipleStepsGenerator(
                 : props.flowVersion.id,
               nodeId: connectedNodeId,
               metadata: props.metadata,
+              isBulkBroadcast: props.isBulkBroadcast,
               appointmentId: props.appointmentId,
               trackingContext: props.trackingContext,
               sendFrom: props.sendFrom,
               nodeVisits: props.nodeVisits,
+              triggerMessageId: props.triggerMessageId,
+              triggerMessageCreatedAt: props.triggerMessageCreatedAt,
               commentAnchor: anchorAvailable,
+              flowExecutionKey: isDurableFlowExecutionKey(
+                props.flowExecutionKey,
+              )
+                ? props.flowExecutionKey
+                : undefined,
               origin: webhookChannelOrigin(),
             },
+          }
+          const jobId = getStateContinuationJobId({
+            flowExecutionKey: props.flowExecutionKey,
+            nodeVisits: props.nodeVisits,
+            sourceStepId: stepWithNodeId.id,
+            stateId: targetState.id,
+            targetNodeId: connectedNodeId,
           })
+          if (jobId) {
+            await integrationQueue.add(IntegrationJobAction.sendFlow, job, {
+              jobId,
+            })
+          } else {
+            await integrationQueue.add(IntegrationJobAction.sendFlow, job)
+          }
           branched = true
         }
       }
@@ -799,6 +911,11 @@ async function runFlowAction(
       conversationId: data.conversationId,
       contactInboxId: data.contactInboxId,
     })
+  // Every tap ends a pending quick reply retry, whatever it then resolves to.
+  await clearQuickReplyChallengeOnTap({
+    workspaceId: conversation.workspaceId,
+    conversation,
+  })
   const flowExecutionKey = resolveFlowExecutionKey(options, {
     ...createFlowActionWarningContext(data),
     handler: handler.name,
@@ -954,6 +1071,7 @@ async function runFlowAction(
         contactInbox,
         step: whatsappFlowStep,
         flowResponse: waFlowResponse,
+        messageId: data.messageId,
       })
     }
   }

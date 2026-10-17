@@ -33,10 +33,6 @@ vi.mock("@/features/automated-response/keywords-description", () => ({
   KeywordsDescription: () => null,
 }))
 
-vi.mock("@/features/flows/provider/flow-store-context", () => ({
-  FlowStoreProvider: ({ children }: { children: unknown }) => children,
-}))
-
 vi.mock("@/features/folders/provider/folder-store-context", () => ({
   FolderStoreProvider: ({ children }: { children: unknown }) => children,
 }))
@@ -77,7 +73,6 @@ describe("page-automated-responses route guards", () => {
     await expect(
       PageAutomatedResponsesFolderableLayout({
         children: null,
-        folders: null,
         params: Promise.resolve({ workspaceId: "ws-1" }),
       }),
     ).resolves.toBeDefined()
@@ -110,7 +105,6 @@ describe("page-automated-responses route guards", () => {
     await expect(
       PageAutomatedResponsesFolderableLayout({
         children: null,
-        folders: null,
         params: Promise.resolve({ workspaceId: "ws-1" }),
       }),
     ).rejects.toThrow("not found")

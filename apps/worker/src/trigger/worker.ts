@@ -1,9 +1,13 @@
-import { extractContactInboxId } from "@chatbotx.io/events"
+import { flushAllPendingWorkspaceBroadcasts } from "@chatbotx.io/business"
+import {
+  decisionFlowOriginSchema,
+  extractContactInboxId,
+} from "@chatbotx.io/events"
 import { runWithWebhookExecutionContext } from "@chatbotx.io/events/context"
 import { SdkException } from "@chatbotx.io/sdk"
 import {
   defaultWorkerOptions,
-  getRedisConnection,
+  getQueueConnection,
   queueNames,
   TriggerJobAction,
   type TriggerJobData,
@@ -63,6 +67,9 @@ async function startTriggerWorker() {
               )
 
               const contactInboxId = extractContactInboxId(eventData.eventData)
+              const decisionFlowOrigin = decisionFlowOriginSchema.safeParse(
+                eventData.eventData?.decisionFlowOrigin,
+              )
 
               await runWithWebhookExecutionContext(
                 eventData.channelOriginated ? { source: "webhook" } : {},
@@ -72,6 +79,12 @@ async function startTriggerWorker() {
                       triggerExecutor.execute(trigger, {
                         contactId: eventData.contactId,
                         contactInboxId,
+                        decisionFlowOrigin: decisionFlowOrigin.success
+                          ? decisionFlowOrigin.data
+                          : undefined,
+                        occurrenceId: job.id
+                          ? `${job.id}:${job.timestamp}`
+                          : undefined,
                       }),
                     ),
                   ),
@@ -86,7 +99,7 @@ async function startTriggerWorker() {
       )
     },
     {
-      connection: getRedisConnection(),
+      connection: getQueueConnection(queueNames.enum.trigger),
       ...defaultWorkerOptions,
       concurrency: 100,
     },
@@ -112,6 +125,9 @@ async function startTriggerWorker() {
     isShuttingDown = true
     try {
       await worker.close()
+      // After close(): drains events published by jobs that finished during
+      // the close drain, whose coalesce timers would never fire past exit.
+      await flushAllPendingWorkspaceBroadcasts()
       process.exit(0)
     } catch (err) {
       logger.error(err, "[TriggerWorker] Error during shutdown")

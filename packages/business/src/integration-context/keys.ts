@@ -17,6 +17,8 @@ export const integrationContextEnv = () =>
         )
         .pipe(z.string().min(32))
         .default("change-me-in-production-at-least-32-chars"),
+      REALTIME_INTERNAL_URL: z.url().optional(),
+      REALTIME_DELIVERY_GATE: z.stringbool().optional().default(true),
     },
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,

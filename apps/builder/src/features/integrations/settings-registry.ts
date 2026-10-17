@@ -1,4 +1,4 @@
-import { SiFacebook, SiMake } from "@icons-pack/react-simple-icons"
+import { SiFacebook, SiGoogleads, SiMake } from "@icons-pack/react-simple-icons"
 import { BotIcon, CodeIcon, MailIcon, TableIcon } from "lucide-react"
 import type { ComponentType } from "react"
 
@@ -41,8 +41,14 @@ export const INTEGRATION_SETTINGS_REGISTRY: readonly IntegrationSettingsEntry[] 
       titleKey: "openaiCompatible.title",
       icon: BotIcon,
     },
+    {
+      slug: "decision-connections",
+      titleKey: "decision.title",
+      icon: BotIcon,
+    },
     { slug: "google-sheets", titleKey: "googleSheets.title", icon: TableIcon },
     { slug: "facebook-ads", titleKey: "facebookAds.title", icon: SiFacebook },
+    { slug: "google-ads", titleKey: "googleAds.title", icon: SiGoogleads },
     { slug: "make", titleKey: "make.title", icon: SiMake },
     {
       slug: "active-campaign",

@@ -14,7 +14,10 @@ const {
   mockFindMemberWithUserByWorkspaceIdAndUserId,
   mockFindRecentByContactId,
   mockFindWithIntegrationsById,
+  mockGetProfileSnapshot,
   mockMessageFindById,
+  mockRefreshProfileSnapshot,
+  mockResolveIntegrationContext,
   mockResolveWorkspaceAppUrl,
   mockResolveTenantSettings,
   mockSystemFieldCreate,
@@ -25,6 +28,8 @@ const {
   mockAppointmentFindBy,
   mockAppointmentFindLatestForContact,
   mockResolveDefaultTokenPlaintext,
+  mockResolveContactAvatarUrl,
+  mockEnsureContactAvatarMirrored,
   testEncryptionKey,
 } = vi.hoisted(() => ({
   mockConversationFindBy: vi.fn().mockResolvedValue({
@@ -37,7 +42,10 @@ const {
   }),
   mockFindRecentByContactId: vi.fn(),
   mockFindWithIntegrationsById: vi.fn(),
+  mockGetProfileSnapshot: vi.fn(),
   mockMessageFindById: vi.fn(),
+  mockRefreshProfileSnapshot: vi.fn(),
+  mockResolveIntegrationContext: vi.fn(),
   mockResolveWorkspaceAppUrl: vi.fn(),
   mockResolveTenantSettings: vi.fn(),
   mockSystemFieldCreate: vi.fn(),
@@ -48,8 +56,47 @@ const {
   mockAppointmentFindBy: vi.fn(),
   mockAppointmentFindLatestForContact: vi.fn(),
   mockResolveDefaultTokenPlaintext: vi.fn(),
+  mockEnsureContactAvatarMirrored: vi.fn(),
+  mockResolveContactAvatarUrl: vi.fn(
+    async (
+      input: {
+        contact: { avatar: string | null }
+        contactInbox: { channel: string; id: string } | null
+        workspaceId: string
+      },
+      finalize: (key: string) => string | Promise<string>,
+      ensureMirrored?: (input: {
+        contactInboxId: string
+        workspaceId: string
+      }) => Promise<{ avatar: string } | null>,
+    ) => {
+      if (input.contact.avatar) {
+        return await finalize(input.contact.avatar)
+      }
+      if (
+        !(
+          input.contactInbox &&
+          ["messenger", "instagram"].includes(input.contactInbox.channel)
+        )
+      ) {
+        return null
+      }
+      if (ensureMirrored) {
+        const mirrored = await ensureMirrored({
+          contactInboxId: input.contactInbox.id,
+          workspaceId: input.workspaceId,
+        })
+        return mirrored ? await finalize(mirrored.avatar) : null
+      }
+      return `https://app.example.com/media/avatar/${input.contactInbox.id}`
+    },
+  ),
   testEncryptionKey:
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+}))
+
+vi.mock("../src/helpers/leaderboard", () => ({
+  getLeaderboardReferrerName: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock("@chatbotx.io/business", () => ({
@@ -64,6 +111,7 @@ vi.mock("@chatbotx.io/business", () => ({
   },
   contactInboxService: {
     findRecentByContactId: mockFindRecentByContactId,
+    refreshProfileSnapshot: mockRefreshProfileSnapshot,
   },
   conversationService: {
     findBy: mockConversationFindBy,
@@ -77,6 +125,7 @@ vi.mock("@chatbotx.io/business", () => ({
   },
   resolveWorkspaceAppUrl: mockResolveWorkspaceAppUrl,
   resolveTenantSettings: mockResolveTenantSettings,
+  resolveContactAvatarUrl: mockResolveContactAvatarUrl,
   workspaceMemberService: {
     findWithUserByWorkspaceIdAndUserId:
       mockFindMemberWithUserByWorkspaceIdAndUserId,
@@ -99,6 +148,14 @@ vi.mock("@chatbotx.io/business/system-field", () => ({
   resolveGenderLabel: mockResolveGenderLabel,
 }))
 
+vi.mock("@chatbotx.io/channel-registry/registry", () => ({
+  resolveIntegrationContextFromContactInbox: mockResolveIntegrationContext,
+}))
+
+vi.mock("@chatbotx.io/channel-registry/media-hydration", () => ({
+  ensureContactAvatarMirrored: mockEnsureContactAvatarMirrored,
+}))
+
 vi.mock("@chatbotx.io/encryption/link-signature", () => ({
   signMeLink: mockSignMeLink,
 }))
@@ -119,7 +176,6 @@ vi.mock("@chatbotx.io/redis", () => ({
 }))
 
 vi.mock("@chatbotx.io/integration-instagram", () => ({
-  fetchInstagramContactProfile: vi.fn(),
   getPostDetails: vi.fn(),
 }))
 
@@ -199,6 +255,17 @@ describe("getSystemFieldValue", () => {
   beforeEach(() => {
     cache.clear()
     vi.clearAllMocks()
+    mockEnsureContactAvatarMirrored.mockResolvedValue(null)
+    mockResolveIntegrationContext.mockResolvedValue({
+      ctx: { workspaceId: "workspace-1" },
+      integration: { runChannelHandler: mockGetProfileSnapshot },
+    })
+    mockRefreshProfileSnapshot.mockResolvedValue(undefined)
+    mockFindWithIntegrationsById.mockResolvedValue({
+      id: "inbox-1",
+      workspaceId: "workspace-1",
+      integrationInstagram: { id: "instagram-integration-1" },
+    })
   })
 
   test("user_hash uses ENCRYPTION_KEY with the contact inbox source id and id", async () => {
@@ -244,73 +311,72 @@ describe("getSystemFieldValue", () => {
     })
   })
 
-  test("ig_user_name resolves the Instagram contact username", async () => {
-    const { fetchInstagramContactProfile } = await import(
-      "@chatbotx.io/integration-instagram"
-    )
-    vi.mocked(fetchInstagramContactProfile).mockResolvedValue({
-      username: "contact_username",
-      followersCount: 123,
-      followsBusiness: true,
-      businessFollowUser: false,
-      isVerified: true,
-    })
-    const instagramInbox = {
+  const instagramContactInbox = (
+    overrides: Partial<ContactInboxModel> = {},
+  ): ContactInboxModel =>
+    ({
       ...contactInbox,
       channel: "instagram",
       sourceId: "igsid-1",
-    } as ContactInboxModel
-    mockFindWithIntegrationsById.mockResolvedValue({
-      integrationInstagram: {
-        id: "instagram-integration-1",
-        auth: {
-          tokens: { accessToken: "page-token" },
-          metadata: { version: "v23.0" },
-        },
-        username: "business_username",
-      },
-    })
+      sourceUsername: null,
+      followsBusiness: null,
+      businessFollowsContact: null,
+      accountVerified: null,
+      followerCount: null,
+      ...overrides,
+    }) as ContactInboxModel
+
+  const liveSnapshot = {
+    username: "contact_username",
+    followerCount: 123,
+    followsBusiness: true,
+    businessFollowsContact: false,
+    accountVerified: true,
+  }
+
+  test("ig_user_name prefers the stored handle and makes no provider call", async () => {
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contactInbox: instagramContactInbox({
+            sourceUsername: "stored_handle",
+          }),
+        }),
+        systemFieldTypes.enum.ig_user_name,
+      ),
+    ).resolves.toBe("stored_handle")
+    expect(mockResolveIntegrationContext).not.toHaveBeenCalled()
+  })
+
+  test("ig_user_name falls back to the live handle when none is stored", async () => {
+    mockGetProfileSnapshot.mockResolvedValue(liveSnapshot)
 
     await expect(
       getSystemFieldValue(
-        createContext({ contactInbox: instagramInbox }),
+        createContext({ contactInbox: instagramContactInbox() }),
         systemFieldTypes.enum.ig_user_name,
       ),
     ).resolves.toBe("contact_username")
-    expect(fetchInstagramContactProfile).toHaveBeenCalledWith({
-      igsid: "igsid-1",
-      accessToken: "page-token",
-      version: "v23.0",
-    })
-  })
-
-  // The four profile fields share one cached Graph API call, and the resolver
-  // maps them via a fall-through `default:` — so each must be asserted against
-  // a distinct value or a swapped mapping would go unnoticed.
-  test("instagram profile fields each map to their own attribute", async () => {
-    const { fetchInstagramContactProfile } = await import(
-      "@chatbotx.io/integration-instagram"
-    )
-    vi.mocked(fetchInstagramContactProfile).mockResolvedValue({
-      username: "contact_username",
-      followersCount: 123,
-      followsBusiness: true,
-      businessFollowUser: false,
-      isVerified: true,
-    })
-    mockFindWithIntegrationsById.mockResolvedValue({
-      integrationInstagram: {
-        id: "instagram-integration-1",
-        auth: { tokens: { accessToken: "page-token" } },
-      },
-    })
-    const context = createContext({
-      contactInbox: {
-        ...contactInbox,
+    expect(mockResolveIntegrationContext).toHaveBeenCalledWith({
+      contactInbox: expect.objectContaining({
         channel: "instagram",
         sourceId: "igsid-1",
-      } as ContactInboxModel,
+      }),
+      workspaceId: "workspace-1",
     })
+    expect(mockGetProfileSnapshot).toHaveBeenCalledWith(
+      "contact",
+      "getProfileSnapshot",
+      { ctx: { workspaceId: "workspace-1" }, data: { sourceId: "igsid-1" } },
+    )
+  })
+
+  // The four metric fields share one cached provider call and are mapped via a
+  // table, so each must be asserted against a distinct value or a swapped
+  // mapping would go unnoticed.
+  test("profile fields each map to their own attribute with one provider call", async () => {
+    mockGetProfileSnapshot.mockResolvedValue(liveSnapshot)
+    const context = createContext({ contactInbox: instagramContactInbox() })
 
     await expect(
       getSystemFieldValue(context, systemFieldTypes.enum.ig_followers),
@@ -328,33 +394,63 @@ describe("getSystemFieldValue", () => {
       ),
     ).resolves.toBe("false")
 
-    expect(fetchInstagramContactProfile).toHaveBeenCalledTimes(1)
+    expect(mockGetProfileSnapshot).toHaveBeenCalledTimes(1)
   })
 
-  test("instagram profile fields return null when the attribute is missing", async () => {
-    const { fetchInstagramContactProfile } = await import(
-      "@chatbotx.io/integration-instagram"
-    )
-    vi.mocked(fetchInstagramContactProfile).mockResolvedValue({
+  test("renders genuine false and 0 values instead of dropping them", async () => {
+    mockGetProfileSnapshot.mockResolvedValue({
       username: null,
-      followersCount: null,
+      followerCount: 0,
+      followsBusiness: false,
+      businessFollowsContact: false,
+      accountVerified: false,
+    })
+    const context = createContext({ contactInbox: instagramContactInbox() })
+
+    await expect(
+      getSystemFieldValue(context, systemFieldTypes.enum.ig_followers),
+    ).resolves.toBe("0")
+    await expect(
+      getSystemFieldValue(context, systemFieldTypes.enum.ig_verified),
+    ).resolves.toBe("false")
+  })
+
+  test("writes a successful fetch through to the contact-inbox columns", async () => {
+    mockGetProfileSnapshot.mockResolvedValue(liveSnapshot)
+
+    await getSystemFieldValue(
+      createContext({ contactInbox: instagramContactInbox() }),
+      systemFieldTypes.enum.ig_followers,
+    )
+
+    expect(mockRefreshProfileSnapshot).toHaveBeenCalledWith({
+      contactInboxId: "contact-inbox-1",
+      inboxId: "inbox-1",
+      snapshot: liveSnapshot,
+    })
+  })
+
+  test("a failed persist does not fail the rendered value", async () => {
+    mockGetProfileSnapshot.mockResolvedValue(liveSnapshot)
+    mockRefreshProfileSnapshot.mockRejectedValue(new Error("db down"))
+
+    await expect(
+      getSystemFieldValue(
+        createContext({ contactInbox: instagramContactInbox() }),
+        systemFieldTypes.enum.ig_followers,
+      ),
+    ).resolves.toBe("123")
+  })
+
+  test("profile fields return null when the provider returns nothing and nothing is stored", async () => {
+    mockGetProfileSnapshot.mockResolvedValue({
+      username: null,
+      followerCount: null,
       followsBusiness: null,
-      businessFollowUser: null,
-      isVerified: null,
+      businessFollowsContact: null,
+      accountVerified: null,
     })
-    mockFindWithIntegrationsById.mockResolvedValue({
-      integrationInstagram: {
-        id: "instagram-integration-1",
-        auth: { tokens: { accessToken: "page-token" } },
-      },
-    })
-    const context = createContext({
-      contactInbox: {
-        ...contactInbox,
-        channel: "instagram",
-        sourceId: "igsid-1",
-      } as ContactInboxModel,
-    })
+    const context = createContext({ contactInbox: instagramContactInbox() })
 
     for (const key of [
       systemFieldTypes.enum.ig_user_name,
@@ -367,34 +463,69 @@ describe("getSystemFieldValue", () => {
     }
   })
 
-  test("instagram profile fields fall back to null without an access token", async () => {
-    const { fetchInstagramContactProfile } = await import(
-      "@chatbotx.io/integration-instagram"
-    )
-    mockFindWithIntegrationsById.mockResolvedValue({
-      integrationInstagram: { id: "instagram-integration-1", auth: {} },
+  test("falls back to the stored columns when the provider call fails, without persisting", async () => {
+    mockGetProfileSnapshot.mockRejectedValue(new Error("(#230) consent"))
+    const context = createContext({
+      contactInbox: instagramContactInbox({
+        followerCount: 0,
+        accountVerified: false,
+        followsBusiness: true,
+        businessFollowsContact: false,
+      }),
     })
 
+    await expect(
+      getSystemFieldValue(context, systemFieldTypes.enum.ig_followers),
+    ).resolves.toBe("0")
+    await expect(
+      getSystemFieldValue(context, systemFieldTypes.enum.ig_verified),
+    ).resolves.toBe("false")
+    await expect(
+      getSystemFieldValue(context, systemFieldTypes.enum.ig_follow_business),
+    ).resolves.toBe("true")
+    expect(mockRefreshProfileSnapshot).not.toHaveBeenCalled()
+  })
+
+  test("falls back to the stored columns when the integration cannot be resolved", async () => {
+    mockResolveIntegrationContext.mockRejectedValue(
+      new Error("integration_auth_missing"),
+    )
+
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contactInbox: instagramContactInbox({ followerCount: 42 }),
+        }),
+        systemFieldTypes.enum.ig_followers,
+      ),
+    ).resolves.toBe("42")
+    expect(mockGetProfileSnapshot).not.toHaveBeenCalled()
+  })
+
+  test("returns null on a failed fetch when nothing is stored", async () => {
+    mockGetProfileSnapshot.mockRejectedValue(new Error("boom"))
+
+    await expect(
+      getSystemFieldValue(
+        createContext({ contactInbox: instagramContactInbox() }),
+        systemFieldTypes.enum.ig_followers,
+      ),
+    ).resolves.toBeNull()
+  })
+
+  test("returns null for a channel without profile snapshot support", async () => {
     await expect(
       getSystemFieldValue(
         createContext({
           contactInbox: {
             ...contactInbox,
-            channel: "instagram",
+            channel: "messenger",
           } as ContactInboxModel,
         }),
-        systemFieldTypes.enum.ig_followers,
+        systemFieldTypes.enum.ig_verified,
       ),
     ).resolves.toBeNull()
-    expect(fetchInstagramContactProfile).not.toHaveBeenCalled()
-  })
-
-  test("instagram profile fields return null when the inbox has no instagram integration", async () => {
-    mockFindWithIntegrationsById.mockResolvedValue({})
-
-    await expect(
-      getSystemFieldValue(createContext(), systemFieldTypes.enum.ig_verified),
-    ).resolves.toBeNull()
+    expect(mockResolveIntegrationContext).not.toHaveBeenCalled()
   })
 
   // wa_user_id / wa_user_name (D9, the BSUID plan): unlike ig_*, these read the
@@ -679,95 +810,48 @@ describe("getSystemFieldValue", () => {
     ).resolves.toBe("https://example.com/ad")
   })
 
-  // The comment-automation worker writes these onto the comment message, and
-  // only when that automation has `trackUserTags` on.
+  // Lifetime totals accumulated on the contact by the comment-automation
+  // worker when an automation has `trackUserTags` on.
   describe("tag counters", () => {
-    const messageCreatedAt = new Date("2026-01-04T03:04:05.000Z")
-    const trackingInbox = {
-      ...contactInbox,
-      lastCommentMessageId: "message-1",
-      lastCommentMessageAt: messageCreatedAt,
-    } as ContactInboxModel
-
-    const mockCommentMessage = (
-      contentAttributes: Record<string, unknown>,
-    ): void => {
-      mockMessageFindById.mockResolvedValue({
-        id: "message-1",
-        createdAt: messageCreatedAt,
-        sourceId: "user-comment-1",
-        text: "tagging my friends",
-        contentAttributes,
-        type: "comment",
-        messageType: "incoming",
-      })
-    }
-
-    test("resolve from the comment message the worker stamped", async () => {
-      mockCommentMessage({
-        postId: "post-1",
-        totalTagged: 3,
-        totalNewTagged: 2,
-      })
+    test("resolve the contact's accumulated totals", async () => {
+      const tracked = { ...contact, totalTagged: 7, totalNewTagged: 3 }
 
       await expect(
         getSystemFieldValue(
-          createContext({ contactInbox: trackingInbox }),
+          createContext({ contact: tracked }),
           systemFieldTypes.enum.total_tagged,
         ),
-      ).resolves.toBe("3")
+      ).resolves.toBe("7")
       await expect(
         getSystemFieldValue(
-          createContext({ contactInbox: trackingInbox }),
+          createContext({ contact: tracked }),
           systemFieldTypes.enum.total_new_tagged,
         ),
-      ).resolves.toBe("2")
+      ).resolves.toBe("3")
     })
 
-    // Zero is a real answer ("nobody was tagged") and must survive as "0" —
-    // returning null here would render an empty string in the reply instead.
-    test("keep a zero count distinct from an absent one", async () => {
-      mockCommentMessage({
-        postId: "post-1",
-        totalTagged: 0,
-        totalNewTagged: 0,
-      })
-
+    // Zero is a real answer ("nobody was tagged yet") and must survive as "0"
+    // — returning null here would render an empty string in the reply.
+    test("keep a zero count as '0'", async () => {
       await expect(
         getSystemFieldValue(
-          createContext({ contactInbox: trackingInbox }),
+          createContext({
+            contact: { ...contact, totalTagged: 0, totalNewTagged: 0 },
+          }),
           systemFieldTypes.enum.total_tagged,
         ),
       ).resolves.toBe("0")
     })
 
-    test("stay null when the automation never tracked tags", async () => {
-      mockCommentMessage({ postId: "post-1" })
+    // A contact serialized into a job payload before the columns existed.
+    test("stay null when the contact carries no counters", async () => {
+      const legacy = { ...contact } as Record<string, unknown>
+      legacy.totalTagged = undefined
+      legacy.totalNewTagged = undefined
 
       await expect(
         getSystemFieldValue(
-          createContext({ contactInbox: trackingInbox }),
-          systemFieldTypes.enum.total_tagged,
-        ),
-      ).resolves.toBeNull()
-      await expect(
-        getSystemFieldValue(
-          createContext({ contactInbox: trackingInbox }),
-          systemFieldTypes.enum.total_new_tagged,
-        ),
-      ).resolves.toBeNull()
-    })
-
-    test("stay null when the contact has no comment at all", async () => {
-      await expect(
-        getSystemFieldValue(
-          createContext(),
-          systemFieldTypes.enum.total_new_tagged,
-        ),
-      ).resolves.toBeNull()
-      await expect(
-        getSystemFieldValue(
-          createContext(),
+          createContext({ contact: legacy as ContactModel }),
           systemFieldTypes.enum.total_tagged,
         ),
       ).resolves.toBeNull()
@@ -1170,9 +1254,10 @@ describe("getSystemFieldValue", () => {
     ).resolves.toBe(
       "http://localhost:3123/storage/public/space/workspace-1/avatars/a.png",
     )
+    expect(mockEnsureContactAvatarMirrored).not.toHaveBeenCalled()
   })
 
-  test("avatar keeps absolute URLs and leaves null as null", async () => {
+  test("avatar keeps an absolute mirrored URL unchanged", async () => {
     await expect(
       getSystemFieldValue(
         createContext({
@@ -1184,18 +1269,111 @@ describe("getSystemFieldValue", () => {
         systemFieldTypes.enum.avatar,
       ),
     ).resolves.toBe("https://cdn.example.com/a.png")
+  })
+
+  test("avatar resolves a mirrored storage key to its public URL", async () => {
+    mockResolveTenantSettings.mockResolvedValue({
+      storageUrl: "http://localhost:3123/storage/",
+    })
 
     await expect(
       getSystemFieldValue(
         createContext({
           contact: {
             ...contact,
-            avatar: null,
+            avatar: "public/space/workspace-1/avatars/avatar-field.png",
           } as ContactModel,
         }),
         systemFieldTypes.enum.avatar,
       ),
+    ).resolves.toBe(
+      "http://localhost:3123/storage/public/space/workspace-1/avatars/avatar-field.png",
+    )
+    expect(mockEnsureContactAvatarMirrored).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [systemFieldTypes.enum.profile_pic, "messenger"],
+    [systemFieldTypes.enum.avatar, "instagram"],
+  ])("%s returns a durable URL for a pending %s avatar", async (field, channel) => {
+    mockResolveTenantSettings.mockResolvedValue({
+      storageUrl: "http://localhost:3123/storage/",
+    })
+    mockEnsureContactAvatarMirrored.mockResolvedValue({
+      avatar: "public/space/workspace-1/avatars/mirrored.png",
+    })
+
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contact: { ...contact, avatar: null } as ContactModel,
+          contactInbox: { ...contactInbox, channel } as ContactInboxModel,
+        }),
+        field,
+      ),
+    ).resolves.toBe(
+      "http://localhost:3123/storage/public/space/workspace-1/avatars/mirrored.png",
+    )
+    expect(mockEnsureContactAvatarMirrored).toHaveBeenCalledWith({
+      contactInboxId: "contact-inbox-1",
+      workspaceId: "workspace-1",
+    })
+  })
+
+  test.each([
+    systemFieldTypes.enum.profile_pic,
+    systemFieldTypes.enum.avatar,
+  ])("%s resolves a no-avatar sentinel to its public URL", async (field) => {
+    mockResolveTenantSettings.mockResolvedValue({
+      storageUrl: "http://localhost:3123/storage/",
+    })
+    mockEnsureContactAvatarMirrored.mockResolvedValue({
+      avatar: "public/img/no_avatar.jpg?time=1234",
+    })
+
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contact: { ...contact, avatar: null } as ContactModel,
+        }),
+        field,
+      ),
+    ).resolves.toBe(
+      "http://localhost:3123/storage/public/img/no_avatar.jpg?time=1234",
+    )
+  })
+
+  test.each([
+    systemFieldTypes.enum.profile_pic,
+    systemFieldTypes.enum.avatar,
+  ])("%s remains null when the mirror reports a missing contact", async (field) => {
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contact: { ...contact, avatar: null } as ContactModel,
+        }),
+        field,
+      ),
     ).resolves.toBeNull()
+  })
+
+  test.each([
+    systemFieldTypes.enum.profile_pic,
+    systemFieldTypes.enum.avatar,
+  ])("%s returns null for a WhatsApp contact without an avatar", async (field) => {
+    await expect(
+      getSystemFieldValue(
+        createContext({
+          contact: { ...contact, avatar: null } as ContactModel,
+          contactInbox: {
+            ...contactInbox,
+            channel: "whatsapp",
+          } as ContactInboxModel,
+        }),
+        field,
+      ),
+    ).resolves.toBeNull()
+    expect(mockEnsureContactAvatarMirrored).not.toHaveBeenCalled()
   })
 
   test("account_image resolves workspace logo storage paths", async () => {

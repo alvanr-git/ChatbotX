@@ -37,6 +37,7 @@ export const REFERENCE_FIELD_ENTITY_KIND: Record<string, string> = {
   // `resolveBotFieldReferenceSlot` in `remap.ts`.
   botFieldId: FieldReferenceKind.botField,
   sequenceId: "sequence",
+  leaderboardId: "leaderboard",
   aiAgentId: "aiAgent",
   integrationId: "integration",
   integrationSmtpId: "integration",
@@ -68,6 +69,7 @@ export const CROSS_FLOW_NODE_FIELD = "nodeId"
 export const REFERENCE_ARRAY_FIELD_ENTITY_KIND: Record<string, string> = {
   tagIds: "tag",
   addonProductIds: "product",
+  productIds: "product",
 }
 
 /**

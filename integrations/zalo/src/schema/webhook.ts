@@ -111,6 +111,8 @@ export const TAG_EVENT_NAMES = [
   "remove_tag",
 ] as const
 
+export const FOLLOW_EVENT_NAMES = ["follow", "unfollow"] as const
+
 export const zaloWebhookEventSchema = z.object({
   app_id: z.string(),
   // OA id — present on tag events; absent on message events.
@@ -123,6 +125,8 @@ export const zaloWebhookEventSchema = z.object({
       "user_send_location",
       "user_send_file",
       "user_send_audio",
+      "user_send_gif",
+      "user_send_video",
       "user_received_message",
       "user_seen_message",
       "oa_send_msg",
@@ -130,12 +134,14 @@ export const zaloWebhookEventSchema = z.object({
       "oa_send_image",
       "oa_send_sticker",
       "oa_send_file",
+      "oa_send_gif",
       "oa_send_link",
       "oa_send_video",
       "oa_send_carousel",
       "oa_send_list",
       "oa_send_action",
       ...TAG_EVENT_NAMES,
+      ...FOLLOW_EVENT_NAMES,
     ])
     .or(z.string()),
   timestamp: z.string().optional(),
@@ -158,6 +164,16 @@ export const zaloWebhookEventSchema = z.object({
       attachments: z.array(messageAttachmentSchema).optional(),
     })
     .optional(),
+  // Present on follow/unfollow events only: the (un)following user.
+  follower: z
+    .object({
+      id: z.string(),
+    })
+    .optional(),
+  // Follow events: where the follow came from (e.g. a QR code). Values are
+  // not enumerated by Zalo's docs, so it stays a free string.
+  source: z.string().optional(),
+  user_id_by_app: z.string().optional(),
   // Present on tag events only.
   tag: z
     .object({

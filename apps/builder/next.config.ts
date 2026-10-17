@@ -71,7 +71,7 @@ const nextConfig: NextConfig = {
 
     // Local dev: production routes /ws, /storage, /manage/*, and /portal/*
     // via load balancer / Caddy
-    const wsUrl = env.NEXT_PUBLIC_INTERNAL_WS_URL
+    const realtimeProxyUrl = env.REALTIME_PROXY_URL
     const s3Bucket = process.env.S3_BUCKET ?? "chatbotx"
     const s3Endpoint = process.env.S3_ENDPOINT ?? "http://localhost:9000"
     const portalUrl = process.env.PORTAL_INTERNAL_URL ?? "http://localhost:3201"
@@ -82,7 +82,7 @@ const nextConfig: NextConfig = {
     return {
       afterFiles: [
         ...alwaysRewrites,
-        { source: "/ws/:path*", destination: `${wsUrl}/:path*` },
+        { source: "/ws/:path*", destination: `${realtimeProxyUrl}/:path*` },
         {
           source: "/storage/:path*",
           destination: `${s3Endpoint}/${s3Bucket}/:path*`,
@@ -155,6 +155,18 @@ const nextConfig: NextConfig = {
             key: "Access-Control-Allow-Headers",
             value: "Content-Type, Authorization",
           },
+        ],
+      },
+      // The ref link embed code points at this one unversioned URL, so an
+      // update must reach visitors on their next page view. Browsers
+      // revalidate every load (a cheap 304 via ETag) instead of keeping the
+      // 4-hour copy a CDN would otherwise hand out; the CDN itself holds it
+      // only briefly.
+      {
+        source: "/chat-widget/ref-widget.js",
+        headers: [
+          { key: "Cache-Control", value: "public, no-cache" },
+          { key: "CDN-Cache-Control", value: "public, max-age=60" },
         ],
       },
     ]

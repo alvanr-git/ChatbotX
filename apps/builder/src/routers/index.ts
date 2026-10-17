@@ -17,6 +17,11 @@ export const router = {
       default: m.adsCampaignAPI,
     })),
   ),
+  googleAdsAPI: lazy(() =>
+    import("@/features/integration-google-ads/api").then((m) => ({
+      default: m.googleAdsAPI,
+    })),
+  ),
   appointmentCalendarsAPI: lazy(() =>
     import("@/features/appointment-calendars/api").then((m) => ({
       default: m.appointmentCalendarsAPI,
@@ -37,6 +42,11 @@ export const router = {
       default: m.aiAgentsAPI,
     })),
   ),
+  decisionProfilesAPI: lazy(() =>
+    import("@/features/decision-profiles/api").then((m) => ({
+      default: m.decisionProfilesAPI,
+    })),
+  ),
   broadcastAPIs: lazy(() =>
     import("@/features/broadcasts/api").then((m) => ({
       default: m.broadcastAPIs,
@@ -50,6 +60,11 @@ export const router = {
   couponsAPI: lazy(() =>
     import("@/features/coupons/api").then((m) => ({ default: m.couponsAPI })),
   ),
+  leaderboardsAPI: lazy(() =>
+    import("@/features/leaderboards/api").then((m) => ({
+      default: m.leaderboardsAPI,
+    })),
+  ),
   deviceTokensAPI: lazy(() =>
     import("@/features/device-tokens/api").then((m) => ({
       default: m.deviceTokensAPI,
@@ -60,6 +75,16 @@ export const router = {
       default: m.dynamicImagesAPI,
     })),
   ),
+  connectionsAPI: lazy(() =>
+    import("@/features/connections/api").then((m) => ({
+      default: m.connectionsAPI,
+    })),
+  ),
+  connectSessionsAPI: lazy(() =>
+    import("@/features/connections/api").then((m) => ({
+      default: m.connectSessionsAPI,
+    })),
+  ),
   emailTopicsAPI: lazy(() =>
     import("@/features/email-topics/api").then((m) => ({
       default: m.emailTopicsAPI,
@@ -67,6 +92,11 @@ export const router = {
   ),
   tagsAPI: lazy(() =>
     import("@/features/tags/api").then((m) => ({ default: m.tagsAPI })),
+  ),
+  contactFilterAPI: lazy(() =>
+    import("@/features/contact-filter/api").then((m) => ({
+      default: m.contactFilterAPI,
+    })),
   ),
   customFieldsAPI: lazy(() =>
     import("@/features/custom-fields/api").then((m) => ({
@@ -81,9 +111,29 @@ export const router = {
       default: m.contactsAPIs,
     })),
   ),
+  contactNotesAPI: lazy(() =>
+    import("@/features/contact-notes/api/private").then((m) => ({
+      default: m.contactNotesAuthenticatedAPI,
+    })),
+  ),
+  contactSequencesAPI: lazy(() =>
+    import("@/features/contact-sequences/api/private").then((m) => ({
+      default: m.contactSequencesAuthenticatedAPI,
+    })),
+  ),
   contactScanAPIs: lazy(() =>
     import("@/features/contact-scan/api").then((m) => ({
       default: m.contactScanAPIs,
+    })),
+  ),
+  aiHandoverAPIs: lazy(() =>
+    import("@/features/integration-ai-handover/api").then((m) => ({
+      default: m.aiHandoverAPIs,
+    })),
+  ),
+  channelPostAPIs: lazy(() =>
+    import("@/features/channel-posts/api").then((m) => ({
+      default: m.channelPostAPIs,
     })),
   ),
   botFieldAPIs: lazy(() =>
@@ -176,6 +226,11 @@ export const router = {
       default: m.savedRepliesAPI,
     })),
   ),
+  commentAutomationsAPI: lazy(() =>
+    import("@/features/shared/comment-automation/api").then((m) => ({
+      default: m.commentAutomationsAPI,
+    })),
+  ),
   fbCommentsAPI: lazy(() =>
     import("@/features/fb-comments/api").then((m) => ({
       default: m.fbCommentsAPI,
@@ -184,6 +239,11 @@ export const router = {
   igCommentsAPI: lazy(() =>
     import("@/features/ig-comments/api").then((m) => ({
       default: m.igCommentsAPI,
+    })),
+  ),
+  threadsCommentsAPI: lazy(() =>
+    import("@/features/threads-comments/api").then((m) => ({
+      default: m.threadsCommentsAPI,
     })),
   ),
   igStoriesAPI: lazy(() =>
@@ -268,6 +328,11 @@ export const router = {
   ),
   refLinksAPI: lazy(() =>
     import("@/features/reflinks/api").then((m) => ({ default: m.refLinksAPI })),
+  ),
+  realtimeAPI: lazy(() =>
+    import("@/features/realtime/api").then((m) => ({
+      default: m.realtimeAPI,
+    })),
   ),
   userPersistentMenusAPI: lazy(() =>
     import("@/features/user-persistent-menus/api").then((m) => ({

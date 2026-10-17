@@ -1,5 +1,14 @@
 import type { ContactInfoType } from "@chatbotx.io/database/partials"
-import type { BaseEventEmitter } from "./base-emitter"
+import type {
+  BaseEventEmitter,
+  CallEndedMetadata,
+  CallRecordedMetadata,
+  CallTranscribedMetadata,
+  IncomingCallMetadata,
+  ShoppingCartSentMetadata,
+  UserAskedAboutProductMetadata,
+} from "./base-emitter"
+import type { DecisionFlowOrigin } from "./decision-flow-lineage"
 import { logger } from "./logger"
 import { TriggerEventEmitter } from "./trigger/emitter"
 import { WebhookEventEmitter } from "./webhook/emitter"
@@ -128,6 +137,7 @@ export const emitCustomFieldChanged = async (
   oldValue: unknown,
   newValue: unknown,
   contactInboxId?: string,
+  decisionFlowOrigin?: DecisionFlowOrigin,
 ) =>
   await emitToAllEmitters(
     "customFieldChanged",
@@ -138,6 +148,7 @@ export const emitCustomFieldChanged = async (
     oldValue,
     newValue,
     contactInboxId,
+    decisionFlowOrigin,
   )
 
 // Contact info events
@@ -254,6 +265,68 @@ export const emitConversationUnassigned = async (
     contactId,
     conversationId,
     unassignedBy,
+  )
+
+// Voice-call events (channel-neutral — `metadata.callId` is the provider id)
+export const emitIncomingCall = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: IncomingCallMetadata,
+) => await emitToAllEmitters("incomingCall", workspaceId, contactId, metadata)
+
+export const emitMissedAudioCall = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: IncomingCallMetadata,
+) =>
+  await emitToAllEmitters("missedAudioCall", workspaceId, contactId, metadata)
+
+export const emitCallEnded = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: CallEndedMetadata,
+) => await emitToAllEmitters("callEnded", workspaceId, contactId, metadata)
+
+export const emitCallRecorded = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: CallRecordedMetadata,
+) => await emitToAllEmitters("callRecorded", workspaceId, contactId, metadata)
+
+export const emitCallTranscribed = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: CallTranscribedMetadata,
+) =>
+  await emitToAllEmitters("callTranscribed", workspaceId, contactId, metadata)
+
+// Catalog events (channel-neutral — `metadata.channel` names the source)
+export const emitShoppingCartSent = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: ShoppingCartSentMetadata,
+  contactInboxId?: string,
+) =>
+  await emitToAllEmitters(
+    "shoppingCartSent",
+    workspaceId,
+    contactId,
+    metadata,
+    contactInboxId,
+  )
+
+export const emitUserAskedAboutProduct = async (
+  workspaceId: string,
+  contactId: string,
+  metadata: UserAskedAboutProductMetadata,
+  contactInboxId?: string,
+) =>
+  await emitToAllEmitters(
+    "userAskedAboutProduct",
+    workspaceId,
+    contactId,
+    metadata,
+    contactInboxId,
   )
 
 // Sequence events

@@ -8,6 +8,8 @@ import {
   type InstagramAuthValue as InstagramFacebookAuthValue,
   listInstagramMedia as listInstagramFacebookMediaApi,
 } from "@chatbotx.io/integration-instagram-facebook"
+import { filterIntegrationsByAccount } from "@/features/shared/comment-automation/lib/account-filter"
+import { resolvePostPreviewImage } from "@/features/shared/comment-automation/lib/post-preview-image"
 import { collectSettled } from "@/lib/collect-settled"
 
 export type InstagramAutomationMedia = {
@@ -19,6 +21,8 @@ export type InstagramAutomationMedia = {
   media_product_type?: string
   media_type?: string
   accountId: string
+  /** The account's inbox id — what an automation's `inboxId` scope stores. */
+  inboxId: string
 }
 
 export type InstagramAutomationAccount = {
@@ -29,12 +33,12 @@ export type InstagramAutomationAccount = {
 type InstagramMediaListItem = {
   id: string
   caption?: string
+  media_type?: string
   media_url?: string
   thumbnail_url?: string
   timestamp: string
   permalink?: string
   media_product_type?: string
-  media_type?: string
 }
 
 async function collectInstagramMedia(
@@ -58,12 +62,13 @@ async function collectInstagramMedia(
       return media.map<InstagramAutomationMedia>((item) => ({
         id: item.id,
         message: item.caption,
-        full_picture: item.media_url ?? item.thumbnail_url,
+        full_picture: resolvePostPreviewImage(item),
         created_time: item.timestamp,
         permalink_url: item.permalink,
         media_product_type: item.media_product_type,
         media_type: item.media_type,
         accountId: integration.igId,
+        inboxId: integration.inboxId,
       }))
     },
     (integration) => ({ integrationId: integration.id }),
@@ -73,47 +78,59 @@ async function collectInstagramMedia(
   return { posts, pages }
 }
 
-export async function listInstagramLoginMedia(workspaceId: string) {
+export async function listInstagramLoginMedia(
+  workspaceId: string,
+  inboxId?: string | null,
+) {
   const integrations = await instagramIntegrationService.findByWorkspaceId(
     workspaceId,
     "instagram",
   )
-  if (integrations.length === 0) {
+  const filtered = filterIntegrationsByAccount(integrations, inboxId)
+  if (filtered.length === 0) {
     const fbIntegrations = await instagramIntegrationService.findByWorkspaceId(
       workspaceId,
       "facebook",
     )
-    return collectInstagramMedia(fbIntegrations, (integration) =>
-      listInstagramFacebookMediaApi({
-        auth: integration.auth as InstagramFacebookAuthValue,
-      }),
+    return collectInstagramMedia(
+      filterIntegrationsByAccount(fbIntegrations, inboxId),
+      (integration) =>
+        listInstagramFacebookMediaApi({
+          auth: integration.auth as InstagramFacebookAuthValue,
+        }),
     )
   }
-  return collectInstagramMedia(integrations, (integration) =>
+  return collectInstagramMedia(filtered, (integration) =>
     listInstagramLoginMediaApi({
       auth: integration.auth as InstagramAuthValue,
     }),
   )
 }
 
-export async function listInstagramFacebookMedia(workspaceId: string) {
+export async function listInstagramFacebookMedia(
+  workspaceId: string,
+  inboxId?: string | null,
+) {
   const integrations = await instagramIntegrationService.findByWorkspaceId(
     workspaceId,
     "facebook",
   )
-  if (integrations.length === 0) {
+  const filtered = filterIntegrationsByAccount(integrations, inboxId)
+  if (filtered.length === 0) {
     const directIntegrations =
       await instagramIntegrationService.findByWorkspaceId(
         workspaceId,
         "instagram",
       )
-    return collectInstagramMedia(directIntegrations, (integration) =>
-      listInstagramLoginMediaApi({
-        auth: integration.auth as InstagramAuthValue,
-      }),
+    return collectInstagramMedia(
+      filterIntegrationsByAccount(directIntegrations, inboxId),
+      (integration) =>
+        listInstagramLoginMediaApi({
+          auth: integration.auth as InstagramAuthValue,
+        }),
     )
   }
-  return collectInstagramMedia(integrations, (integration) =>
+  return collectInstagramMedia(filtered, (integration) =>
     listInstagramFacebookMediaApi({
       auth: integration.auth as InstagramFacebookAuthValue,
     }),

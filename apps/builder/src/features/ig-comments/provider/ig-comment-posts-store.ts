@@ -11,6 +11,7 @@ export type InstagramPost = {
   media_product_type?: string
   media_type?: string
   accountId: string
+  inboxId: string
 }
 
 export type InstagramAccount = {

@@ -4,11 +4,9 @@ import type { ConditionStepSchema } from "@chatbotx.io/flow-config"
 import { useTranslations } from "next-intl"
 import {
   type FieldConfig,
-  formatConditionValueDisplay,
+  formatFilterConditionValue,
 } from "@/features/contact-filter/components/contact-filter-config"
 import { useContactFilterConfigs } from "@/features/contact-filter/components/use-contact-filter-configs"
-import { SequenceStoreProvider } from "@/features/sequences/provider/sequence-store-context"
-import { useWorkspaceId } from "@/hooks/routing"
 import { StateHandle } from "../base/step-state-handles"
 
 type ConditionStepViewerProps = {
@@ -55,9 +53,10 @@ const ConditionRow = ({
     })()
   const operatorLabel =
     operatorLabelByValue.get(condition.operator) ?? condition.operator
-  const valueDisplay = formatConditionValueDisplay(
+  const valueDisplay = formatFilterConditionValue(
     condition.value,
-    fieldConfig?.options,
+    fieldConfig,
+    t,
   )
 
   return (
@@ -79,6 +78,7 @@ const ConditionStepViewerContent = ({ data }: ConditionStepViewerProps) => {
   const { configs, operatorLabelByValue } = useContactFilterConfigs(
     undefined,
     true,
+    data.cases.flatMap((conditionCase) => conditionCase.conditions),
   )
 
   return (
@@ -136,14 +136,8 @@ const ConditionStepViewerContent = ({ data }: ConditionStepViewerProps) => {
   )
 }
 
-const ConditionStepViewer = ({ data }: ConditionStepViewerProps) => {
-  const workspaceId = useWorkspaceId()
-
-  return (
-    <SequenceStoreProvider autoInitialize={true} workspaceId={workspaceId}>
-      <ConditionStepViewerContent data={data} />
-    </SequenceStoreProvider>
-  )
-}
+const ConditionStepViewer = ({ data }: ConditionStepViewerProps) => (
+  <ConditionStepViewerContent data={data} />
+)
 
 export default ConditionStepViewer

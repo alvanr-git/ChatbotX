@@ -1,6 +1,8 @@
 import { createId, zodBigintAsString } from "@chatbotx.io/utils"
 import { z } from "zod"
+import { countMessageCharacters } from "../channel-rules/characters"
 import { actionSteps } from "../shared"
+import { flowValidationCodes } from "../validation-codes"
 import { openWebsiteStepSchema } from "./open-website"
 import { startAnotherNodeStepSchema } from "./start-another-node"
 import { startExternalFlowStepSchema } from "./start-external-flow"
@@ -21,8 +23,21 @@ export const BUTTON_LABEL_MAX = 20
 
 export const buttonStepSchema = z
   .object({
-    id: zodBigintAsString(),
-    label: z.string().min(1).max(BUTTON_LABEL_MAX),
+    id: zodBigintAsString().describe(
+      "Button id (numeric string). Also the `sourceHandle` of the edge that routes the button to its next node.",
+    ),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .refine(
+        (value) => countMessageCharacters(value) <= BUTTON_LABEL_MAX,
+        flowValidationCodes.constraintExceeded,
+      )
+      .meta({
+        description: `Button label shown to the contact (max ${BUTTON_LABEL_MAX} characters).`,
+        maxLength: BUTTON_LABEL_MAX,
+      }),
   })
   .and(
     z.discriminatedUnion("buttonType", [

@@ -36,6 +36,7 @@ export function EditIgCommentForm({
     mode: "onChange",
     defaultValues: {
       name: initialData.name,
+      inboxId: initialData.inboxId,
       type: variant,
       folderId: initialData.folderId ?? undefined,
       post: initialData.post,
@@ -47,6 +48,7 @@ export function EditIgCommentForm({
       publicReply: normalizeReplyTexts(initialData.publicReply),
       includeKeywords: initialData.includeKeywords,
       excludeKeywords: initialData.excludeKeywords,
+      excludeKeywordsType: initialData.excludeKeywordsType,
       options: initialData.options,
       hideComments: initialData.hideComments,
       replyAfter: initialData.replyAfter,

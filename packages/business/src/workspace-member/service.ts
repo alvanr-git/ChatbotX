@@ -6,6 +6,10 @@ import {
   relationsFilterToSQL,
 } from "@chatbotx.io/database/client"
 import { workspaceMemberRoles } from "@chatbotx.io/database/partials"
+import {
+  type WorkspaceMemberPermissionsRow,
+  workspaceMemberRepository,
+} from "@chatbotx.io/database/repositories"
 import { workspaceMemberModel } from "@chatbotx.io/database/schema"
 import type {
   UserModel,
@@ -47,6 +51,8 @@ export class WorkspaceMemberService extends BaseService {
   async create(props: {
     tx?: DatabaseClient
     data: typeof workspaceMemberModel.$inferInsert
+    /** Set to whether the live `teamMembers` counter took the +1, for a caller that may have to undo it after its `tx` rolls back. */
+    teamMemberUsage?: { liveIncremented: boolean }
   }): Promise<WorkspaceMemberModel> {
     const { tx = db, data } = props
     const [workspaceMember] = await tx
@@ -54,14 +60,34 @@ export class WorkspaceMemberService extends BaseService {
       .values(data)
       .returning()
 
-    await workspaceUsageService
-      .increment(data.workspaceId, "teamMembers")
-      .catch((err) => {
-        logger.warn(
-          { err, workspaceId: data.workspaceId },
-          "workspace usage team member increment failed",
-        )
-      })
+    // Same transaction as the member insert: `workspaceService.create` wraps
+    // its writes in one, and a global-db write here cannot see the new
+    // Workspace row (WorkspaceUsage FK). On a supplied tx the error must
+    // propagate — a failed statement leaves that Postgres transaction
+    // aborted, so swallowing it would only move the failure to the next
+    // statement or COMMIT while this call reports success; the owner rolls
+    // back and compensates. Without a tx (autocommit) the display-only
+    // counter stays best-effort and the nightly reconcile re-grounds it.
+    if (props.tx) {
+      const liveIncremented = await workspaceUsageService.increment(
+        data.workspaceId,
+        "teamMembers",
+        1,
+        props.tx,
+      )
+      if (props.teamMemberUsage) {
+        props.teamMemberUsage.liveIncremented = liveIncremented
+      }
+    } else {
+      await workspaceUsageService
+        .increment(data.workspaceId, "teamMembers")
+        .catch((err) => {
+          logger.warn(
+            { err, workspaceId: data.workspaceId },
+            "workspace usage team member increment failed",
+          )
+        })
+    }
 
     return workspaceMember
   }
@@ -244,6 +270,35 @@ export class WorkspaceMemberService extends BaseService {
     )
   }
 
+  /**
+   * Bounded, uncached projection over WorkspaceMember.permissions for exactly
+   * userIds — the ring-target snapshot's permissions read, which only needs
+   * permissions for the already-bounded set of online user ids rather than the
+   * whole cached roster listByWorkspaceId loads.
+   */
+  async listPermissionsByUserIds(props: {
+    workspaceId: string
+    userIds: string[]
+    tx?: DatabaseClient
+  }): Promise<WorkspaceMemberPermissionsRow[]> {
+    return await workspaceMemberRepository.listPermissionsByUserIds(props)
+  }
+
+  /**
+   * Durable "last came online" stamp for reporting only — Redis stays the sole
+   * source of truth for live presence, so there's no matching "mark offline"
+   * write. Silent no-op for a synthetic platform-support session (no real
+   * WorkspaceMember row). Does not invalidate listByWorkspaceId's cache tag, so
+   * a cached roster read can briefly serve a stale onlineSince/updatedAt.
+   */
+  async markOnlineBulk(props: {
+    workspaceId: string
+    userIds: string[]
+    tx?: DatabaseClient
+  }): Promise<void> {
+    await workspaceMemberRepository.markOnlineBulk(props)
+  }
+
   async findByWorkspaceIdAndUserId(input: {
     tx?: DatabaseClient
     workspaceId: string
@@ -392,6 +447,28 @@ export class WorkspaceMemberService extends BaseService {
         user: true,
       },
     })
+  }
+
+  /** Members of the workspace among `userIds`; `id` is the user id. */
+  async listLabelsByUserIds(input: {
+    workspaceId: string
+    userIds: string[]
+  }): Promise<{ id: string; name: string }[]> {
+    if (input.userIds.length === 0) {
+      return []
+    }
+    const members = await db.query.workspaceMemberModel.findMany({
+      where: {
+        workspaceId: input.workspaceId,
+        userId: { in: input.userIds },
+      },
+      columns: { userId: true },
+      with: { user: { columns: { name: true } } },
+    })
+    return members.map((member) => ({
+      id: member.userId,
+      name: member.user?.name ?? "--",
+    }))
   }
 }
 

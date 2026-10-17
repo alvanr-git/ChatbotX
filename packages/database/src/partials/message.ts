@@ -18,5 +18,29 @@ export const lastUserInputTypes = z.enum([
   "audio",
   "gif",
   "file",
+  // An Instagram story in which the contact tagged the connected account.
+  "storyMention",
 ])
 export type LastUserInputType = z.infer<typeof lastUserInputTypes>
+
+export const productMessageUnresolvableReasons = [
+  "channelUnsupported",
+  "catalogNotConnected",
+  "noProductsSendable",
+  "productsNotSendable",
+] as const
+export type ProductMessageUnresolvableReason =
+  (typeof productMessageUnresolvableReasons)[number]
+
+export const PRODUCT_MESSAGE_UNRESOLVABLE_CODE = "productMessageUnresolvable"
+
+/** The `data` an API caller gets with a refused product message, so it can branch on `reason`. */
+export const productMessageUnresolvableDataSchema = z.object({
+  reason: z.enum(productMessageUnresolvableReasons),
+  productIds: z
+    .string()
+    .optional()
+    .describe(
+      "Comma-separated ids that are not sendable (`productsNotSendable`).",
+    ),
+})

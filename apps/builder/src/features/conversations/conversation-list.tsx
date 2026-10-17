@@ -14,15 +14,19 @@ import { cn } from "@chatbotx.io/ui/lib/utils"
 import { RefreshCwIcon, SearchIcon, UserPlusIcon } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useAction } from "next-safe-action/hooks"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { type GridComponents, Virtuoso } from "react-virtuoso"
 import { toast } from "sonner"
 import { useDebouncedCallback } from "use-debounce"
-import type { ConversationFilters } from "../chat/store/chat-store"
+import {
+  type ConversationFilters,
+  selectHasNextConversationPage,
+} from "../chat/store/chat-store"
 import { useChatStore } from "../chat/store/chat-store-provider"
 import { CreateContactDialog } from "../contacts/create-contact-dialog"
 import { checkInboxAction } from "./actions/check-inbox.action"
+import { useContactAssigneeOptions } from "../users/provider/user-hook"
 import { ConversationFilter } from "./conversation-filter"
 import ConversationItem from "./conversation-item"
 import { useConversationIdParam } from "./hooks/use-conversation-id-param"
@@ -30,19 +34,9 @@ import { useConversationIdParam } from "./hooks/use-conversation-id-param"
 export default function ConversationList({
   canViewEmailAndPhone = true,
   workspaceId,
-  autoSelectFirstConversation = true,
 }: {
   canViewEmailAndPhone?: boolean
   workspaceId: string
-  /**
-   * Whether an empty selection may be filled in with the first conversation
-   * once the list loads.
-   *
-   * The mobile inbox passes `false`: there the list remounts every time the
-   * user returns from the thread via the back control, and auto-selecting
-   * would immediately reopen a thread instead of showing the list.
-   */
-  autoSelectFirstConversation?: boolean
 }) {
   const t = useTranslations()
   const conversationIdParam = useConversationIdParam()
@@ -56,18 +50,27 @@ export default function ConversationList({
     isLoadingConversation,
     setActiveConversationId,
     initActiveConversationFromUrl,
+    isFirstLoadConversation,
   } = useChatStore((state) => state)
 
   const [showSearchInput, setShowSearchInput] = useState(false)
+  const contactAssigneeOptions = useContactAssigneeOptions({
+    autoGroup: false,
+  })
+  const assigneeOptionNameByValue = useMemo(
+    () =>
+      new Map(
+        contactAssigneeOptions.map((option) => [option.value, option.label]),
+      ),
+    [contactAssigneeOptions],
+  )
 
   const { execute: checkInbox, isExecuting: isCheckingInbox } = useAction(
     checkInboxAction.bind(null, workspaceId),
     {
       onSuccess: () => {
         resetState()
-        loadMoreConversations(workspaceId, {
-          respectUrlConversationId: true,
-        }).catch(() => {
+        loadMoreConversations(workspaceId).catch(() => {
           toast.error(t("messages.errorLoadingData"))
         })
         toast.success(t("actions.checkingDmsAndComments"))
@@ -82,15 +85,17 @@ export default function ConversationList({
     },
   )
 
-  // Check if there are more pages to load
-  const hasNextPage =
-    conversations.length === 0 || nextCursorConversation !== null
+  const hasNextPage = selectHasNextConversationPage({
+    isFirstLoadConversation,
+    nextCursorConversation,
+  })
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: run once on mount; a remount (e.g. the mobile back control) must not refetch or re-auto-select
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount and is skipped entirely when the server seed already loaded the first page (isFirstLoadConversation === false)
   useEffect(() => {
-    loadMoreConversations(workspaceId, {
-      autoSelectFirst: autoSelectFirstConversation,
-    }).catch(() => {
+    if (!isFirstLoadConversation) {
+      return
+    }
+    loadMoreConversations(workspaceId).catch(() => {
       toast.error(t("messages.errorLoadingData"))
     })
   }, [])
@@ -103,9 +108,7 @@ export default function ConversationList({
   // Load more items when reaching the end of the list
   const loadMoreItems = () => {
     if (!isLoadingConversation && hasNextPage) {
-      loadMoreConversations(workspaceId, {
-        autoSelectFirst: autoSelectFirstConversation,
-      }).catch(() => {
+      loadMoreConversations(workspaceId).catch(() => {
         toast.error(t("messages.errorLoadingData"))
       })
     }
@@ -114,10 +117,7 @@ export default function ConversationList({
   const handleChange = useDebouncedCallback(() => {
     conversationIdParam.clear()
     resetState()
-    loadMoreConversations(workspaceId, {
-      respectUrlConversationId: false,
-      autoSelectFirst: autoSelectFirstConversation,
-    }).catch(() => {
+    loadMoreConversations(workspaceId).catch(() => {
       toast.error(t("messages.errorLoadingData"))
     })
   }, 300)
@@ -228,9 +228,11 @@ export default function ConversationList({
               List: ConversationListList,
               Footer: ConversationListFooter,
             }}
+            computeItemKey={(_, item) => item.id}
             data={conversations}
             itemContent={(_, item) => (
               <ConversationItem
+                assigneeOptionNameByValue={assigneeOptionNameByValue}
                 conversation={item}
                 onSelect={() => {
                   conversationIdParam.set(item.id.toString())

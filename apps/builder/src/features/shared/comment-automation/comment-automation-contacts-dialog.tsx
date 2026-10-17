@@ -9,7 +9,7 @@ import {
 import { addContactTagAction } from "@/features/contacts/actions/add-contact-tag.action"
 import { bulkTagStatsContactsAction } from "@/features/contacts/actions/bulk-tag-stats-contacts.action"
 import { client } from "@/lib/orpc/orpc"
-import type { CommentAutomationStatField } from "./comment-automation-stats-cell"
+import type { CommentAutomationStatField } from "./lib/stat-counters"
 
 const eventTypeToLabel: Record<CommentAutomationStatField, string> = {
   "message:sent": "sent",
@@ -31,7 +31,7 @@ type Props = {
 
 /**
  * Facebook and Instagram share this dialog and the procedure behind it: both
- * list pages read the same `FBCommentAutomation` table, discriminated by its
+ * list pages read the same `CommentAutomation` table, discriminated by its
  * `type` column, so there is nothing channel-specific to branch on here.
  */
 export const CommentAutomationContactsDialog = memo(

@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest"
-import { capText, DEFAULT_MAX_LOG_CHARS, redactSecrets } from "../src/redact"
+import {
+  capText,
+  DEFAULT_MAX_LOG_CHARS,
+  redactSecrets,
+  scrubSecretsInString,
+  toLogSafeError,
+} from "../src/redact"
+
+const TOKEN = "EAABsecret1234567890"
+const GRAPH_URL = `https://graph.facebook.com/v25.0/123?fields=name&access_token=${TOKEN}`
 
 describe("redactSecrets", () => {
   test("redacts top-level sensitive keys and keeps ordinary ones", () => {
@@ -41,6 +50,50 @@ describe("redactSecrets", () => {
     expect(result.user.name).toBe("alice")
     expect(result.entries[0].client_secret).toBe("[redacted]")
     expect(result.entries[0].value).toBe(1)
+  })
+
+  test("redacts the SDP value nested in a WhatsApp calling session under calls[] (the `sdp` key, not the whole session)", () => {
+    const sentinel = "v=0 SENTINEL-SDP-OFFER-DO-NOT-LOG"
+    const result = redactSecrets({
+      entry: [
+        {
+          changes: [
+            {
+              field: "calls",
+              value: {
+                calls: [
+                  {
+                    id: "wacid.ABC",
+                    event: "connect",
+                    session: { sdp_type: "offer", sdp: sentinel },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }) as {
+      entry: Array<{
+        changes: Array<{
+          value: {
+            calls: Array<{
+              id: string
+              session: { sdp_type: string; sdp: string }
+            }>
+          }
+        }>
+      }>
+    }
+
+    const call = result.entry[0].changes[0].value.calls[0]
+    // Only the `sdp` value is redacted — the `session` wrapper itself is kept
+    // (adding `session` to the global key set was too broad a blast radius; the
+    // SDP is the actual secret). See `packages/logger/src/redact.ts`.
+    expect(call.session.sdp).toBe("[redacted]")
+    expect(call.session.sdp_type).toBe("offer")
+    expect(call.id).toBe("wacid.ABC")
+    expect(JSON.stringify(result)).not.toContain(sentinel)
   })
 
   test("passes primitives through untouched", () => {
@@ -102,5 +155,69 @@ describe("capText", () => {
     const lastCode = retained.charCodeAt(retained.length - 1)
 
     expect(lastCode >= 0xd8_00 && lastCode <= 0xdb_ff).toBe(false)
+  })
+})
+
+describe("scrubSecretsInString", () => {
+  test("redacts a token embedded in a URL query string", () => {
+    const result = scrubSecretsInString(GRAPH_URL)
+
+    expect(result).not.toContain(TOKEN)
+    expect(result).toContain("access_token=[redacted]")
+    expect(result).toContain("fields=name")
+  })
+
+  test("redacts a bare Gemini key query parameter", () => {
+    const key = "AIzaSensitiveValue"
+    const result = scrubSecretsInString(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+    )
+
+    expect(result).not.toContain(key)
+    expect(result).toContain("key=[redacted]")
+  })
+
+  test("leaves a string without secrets untouched", () => {
+    expect(scrubSecretsInString("just a message")).toBe("just a message")
+  })
+})
+
+describe("redactSecrets URL-value scrubbing", () => {
+  test("scrubs a token inside a nested string value, not just by key", () => {
+    const result = redactSecrets({ requestUrl: GRAPH_URL }) as Record<
+      string,
+      unknown
+    >
+
+    expect(JSON.stringify(result)).not.toContain(TOKEN)
+    expect(result.requestUrl).toContain("access_token=[redacted]")
+  })
+})
+
+describe("toLogSafeError", () => {
+  test("scrubs a token from an error message and stack, dropping nested fields", () => {
+    const error = Object.assign(
+      new Error(`Request to ${GRAPH_URL} failed`),
+      // A real HTTP-client error carries the request URL on a nested field.
+      { request: { url: GRAPH_URL }, response: { status: 400 } },
+    )
+
+    const result = toLogSafeError(error)
+    const serialized = JSON.stringify(result)
+
+    expect(serialized).not.toContain(TOKEN)
+    expect(result.name).toBe("Error")
+    expect(result.message).toContain("access_token=[redacted]")
+    // Nested request/response are dropped entirely (their getters are never
+    // walked), so no credential can hide there.
+    expect(result).not.toHaveProperty("request")
+    expect(result).not.toHaveProperty("response")
+  })
+
+  test("handles a non-Error thrown value", () => {
+    expect(toLogSafeError("boom")).toEqual({
+      name: "NonError",
+      message: "boom",
+    })
   })
 })

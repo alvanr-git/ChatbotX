@@ -144,7 +144,7 @@ export async function waitForReplyContainerReady(
   }
 }
 
-export async function sendCommentReply(
+export async function replyToComment(
   auth: ThreadsAuthValue,
   replyToCommentId: string,
   text: string,
@@ -153,4 +153,110 @@ export async function sendCommentReply(
   const container = await createReplyContainer(auth, replyToCommentId, text)
   await waitForReplyContainerReady(auth, container.id, options)
   return await publishReplyContainer(auth, container.id)
+}
+
+type ManageReplyResponse = {
+  success?: boolean
+}
+
+/**
+ * Hide or unhide a reply under one of the account's own posts. Threads only
+ * allows this on TOP-LEVEL replies — a nested one comes back as an API error,
+ * which the caller surfaces like any other channel failure.
+ */
+export const hideComment = (
+  auth: ThreadsAuthValue,
+  replyId: string,
+  hidden: boolean,
+): Promise<ManageReplyResponse> => {
+  const version = getVersion(auth)
+  const endpoint = `${version}/${replyId}/manage_reply`
+
+  return rescue(
+    endpoint,
+    async () =>
+      await threadsGraphClient.post<ManageReplyResponse>(endpoint, {
+        body: new URLSearchParams({
+          hide: String(hidden),
+          access_token: auth.tokens.accessToken,
+        }),
+      }),
+  )
+}
+
+type ReplyGifResponse = {
+  gif_url?: string
+}
+
+/**
+ * The GIF attached to a reply, or null. A GIF reply is still `TEXT_POST` by
+ * `media_type`, so `gif_url` is the only field that tells one apart — and the
+ * reply webhook does not carry it.
+ */
+export const getReplyGifUrl = async (
+  auth: ThreadsAuthValue,
+  replyId: string,
+): Promise<string | null> => {
+  const version = getVersion(auth)
+  const endpoint = `${version}/${replyId}`
+
+  const response = await rescue(
+    endpoint,
+    async () =>
+      await threadsGraphClient.get<ReplyGifResponse>(endpoint, {
+        searchParams: {
+          fields: "gif_url",
+          access_token: auth.tokens.accessToken,
+        },
+      }),
+  )
+  return response.gif_url || null
+}
+
+export type ThreadsConversationReply = {
+  id: string
+  text?: string
+  timestamp: string
+  username?: string
+  replied_to?: { id: string }
+  is_reply_owned_by_me?: boolean
+}
+
+export type ThreadsConversationPage = {
+  replies: ThreadsConversationReply[]
+  /** Cursor for the next page; absent on the last one. */
+  nextCursor?: string
+}
+
+/**
+ * One page of every reply under a post, at any depth, newest first
+ * (`reverse=true` is the edge's default, stated so the caller's early stop on
+ * age is not left to a default).
+ */
+export const listPostConversation = (props: {
+  auth: ThreadsAuthValue
+  postId: string
+  after?: string
+}): Promise<ThreadsConversationPage> => {
+  const { auth, postId, after } = props
+  const endpoint = `${getVersion(auth)}/${postId}/conversation`
+
+  return rescue(endpoint, async () => {
+    const res = await threadsGraphClient.get<{
+      data: ThreadsConversationReply[]
+      paging?: { cursors?: { after?: string }; next?: string }
+    }>(endpoint, {
+      searchParams: {
+        fields: "id,text,timestamp,username,replied_to,is_reply_owned_by_me",
+        reverse: "true",
+        limit: "100",
+        access_token: auth.tokens.accessToken,
+        ...(after ? { after } : {}),
+      },
+    })
+    return {
+      replies: res.data,
+      nextCursor: res.paging?.next ? res.paging.cursors?.after : undefined,
+    }
+  })
 }

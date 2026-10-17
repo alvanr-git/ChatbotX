@@ -52,7 +52,7 @@ const rawRequestBody = () =>
     template?: unknown
   }
 
-describe("WhatsApp sendMessage — BSUID recipient routing (D4)", () => {
+describe("WhatsApp sendMessage — BSUID recipient routing", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSendMessage.mockResolvedValue({
@@ -83,7 +83,7 @@ describe("WhatsApp sendMessage — BSUID recipient routing (D4)", () => {
     expect(mockApiFetch).not.toHaveBeenCalled()
   })
 
-  test("BSUID-keyed contact: routes through the raw poster with `recipient`, never `to` (regression Chatwoot hit)", async () => {
+  test("BSUID-keyed contact: routes through the raw poster with `recipient`, never `to` (known regression on this API)", async () => {
     await sendMessage({
       ctx,
       data: {
@@ -114,7 +114,7 @@ describe("WhatsApp sendMessage — BSUID recipient routing (D4)", () => {
   })
 })
 
-describe("WhatsApp sendFlowStep — BSUID recipient routing (D4)", () => {
+describe("WhatsApp sendFlowStep — BSUID recipient routing", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockApiFetch.mockResolvedValue(
@@ -175,6 +175,42 @@ describe("WhatsApp sendFlowStep — BSUID recipient routing (D4)", () => {
     expect(mockApiFetch).toHaveBeenCalledTimes(1)
     const body = rawRequestBody()
     expect(body.recipient).toBe("user.9373001")
+  })
+
+  const sendViewCatalog = (contact: unknown) =>
+    sendFlowStep({
+      ctx,
+      data: {
+        contact,
+        step: {
+          id: "catalog-1",
+          stepType: "sendViewCatalog",
+          text: "Browse our catalog",
+          footer: "",
+          thumbnailProductId: "",
+        },
+      },
+    } as never)
+
+  test("catalog message to a phone-keyed contact stays on the lib client, not the raw poster", async () => {
+    await sendViewCatalog(phoneKeyedContact)
+
+    expect(mockApiFetch).not.toHaveBeenCalled()
+    expect(mockSendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  test("catalog message to a BSUID-keyed contact is posted as Meta's catalog_message body", async () => {
+    await sendViewCatalog(bsuidKeyedContact)
+
+    expect(mockSendMessage).not.toHaveBeenCalled()
+    const body = rawRequestBody()
+    expect(body.recipient).toBe("user.9373001")
+    expect(body.type).toBe("interactive")
+    expect(body.interactive).toEqual({
+      type: "catalog_message",
+      body: { text: "Browse our catalog" },
+      action: { name: "catalog_message" },
+    })
   })
 
   test("lib-path message (sendText step) to a phone-keyed contact stays on the lib client (regression)", async () => {

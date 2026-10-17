@@ -1,7 +1,16 @@
-import type { ContactFilterCriteriaInput } from "@chatbotx.io/database/queries"
+import {
+  type ChannelType,
+  requiresRecentInteractionWindow,
+} from "@chatbotx.io/database/partials"
+import type {
+  ContactFilterCriteriaInput,
+  ContactInboxScope,
+} from "@chatbotx.io/database/queries"
 import { contactRepository } from "@chatbotx.io/database/repositories"
 import type { ContactModel } from "@chatbotx.io/database/types"
 import { getPaginationWithDefaults } from "@chatbotx.io/database/utils"
+import type { BroadcastSubaction } from "@chatbotx.io/utils/broadcast"
+import { inboxService } from "../inbox/service"
 import { logger } from "../logger"
 import type { ContactAccessScope } from "./service"
 import { maskContactEmailAndPhone } from "./utils"
@@ -23,10 +32,28 @@ export type ListContactsInput = {
   workspaceId: string
   keyword?: string
   contactFilter?: ContactFilterCriteriaInput
+  /** Restrict to contacts with an inbox on one of these channels. */
+  channels?: ChannelType[] | null
+  /** Restrict to contacts with a conversation inbox in this list. */
+  inboxIds?: string[] | null
+  integrationWhatsappId?: string | null
+  integrationMessengerId?: string | null
+  /** Broadcast recipient sub-action; recent-interaction ones add the 24h window. */
+  subaction?: BroadcastSubaction | null
   page?: number | null
   perPage?: number | null
   sort?: { desc: boolean; id: string }[] | null
 }
+
+/** Row shape returned when `projection: "table"` is passed to `list`. */
+export type ContactTableListRow = Awaited<
+  ReturnType<typeof contactRepository.listTableRows>
+>[number]
+
+/** Row shape returned for the default ("full") projection. */
+type ContactFullListRow = Awaited<
+  ReturnType<typeof contactRepository.listWithRelations>
+>[number]
 
 export type ContactListResult<T> = {
   data: T[]
@@ -51,8 +78,8 @@ const resolveScope = (
 
 type ListInput = ListContactsInput & {
   scope: ContactListScopeInput
-  /** "table" mirrors the private RSC contacts-table relation set (no tags /
-   * custom fields); "full" is the default public/API relation set. */
+  /** "table" uses the contacts-table relation set; "full" is the default
+   * public/API relation set. */
   projection?: "full" | "table"
   include?: readonly ContactListInclude[]
   withCount?: boolean
@@ -118,14 +145,51 @@ async function resolveCount(props: {
  * live COUNT) — folding it into every count call is a separate, measured
  * decision for the cache/perf pass.
  */
+function hasInboxKeys(input: ListContactsInput): boolean {
+  return Boolean(
+    input.channels?.length ||
+      input.inboxIds?.length ||
+      input.integrationWhatsappId ||
+      input.integrationMessengerId,
+  )
+}
+
+/**
+ * Turns the audience-style keys (`channels`, `inboxIds`, integration ids,
+ * `subaction`) into a where-builder scope. Inbox resolution is shared with
+ * broadcast audiences so both surfaces agree on which inboxes a key means.
+ */
+async function resolveInboxScope(
+  input: ListContactsInput,
+): Promise<ContactInboxScope | undefined> {
+  const requireRecentInteraction = requiresRecentInteractionWindow(
+    input.subaction,
+  )
+  if (!hasInboxKeys(input)) {
+    return requireRecentInteraction ? { requireRecentInteraction } : undefined
+  }
+  const inboxIds = await inboxService.resolveBroadcastInboxIds({
+    workspaceId: input.workspaceId,
+    channels: input.channels,
+    // An empty list means "no restriction" for a filter (unlike a broadcast
+    // audience, where it means nobody), so it must not win over `channels`.
+    inboxIds: input.inboxIds?.length ? input.inboxIds : undefined,
+    integrationWhatsappId: input.integrationWhatsappId,
+    integrationMessengerId: input.integrationMessengerId,
+  })
+  return { inboxIds, requireRecentInteraction }
+}
+
 function toListWhereInput(
   input: ListContactsInput,
   scope: ContactListScope | undefined,
+  inboxScope: ContactInboxScope | undefined,
 ): Parameters<typeof contactRepository.buildListWhere>[0] {
   return {
     workspaceId: input.workspaceId,
     keyword: input.keyword,
     contactFilter: input.contactFilter,
+    inboxScope,
     restrictToAssignedUserId: scope?.restrictToAssignedUserId,
     includeEmailAndPhone: scope?.canViewEmailAndPhone !== false,
   }
@@ -144,9 +208,31 @@ async function getTotalContactsFromStats(
   }
 }
 
-export async function list<T extends ContactModel = ContactModel>(
-  input: ListInput,
-): Promise<ContactListResult<T>> {
+/**
+ * "table" is the contacts page's column-level projection (no email/phone
+ * column is selected, so there is nothing to mask). Otherwise
+ * `listWithInboxesAndConversation` is the "full" relation set minus
+ * tags/customFields — used when `include` omits both.
+ */
+function listRows(
+  query: Parameters<typeof contactRepository.listWithRelations>[0],
+  options: Pick<ListInput, "projection" | "include">,
+) {
+  const { projection, include } = options
+  if (projection === "table") {
+    return contactRepository.listTableRows(query)
+  }
+  if (
+    include &&
+    !include.includes("tags") &&
+    !include.includes("customFields")
+  ) {
+    return contactRepository.listWithInboxesAndConversation(query)
+  }
+  return contactRepository.listWithRelations(query)
+}
+
+async function runList(input: ListInput) {
   const { projection = "full", include, withCount = true } = input
   const scope = resolveScope(input.scope)
   const normalizedInput = {
@@ -154,23 +240,15 @@ export async function list<T extends ContactModel = ContactModel>(
     perPage: input.perPage ?? CONTACTS_DEFAULT_PER_PAGE,
   }
 
-  const where = contactRepository.buildListWhere(toListWhereInput(input, scope))
+  const where = contactRepository.buildListWhere(
+    toListWhereInput(input, scope, await resolveInboxScope(input)),
+  )
 
   const pagination = getPaginationWithDefaults(normalizedInput)
   const orderBy = contactRepository.resolveOrderBy(normalizedInput)
 
-  // `listForTable` is the "full" relation set minus tags/customFields — use
-  // it whenever the caller can't need those two joins, either because the
-  // table projection never returns them, or because `include` was given and
-  // omits both.
-  const skipsTagsAndCustomFields =
-    !!include && !include.includes("tags") && !include.includes("customFields")
-  const usesTableRelations = projection === "table" || skipsTagsAndCustomFields
-
   const [data, countResult] = await Promise.all([
-    usesTableRelations
-      ? contactRepository.listForTable({ where, ...pagination, orderBy })
-      : contactRepository.listWithRelations({ where, ...pagination, orderBy }),
+    listRows({ where, ...pagination, orderBy }, { projection, include }),
     resolveCount({ withCount, where }),
   ])
 
@@ -178,19 +256,43 @@ export async function list<T extends ContactModel = ContactModel>(
     ? Math.ceil(countResult.total / pagination.limit)
     : 0
 
+  return { data, pageCount, scope, include, countResult }
+}
+
+export async function list(
+  input: ListInput & { projection: "table" },
+): Promise<ContactListResult<ContactTableListRow>>
+export async function list(
+  input: ListInput & { projection?: "full" },
+): Promise<ContactListResult<ContactModel>>
+export async function list(
+  input: ListInput,
+): Promise<ContactListResult<ContactTableListRow | ContactModel>> {
+  const { data, pageCount, scope, include, countResult } = await runList(input)
+
+  if (input.projection === "table") {
+    return {
+      data: data as ContactTableListRow[],
+      pageCount,
+      totalCount: countResult.total,
+      totalCountCapped: countResult.capped,
+    }
+  }
+
+  const fullData = data as ContactFullListRow[]
   // Unscoped (token) callers see PII; scoped members only when permitted.
   const maskedData =
     scope && !scope.canViewEmailAndPhone
-      ? data.map(maskContactEmailAndPhone)
-      : data
-  const visibleData = include
+      ? fullData.map(maskContactEmailAndPhone)
+      : fullData
+  const visibleData: ContactFullListRow[] = include
     ? maskedData.map((contact) =>
-        stripUnrequestedContactRelations(contact, include),
+        stripUnrequestedContactRelations<ContactFullListRow>(contact, include),
       )
     : maskedData
 
   return {
-    data: visibleData as T[],
+    data: visibleData,
     pageCount,
     totalCount: countResult.total,
     totalCountCapped: countResult.capped,
@@ -199,18 +301,31 @@ export async function list<T extends ContactModel = ContactModel>(
 
 export async function count(input: CountInput): Promise<{ total: number }> {
   const scope = resolveScope(input.scope)
+  const inboxScope = await resolveInboxScope(input)
   if (
-    !(input.keyword || input.contactFilter || scope?.restrictToAssignedUserId)
+    !(
+      input.keyword ||
+      input.contactFilter ||
+      inboxScope ||
+      scope?.restrictToAssignedUserId
+    )
   ) {
     return getTotalContactsFromStats(input.workspaceId)
   }
 
-  const where = contactRepository.buildListWhere(toListWhereInput(input, scope))
+  const where = contactRepository.buildListWhere(
+    toListWhereInput(input, scope, inboxScope),
+  )
 
   const total = await contactRepository.count({ where })
   return { total }
 }
 
+// Back-compat for the deprecated `contacts.findByCustomField` alias — use
+// `contacts.list` with a `contactFilter` instead. `email`/`phone` are the
+// two magic `customFieldId` values the pre-consolidation endpoint accepted,
+// mapped onto their native columns; anything else addresses a real custom
+// field row.
 export async function listByCustomFieldValue(input: {
   workspaceId: string
   customFieldId: string

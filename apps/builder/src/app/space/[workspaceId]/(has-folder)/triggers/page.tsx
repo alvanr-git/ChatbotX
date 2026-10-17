@@ -1,3 +1,4 @@
+import { folderTypes } from "@chatbotx.io/database/partials"
 import {
   Card,
   CardContent,
@@ -10,6 +11,7 @@ import { notFound } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import type { SearchParams } from "nuqs/server"
 import { Suspense } from "react"
+import SharedFolderSlot from "@/features/folders/shared-folder-slot"
 import { getTriggers } from "@/features/triggers/queries"
 import { getTriggersSearchParamsCache } from "@/features/triggers/schema/query"
 import { TriggersTable } from "@/features/triggers/triggers-table"
@@ -43,6 +45,11 @@ export default async function TriggersPage(props: {
         <CardDescription>{t("triggers.description")}</CardDescription>
       </CardHeader>
       <CardContent>
+        <SharedFolderSlot
+          folderType={folderTypes.enum.trigger}
+          searchParams={props.searchParams}
+          workspaceId={workspaceId}
+        />
         <Suspense>
           <TriggersTable
             folderId={search.folderId}

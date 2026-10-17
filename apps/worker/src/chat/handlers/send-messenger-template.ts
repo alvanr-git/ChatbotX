@@ -1,8 +1,8 @@
 import {
-  broadcastToWorkspaceParty,
   contactInboxService,
   conversationService,
   flowService,
+  publishToWorkspaceParty,
 } from "@chatbotx.io/business"
 import { createMessageRepository } from "@chatbotx.io/database/repositories"
 import type { messageModel } from "@chatbotx.io/database/schema"
@@ -11,21 +11,28 @@ import type {
   ConversationModel,
 } from "@chatbotx.io/database/types"
 import { emit } from "@chatbotx.io/event-bus"
-import type { MetadataPayload } from "@chatbotx.io/flow-config"
 import {
   type ButtonStepProps,
   buttonStepDefaultFn,
   buttonTypes,
   extractMessengerTemplateParams,
+  findMessengerTokenVariable,
+  isBulkOutboundMetadata,
+  type MessengerTemplateButtonParam,
   type MessengerTemplateComponent,
   type MessengerTemplateParams,
+  type MetadataPayload,
   messageEventTypeSchema,
   type SendMessengerTemplateMessageStepSchema,
   startExternalFlowStepDefaultFn,
   stepTypes,
 } from "@chatbotx.io/flow-config"
 import { RealtimeEventType } from "@chatbotx.io/partysocket-config"
-import { parseSdkError } from "@chatbotx.io/sdk"
+import {
+  ChannelError,
+  ChannelErrorCategory,
+  parseSdkError,
+} from "@chatbotx.io/sdk"
 import { createId } from "@chatbotx.io/utils"
 import { resolveStackFrames } from "@chatbotx.io/utils/error-log"
 import { contactVariableService } from "@chatbotx.io/variables"
@@ -43,8 +50,13 @@ import {
   shouldSuppressRetryableChannelError,
   willSendRetry,
 } from "../utils/retry"
-import { enqueueTemplateSentEvaluation } from "./enqueue-template-sent-evaluation"
-import { sendFlowStepToChannel } from "./send-message"
+// Disabled — see the commented-out enqueueTemplateSentEvaluation call below.
+// import { enqueueTemplateSentEvaluation } from "./enqueue-template-sent-evaluation"
+import {
+  isDeliveredDirectMessage,
+  markConversationReadAfterDelivery,
+  sendFlowStepToChannel,
+} from "./send-message"
 
 export interface ProcessMessengerTemplateParams {
   broadcastId?: string
@@ -54,6 +66,7 @@ export interface ProcessMessengerTemplateParams {
     id: string
     versionId?: string
   }
+  isBulkBroadcast?: boolean
   metadata?: MetadataPayload
   step?: SendMessengerTemplateMessageStepSchema
   template: SendMessengerTemplateMessageStepSchema["template"]
@@ -72,29 +85,46 @@ export interface ProcessMessengerTemplateResult {
   providerMessageId?: string
 }
 
+// Meta's own error for a template send that leaves a header variable out:
+// (#100 - 1893029) "Missing one or more header params". The pre-send guard
+// reuses its code/subcode so error logs group it with the provider error.
+const MISSING_HEADER_PARAMS_ERROR = { code: 100, subCode: 1_893_029 } as const
+
 function mergeMessengerTemplateButtonParams(
   params: MessengerTemplateParams,
-  components: MessengerTemplateComponent[],
-  parameterFormat: "POSITIONAL" | "NAMED",
+  templateButtonParams: MessengerTemplateParams["button"],
 ): MessengerTemplateParams {
-  const templateButtonParams = extractMessengerTemplateParams(
-    components,
-    parameterFormat,
-  ).button
-
   if (!templateButtonParams || templateButtonParams.length === 0) {
     return params
   }
 
-  const currentButtons = params.button ?? []
-  const currentKeys = new Set(
-    currentButtons.map((button) => `${button.sub_type}:${button.index ?? ""}`),
+  const buttonKey = (button: MessengerTemplateButtonParam) =>
+    `${button.sub_type}:${button.index ?? ""}`
+  const templateButtonsByKey = new Map(
+    templateButtonParams.map((button) => [buttonKey(button), button]),
   )
+  // A URL suffix left blank in the step falls back to the template's default,
+  // the recipient's token variable for a Mini App or Minigame link.
+  let filledBlankSuffix = false
+  // An entry saved without `index` gets its array position, the same fallback
+  // the Messenger sender applies, so it matches its template button.
+  const indexedButtons = (params.button ?? []).map((button, position) =>
+    button.index === undefined ? { ...button, index: position } : button,
+  )
+  const currentButtons = indexedButtons.map((button) => {
+    const defaultText = templateButtonsByKey.get(buttonKey(button))?.text
+    if (button.sub_type !== "url" || button.text?.trim() || !defaultText) {
+      return button
+    }
+    filledBlankSuffix = true
+    return { ...button, text: defaultText }
+  })
+  const currentKeys = new Set(currentButtons.map(buttonKey))
   const missingButtons = templateButtonParams.filter(
-    (button) => !currentKeys.has(`${button.sub_type}:${button.index ?? ""}`),
+    (button) => !currentKeys.has(buttonKey(button)),
   )
 
-  if (missingButtons.length === 0) {
+  if (missingButtons.length === 0 && !filledBlankSuffix) {
     return params
   }
 
@@ -104,6 +134,57 @@ function mergeMessengerTemplateButtonParams(
       (left, right) => (left.index ?? 0) - (right.index ?? 0),
     ),
   }
+}
+
+/**
+ * The params kept on the message row and pushed to the inbox: a URL suffix
+ * built from a Mini App or Minigame token keeps its unresolved variable, so
+ * no one reading the conversation can reuse the contact's signed token.
+ */
+function maskTokenButtonParams(
+  unresolvedParams: MessengerTemplateParams,
+  resolvedParams: MessengerTemplateParams,
+): MessengerTemplateParams {
+  if (!resolvedParams.button) {
+    return resolvedParams
+  }
+  return {
+    ...resolvedParams,
+    button: resolvedParams.button.map((button, position) => {
+      const unresolvedText = unresolvedParams.button?.[position]?.text
+      return button.sub_type === "url" &&
+        findMessengerTokenVariable(unresolvedText)
+        ? { ...button, text: unresolvedText }
+        : button
+    }),
+  }
+}
+
+/**
+ * Pre-send guard: every header variable (including one inside an IMAGE "text
+ * and image" header) needs a value, or Meta rejects the send. Sends saved
+ * before image-header variables were collected have no `header` entry and
+ * there is no safe value to invent, so fail fast with a permanent error —
+ * before any message row or API call — until the send is re-saved.
+ */
+function assertMessengerHeaderParamsProvided(props: {
+  requiredHeader: MessengerTemplateParams["header"]
+  providedHeader: MessengerTemplateParams["header"]
+  templateName: string
+}): void {
+  const requiredCount = props.requiredHeader?.length ?? 0
+  const providedCount =
+    props.providedHeader?.filter((param) => param.type === "text").length ?? 0
+
+  if (providedCount >= requiredCount) {
+    return
+  }
+
+  throw new ChannelError(
+    `Messenger template "${props.templateName}" is missing a value for a header variable`,
+    ChannelErrorCategory.PAYLOAD_INVALID,
+    MISSING_HEADER_PARAMS_ERROR,
+  )
 }
 
 export async function processMessengerTemplate(
@@ -118,8 +199,13 @@ export async function processMessengerTemplate(
     step,
     trackingContext,
     metadata,
+    isBulkBroadcast,
     willRetryOnThrow = false,
   } = params
+  const isBulkOutbound = isBulkOutboundMetadata(
+    metadata,
+    isBulkBroadcast || broadcastId !== undefined,
+  )
 
   const eventLogData = {
     context: {
@@ -155,6 +241,18 @@ export async function processMessengerTemplate(
       throw new Error(`Messenger template validation failed: ${template.id}`)
     }
 
+    // Extracted once per send and shared by the header guard and the button
+    // merge below.
+    const requiredParams = extractMessengerTemplateParams(
+      (validated.template.components as MessengerTemplateComponent[]) || [],
+      template.parameterFormat,
+    )
+    assertMessengerHeaderParamsProvided({
+      requiredHeader: requiredParams.header,
+      providedHeader: template.params.header,
+      templateName: template.name,
+    })
+
     const variables = await contactVariableService.getAll({
       contactId: conversation.contactId,
       contactInbox,
@@ -162,8 +260,7 @@ export async function processMessengerTemplate(
     })
     const completeParams = mergeMessengerTemplateButtonParams(
       template.params,
-      (validated.template.components as MessengerTemplateComponent[]) || [],
-      template.parameterFormat,
+      requiredParams.button,
     )
     const replacedParams = await replaceMessengerTemplateVariables({
       templateParams: completeParams,
@@ -177,7 +274,7 @@ export async function processMessengerTemplate(
         name: template.name,
         language: template.language,
         id: template.id,
-        params: replacedParams,
+        params: maskTokenButtonParams(completeParams, replacedParams),
         parameterFormat: template.parameterFormat,
       },
       stepId: step?.id,
@@ -211,15 +308,18 @@ export async function processMessengerTemplate(
         contactInboxId: contactInbox.id,
         contactId: contactInbox.contactId,
         at: createdMessage.createdAt,
+        bumpActivity: !isBulkOutbound,
       })
     if (trackingInvalidation) {
       await contactInboxService.invalidateTracking(trackingInvalidation)
     }
 
-    broadcastToWorkspaceParty(conversation.workspaceId, {
-      eventType: RealtimeEventType.messageCreated,
-      data: newMessage,
-    })
+    if (!isBulkOutbound) {
+      publishToWorkspaceParty(conversation.workspaceId, {
+        eventType: RealtimeEventType.messageCreated,
+        data: newMessage,
+      })
+    }
 
     const result = await sendFlowStepToChannel({
       conversation,
@@ -235,49 +335,43 @@ export async function processMessengerTemplate(
       },
       metadata,
       messageId: newMessage.id,
+      botSentAnalytics: {
+        triggerHandler: "processMessengerTemplate",
+        triggerType: "message_bot_sent_messenger_template",
+      },
     })
 
-    // Amendment A1: extends the `templateSent` conversion trigger to
-    // Messenger. Unconditional (no `hasEnabledTriggerRule` pre-check) — same
-    // as the WhatsApp call site; the evaluator's own cheap attribution
-    // lookup is the real gate. Never fails the send: enqueue errors are
-    // logged and swallowed inside the helper.
-    await enqueueTemplateSentEvaluation({
-      workspaceId: conversation.workspaceId,
-      channel: "messenger",
-      integrationId: validated.inbox.integrationMessenger.id,
-      contactInboxId: contactInbox.id,
-      templateId: template.id,
-      messageId: newMessage.id,
-    })
+    // Same rule as a flow reply: a delivered bot DM honours the inbox's
+    // markReadOnOutbound option. Own-send echoes are ignored by the receive
+    // path, so the send result is the only delivery signal.
+    if (isDeliveredDirectMessage({ message: createdMessage, result })) {
+      await markConversationReadAfterDelivery({
+        workspaceId: conversation.workspaceId,
+        conversationId: conversation.id,
+        inboxId: contactInbox.inboxId,
+        readAt: createdMessage.createdAt,
+        silent: isBulkOutbound,
+      })
+    }
+
+    // 2026-09-24: ads-conversion rule engine is hidden and unused. This
+    // follow-up job used to be enqueued after EVERY template send and only
+    // added load to the integration queue (one job + one attribution lookup
+    // per send, then exit). Kept commented out instead of deleted so it can
+    // be re-enabled if the rule engine ever ships again.
+    // await enqueueTemplateSentEvaluation({
+    //   workspaceId: conversation.workspaceId,
+    //   channel: "messenger",
+    //   integrationId: validated.inbox.integrationMessenger.id,
+    //   contactInboxId: contactInbox.id,
+    //   templateId: template.id,
+    //   messageId: newMessage.id,
+    // })
 
     await emit(messageEventTypeSchema.enum["message:sent"], {
       ...eventLogData,
       action: { messageId: newMessage.id, flowId: flow?.id || "" },
       occurredAt: new Date(),
-    })
-
-    // Bot-message quota accounting: `chat/worker.ts`'s pre-send gate blocks
-    // `sendMessengerTemplateMessage` jobs, but nothing previously counted a
-    // successful send here — the quota gate and the quota meter must stay
-    // structurally paired or the gate is enforced against a counter that
-    // never moves.
-    emit("analytics:dashboard", {
-      eventType: "message:bot_sent",
-      workspaceId: conversation.workspaceId,
-      contactId: conversation.contactId,
-      senderType: "bot",
-      occurredAt: new Date(),
-      source: contactInbox.source,
-      sourceId: contactInbox.sourceId,
-      channel: contactInbox.channel,
-      metadata: {
-        triggerContext: {
-          triggerSource: "worker",
-          triggerHandler: "processMessengerTemplate",
-          triggerType: "message_bot_sent_messenger_template",
-        },
-      },
     })
 
     const providerMessageId = result?.messageIds?.[0]
@@ -459,6 +553,7 @@ export async function sendMessengerTemplateMessage(
       },
       broadcastId,
       metadata,
+      isBulkBroadcast: broadcastId !== undefined,
       // Pass contextFlow so unconfigured buttons are encoded with a valid flowId.
       ...(contextFlow && { flow: { id: contextFlow.id } }),
       ...(stepButtons.length > 0 && {

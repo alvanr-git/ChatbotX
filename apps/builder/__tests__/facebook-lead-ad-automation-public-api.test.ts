@@ -56,6 +56,7 @@ const facebookLeadAdsAutomationService = {
 vi.mock("@chatbotx.io/business", () => ({ facebookLeadAdsAutomationService }))
 
 vi.mock("@chatbotx.io/business/errors", () => ({
+  BROADCAST_PLAN_LIMIT_CODE: "broadcastPlanLimit",
   notFoundException: (message: string) => new Error(message),
 }))
 
@@ -136,7 +137,7 @@ describe("GET /v1/facebook-lead-ads/{id}", () => {
   const procedure = findProcedure("GET", "/v1/facebook-lead-ads/{id}")
 
   test("gets an automation scoped to the token workspace", async () => {
-    const automation = { id: "lead-ad-1", flow: null }
+    const automation = { id: "lead-ad-1" }
     facebookLeadAdsAutomationService.findById.mockResolvedValueOnce(automation)
 
     await expect(
@@ -193,8 +194,8 @@ describe("POST /v1/facebook-lead-ads", () => {
   })
 })
 
-describe("PUT /v1/facebook-lead-ads/{id}", () => {
-  const procedure = findProcedure("PUT", "/v1/facebook-lead-ads/{id}")
+describe("PATCH /v1/facebook-lead-ads/{id}", () => {
+  const procedure = findProcedure("PATCH", "/v1/facebook-lead-ads/{id}")
 
   test("updates an automation through the shared service", async () => {
     const automation = { id: "lead-ad-1", name: "Renamed" }
@@ -203,13 +204,13 @@ describe("PUT /v1/facebook-lead-ads/{id}", () => {
     await expect(
       procedure.handler?.({
         context: workspaceContext,
-        input: { id: "lead-ad-1", name: "Renamed", flowId: null },
+        input: { id: "lead-ad-1", name: "Renamed" },
       }),
     ).resolves.toEqual(automation)
 
     expect(facebookLeadAdsAutomationService.update).toHaveBeenCalledWith(
       { workspaceId: "workspace-1", id: "lead-ad-1" },
-      { name: "Renamed", flowId: null },
+      { name: "Renamed" },
     )
   })
 

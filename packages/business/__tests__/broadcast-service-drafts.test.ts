@@ -10,6 +10,7 @@ const findManyBroadcastTarget = vi.fn()
 const deleteTargetsWhere = vi.fn()
 const pruneFilter = vi.fn()
 const mockDispatchAuditRecord = vi.fn().mockResolvedValue(undefined)
+const selectForUpdate = vi.fn()
 
 vi.mock("@chatbotx.io/analytics", () => ({
   broadcastAnalyticsService: { getContacts: vi.fn() },
@@ -66,6 +67,14 @@ vi.mock("@chatbotx.io/database/client", () => ({
           },
         }),
         insert: () => ({ values: () => Promise.resolve() }),
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              for: () => ({ limit: () => selectForUpdate() }),
+              limit: () => selectForUpdate(),
+            }),
+          }),
+        }),
       }),
   },
   and: (...args: unknown[]) => ({ __and: args }),
@@ -78,15 +87,21 @@ vi.mock("@chatbotx.io/database/client", () => ({
   isNotNull: (a: unknown) => ({ __isNotNull: a }),
   isNull: (a: unknown) => ({ __isNull: a }),
   or: (...args: unknown[]) => ({ __or: args }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
+    __sql: strings.join("?"),
+    values,
+  }),
 }))
 
 vi.mock("@chatbotx.io/database/schema", () => ({
   broadcastModel: {
     id: "broadcast.id",
+    name: "broadcast.name",
     workspaceId: "broadcast.workspaceId",
     status: "broadcast.status",
     handoffCompletedAt: "broadcast.handoffCompletedAt",
     deletedAt: "broadcast.deletedAt",
+    occurrenceAt: "broadcast.occurrenceAt",
   },
   broadcastTargetModel: {
     broadcastId: "broadcastTarget.broadcastId",
@@ -108,6 +123,18 @@ vi.mock("@chatbotx.io/database/schema", () => ({
   whatsappMessageTemplateModel: {},
 }))
 
+vi.mock("@chatbotx.io/database/repositories", () => ({
+  broadcastRepository: {
+    findByIdOrName: vi.fn(),
+  },
+  broadcastRecurrenceRepository: {
+    findByBroadcastId: vi.fn().mockResolvedValue(null),
+    lockForWrite: vi.fn().mockResolvedValue([]),
+    selectDbNow: vi.fn().mockResolvedValue(new Date("2026-10-13T00:00:00Z")),
+    insertIfMissing: vi.fn(),
+  },
+}))
+
 vi.mock("@chatbotx.io/database/queries", () => ({
   buildContactInboxContactFilterSQL: vi.fn(),
   contactInboxInteractedWithin24hSQL: vi.fn(),
@@ -117,6 +144,7 @@ vi.mock("@chatbotx.io/database/queries", () => ({
 vi.mock("@chatbotx.io/database/utils", () => ({
   chunkById: vi.fn(),
   likeContains: (value: string) => `%${value}%`,
+  getPaginationWithDefaults: () => ({ limit: 10, offset: 0 }),
 }))
 
 vi.mock("../src/inbox/service", () => ({ inboxService: {} }))
@@ -125,6 +153,70 @@ vi.mock("../src/audit/dispatcher", () => ({
   dispatchAuditRecord: mockDispatchAuditRecord,
 }))
 
+vi.mock("../src/broadcast/recurrence.service", () => ({
+  broadcastRecurrenceService: {
+    upsertRule: vi.fn(),
+    arm: vi.fn(),
+    disarm: vi.fn(),
+    upcomingRunsOf: vi.fn(() => []),
+    nextSendAtOf: vi.fn(() => null),
+  },
+}))
+
+vi.mock("../src/broadcast/plan-policy.service", () => ({
+  broadcastPlanPolicyService: {
+    appliesToChannel: vi.fn((channel: string) => channel === "messenger"),
+    hasRestrictions: vi.fn(() => false),
+    resolveForWorkspace: vi.fn().mockResolvedValue({
+      policy: { kind: "unrestricted" },
+      planName: null,
+    }),
+    restrictionFor: vi.fn(() => null),
+    assertSendRateAllowed: vi.fn(),
+    lockActivation: vi.fn().mockResolvedValue(undefined),
+    assertActiveSlotAvailable: vi.fn().mockResolvedValue(undefined),
+    resolveSendRateOverride: vi.fn(() => ({ sendRatePerMinute: 60 })),
+    assertActivationAllowed: vi.fn(
+      async (
+        tx: unknown,
+        input: {
+          workspaceId: string
+          channel: string
+          restriction: unknown
+          sendRatePerMinute: number | null | undefined
+          excludeBroadcastId?: string
+          checkSlot: boolean
+        },
+      ) => {
+        // Composes the mocked primitives in the real gate's order, so the
+        // existing call-order assertions keep describing the real behavior.
+        const gate = (await import("../src/broadcast/plan-policy.service"))
+          .broadcastPlanPolicyService
+        gate.assertSendRateAllowed(
+          input.restriction as never,
+          input.sendRatePerMinute,
+        )
+        if (input.checkSlot) {
+          await gate.lockActivation(tx as never, input.workspaceId)
+          await gate.assertActiveSlotAvailable(tx as never, {
+            workspaceId: input.workspaceId,
+            channel: input.channel,
+            ctx: input.restriction as never,
+            excludeBroadcastId: input.excludeBroadcastId,
+          })
+        }
+        return gate.resolveSendRateOverride(
+          input.restriction as never,
+          input.sendRatePerMinute,
+        )
+      },
+    ),
+  },
+}))
+
+const { broadcastPlanPolicyService } = await import(
+  "../src/broadcast/plan-policy.service"
+)
 const { broadcastService } = await import("../src/broadcast/service")
 
 const flatten = (condition: unknown): unknown[] => {
@@ -138,6 +230,17 @@ const flatten = (condition: unknown): unknown[] => {
   return [condition]
 }
 
+const restrictedContext = {
+  policy: {
+    kind: "restricted" as const,
+    maxSendRatePerMinute: 60,
+    maxActiveBroadcasts: 1,
+    channels: ["messenger" as const],
+    display: { sendRatePerMinute: 100, upgradeSpeedMultiplier: 20 },
+  },
+  planName: "Trial",
+}
+
 beforeEach(() => {
   findManyBroadcast.mockReset()
   findFirstBroadcast.mockReset()
@@ -149,6 +252,26 @@ beforeEach(() => {
   deleteTargetsWhere.mockReset()
   pruneFilter.mockReset().mockImplementation((filter: unknown) => filter)
   mockDispatchAuditRecord.mockClear()
+  selectForUpdate.mockReset()
+  vi.mocked(broadcastPlanPolicyService.appliesToChannel).mockImplementation(
+    (channel) => channel === "messenger",
+  )
+  vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(false)
+  vi.mocked(broadcastPlanPolicyService.resolveForWorkspace).mockResolvedValue({
+    policy: { kind: "unrestricted" },
+    planName: null,
+  })
+  vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(null)
+  vi.mocked(broadcastPlanPolicyService.assertSendRateAllowed).mockReset()
+  vi.mocked(broadcastPlanPolicyService.lockActivation)
+    .mockReset()
+    .mockResolvedValue(undefined)
+  vi.mocked(broadcastPlanPolicyService.assertActiveSlotAvailable)
+    .mockReset()
+    .mockResolvedValue(undefined)
+  vi.mocked(broadcastPlanPolicyService.resolveSendRateOverride).mockReturnValue(
+    { sendRatePerMinute: 60 },
+  )
 })
 
 describe("broadcastService.scheduleDraft", () => {
@@ -179,6 +302,27 @@ describe("broadcastService.scheduleDraft", () => {
     // A future schedule is audited as a launch only when the send actually
     // happens, not here.
     expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+    expect(selectForUpdate).not.toHaveBeenCalled()
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [120, 120],
+    [null, null],
+  ] as const)("writes a submitted send rate of %s on the unrestricted path", async (sendRatePerMinute, expected) => {
+    updateReturning.mockResolvedValue([{ id: "b-1" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+      sendRatePerMinute,
+    })
+
+    expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(
+      expected,
+    )
   })
 
   test("audits a launch when scheduling for 'now'", async () => {
@@ -338,6 +482,373 @@ describe("broadcastService.scheduleDraft", () => {
     expect(findManyBroadcastTarget).not.toHaveBeenCalled()
     expect(deleteTargetsWhere).not.toHaveBeenCalled()
   })
+
+  test("pre-reads a trial non-Messenger draft and keeps today's write", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    selectForUpdate.mockResolvedValue([
+      {
+        id: "b-1",
+        channel: "whatsapp",
+        sendRatePerMinute: null,
+      },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "channel" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "future",
+      schedulesAt: new Date(),
+    })
+
+    expect(selectForUpdate).toHaveBeenCalledTimes(1)
+    expect(updateReturning.mock.calls[0][0].values).not.toHaveProperty(
+      "sendRatePerMinute",
+    )
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+  })
+
+  test("keeps the update-first order for a trial non-Messenger targets draft", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    selectForUpdate.mockResolvedValue([
+      {
+        id: "b-1",
+        channel: "whatsapp",
+        sendRatePerMinute: null,
+        targetMode: "targets",
+      },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "targets" }])
+    findManyBroadcastTarget.mockResolvedValue([
+      { inboxId: "inbox-a", flowId: null, templateId: "tpl-1" },
+      { inboxId: "inbox-b", flowId: null, templateId: null },
+    ])
+
+    const result = await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "future",
+      schedulesAt: new Date(),
+    })
+
+    expect(result).toEqual({ id: "b-1" })
+    expect(updateReturning.mock.invocationCallOrder[0]).toBeLessThan(
+      findManyBroadcastTarget.mock.invocationCallOrder[0],
+    )
+    expect(deleteTargetsWhere).toHaveBeenCalledTimes(1)
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+  })
+
+  test("locks a restricted draft row before the workspace lock and writes last", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: null },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "channel" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+    })
+
+    const lockOrder = vi.mocked(broadcastPlanPolicyService.lockActivation).mock
+      .invocationCallOrder[0]
+    expect(selectForUpdate.mock.invocationCallOrder[0]).toBeLessThan(lockOrder)
+    expect(lockOrder).toBeLessThan(updateReturning.mock.invocationCallOrder[0])
+  })
+
+  test("rejects a restricted stored rate before scheduling", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).mockImplementation(() => {
+      throw new Error("send rate limited")
+    })
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: 61 },
+    ])
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+      }),
+    ).rejects.toThrow("send rate limited")
+
+    expect(updateReturning).not.toHaveBeenCalled()
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+  })
+
+  test("checks a submitted restricted rate instead of the stored rate", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.resolveSendRateOverride,
+    ).mockReturnValue({ sendRatePerMinute: 30 })
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: 61 },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "channel" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+      sendRatePerMinute: 30,
+    })
+
+    expect(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).toHaveBeenCalledWith(restrictedContext, 30)
+    expect(
+      broadcastPlanPolicyService.resolveSendRateOverride,
+    ).toHaveBeenCalledWith(restrictedContext, 30)
+    expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(30)
+  })
+
+  test("rejects an over-cap submitted restricted rate without writing", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).mockImplementation((_restriction, sendRatePerMinute) => {
+      if (sendRatePerMinute === 61) {
+        throw new Error("send rate limited")
+      }
+    })
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: 30 },
+    ])
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+        sendRatePerMinute: 61,
+      }),
+    ).rejects.toThrow("send rate limited")
+
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
+
+  test("rolls back scheduling when the restricted active slot is occupied", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).mockRejectedValue(new Error("active slot limited"))
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: null },
+    ])
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+      }),
+    ).rejects.toThrow("active slot limited")
+
+    expect(updateReturning).not.toHaveBeenCalled()
+    expect(findManyBroadcastTarget).not.toHaveBeenCalled()
+    expect(deleteTargetsWhere).not.toHaveBeenCalled()
+    expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+  })
+
+  test("reports empty targets before an occupied restricted slot", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).mockRejectedValue(new Error("active slot limited"))
+    selectForUpdate.mockResolvedValue([
+      {
+        id: "b-1",
+        channel: "messenger",
+        sendRatePerMinute: null,
+        targetMode: "targets",
+      },
+    ])
+    findManyBroadcastTarget.mockResolvedValue([])
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+      }),
+    ).rejects.toMatchObject({
+      field: "targets",
+      message: "Select a template or flow for at least one page",
+    })
+
+    expect(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).not.toHaveBeenCalled()
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).not.toHaveBeenCalled()
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
+
+  test("reports empty targets before checking a restricted stored rate", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).mockImplementation(() => {
+      throw new Error("send rate limited")
+    })
+    selectForUpdate.mockResolvedValue([
+      {
+        id: "b-1",
+        channel: "messenger",
+        sendRatePerMinute: 61,
+        targetMode: "targets",
+      },
+    ])
+    findManyBroadcastTarget.mockResolvedValue([])
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+      }),
+    ).rejects.toMatchObject({
+      field: "targets",
+      message: "Select a template or flow for at least one page",
+    })
+
+    expect(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).not.toHaveBeenCalled()
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).not.toHaveBeenCalled()
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
+
+  test("keeps the unrestricted update before target normalization", async () => {
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "targets" }])
+    findManyBroadcastTarget.mockResolvedValue([
+      { inboxId: "inbox-a", flowId: "flow-1", templateId: null },
+    ])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+    })
+
+    expect(updateReturning.mock.invocationCallOrder[0]).toBeLessThan(
+      findManyBroadcastTarget.mock.invocationCallOrder[0],
+    )
+  })
+
+  test("stores 60 after the restricted schedule checks pass", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: null },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "channel" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+    })
+
+    expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(60)
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).toHaveBeenCalledWith(expect.anything(), {
+      workspaceId: "ws-1",
+      channel: "messenger",
+      ctx: restrictedContext,
+      excludeBroadcastId: "b-1",
+    })
+  })
+
+  test("stores 60 when a restricted schedule explicitly clears the rate", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    selectForUpdate.mockResolvedValue([
+      { id: "b-1", channel: "messenger", sendRatePerMinute: 30 },
+    ])
+    updateReturning.mockResolvedValue([{ id: "b-1", targetMode: "channel" }])
+
+    await broadcastService.scheduleDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      schedulesType: "now",
+      schedulesAt: new Date(),
+      sendRatePerMinute: null,
+    })
+
+    expect(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).toHaveBeenCalledWith(restrictedContext, null)
+    expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(60)
+  })
+
+  test("throws the stale-draft error before locking or counting", async () => {
+    vi.mocked(broadcastPlanPolicyService.hasRestrictions).mockReturnValue(true)
+    selectForUpdate.mockResolvedValue([])
+    vi.mocked(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).mockRejectedValue(new Error("active slot limited"))
+
+    await expect(
+      broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "stale",
+        schedulesType: "now",
+        schedulesAt: new Date(),
+      }),
+    ).rejects.toThrow("Broadcast is not a draft")
+
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).not.toHaveBeenCalled()
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
 })
 
 describe("broadcastService.listForCalendar", () => {
@@ -359,8 +870,15 @@ describe("broadcastService.listForCalendar", () => {
       workspaceId: "ws-1",
       schedulesAt: { gte: from, lte: to },
       status: "scheduled",
+      schedulesType: undefined,
       name: { ilike: "%sale%" },
       deletedAt: { isNull: true },
+      // A paused or ended series has no run at its stale `schedulesAt`.
+      OR: [
+        { schedulesType: { ne: "recurring" } },
+        { occurrenceAt: { isNotNull: true } },
+        { status: { notIn: ["cancelled", "sent"] } },
+      ],
     })
     expect(args.limit).toBe(500)
     expect(args.orderBy).toEqual({ schedulesAt: "asc" })
@@ -407,7 +925,39 @@ describe("broadcastService.updateDraft", () => {
     saveAsDraft: true,
   }
 
-  test("re-derives the name from the flow and keeps the row a draft", async () => {
+  test("keeps an existing name and only fills a blank one from the flow", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    updateReturning.mockResolvedValue([{ id: "b-1" }])
+
+    await broadcastService.updateDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      canViewEmailAndPhone: true,
+      data: flowDraftData,
+    })
+
+    const { values } = updateReturning.mock.calls[0][0]
+    expect(values.name).toEqual({
+      __sql: "COALESCE(NULLIF(BTRIM(?), ''), ?)",
+      values: ["broadcast.name", "Autumn sale"],
+    })
+  })
+
+  test("still rejects a missing flow even though the name is kept", async () => {
+    findFirstFlow.mockResolvedValue(undefined)
+
+    await expect(
+      broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: flowDraftData,
+      }),
+    ).rejects.toThrow("Flow not found")
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
+
+  test("updates the flow and keeps the row a draft", async () => {
     findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
     updateReturning.mockResolvedValue([{ id: "b-1" }])
 
@@ -428,7 +978,6 @@ describe("broadcastService.updateDraft", () => {
       templateId: null,
       integrationWhatsappId: null,
       integrationMessengerId: null,
-      name: "Autumn sale",
       contactFilter,
       schedulesType: "future",
       status: "draft",
@@ -445,6 +994,9 @@ describe("broadcastService.updateDraft", () => {
     ])
     // An edit that stays a draft never launches.
     expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.resolveForWorkspace,
+    ).not.toHaveBeenCalled()
   })
 
   test("moves the draft to scheduled when saveAsDraft is false", async () => {
@@ -463,6 +1015,9 @@ describe("broadcastService.updateDraft", () => {
     // A future schedule is audited as a launch when the send actually
     // happens, not on this edit.
     expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.resolveForWorkspace,
+    ).not.toHaveBeenCalled()
   })
 
   test("audits a launch when the edit promotes the draft to scheduled 'now'", async () => {
@@ -506,6 +1061,9 @@ describe("broadcastService.updateDraft", () => {
       }),
     ).rejects.toThrow("Unsupported broadcast subaction")
     expect(updateReturning).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.resolveForWorkspace,
+    ).not.toHaveBeenCalled()
   })
 
   test("rejects a payload with neither flow nor template", async () => {
@@ -568,6 +1126,165 @@ describe("broadcastService.updateDraft", () => {
       }),
     ).rejects.toThrow("Broadcast is not a draft")
   })
+
+  test("checks a restricted draft before writing and spreads the rate override last", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+    updateReturning.mockResolvedValue([{ id: "b-1" }])
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+
+    await broadcastService.updateDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      canViewEmailAndPhone: true,
+      data: {
+        ...flowDraftData,
+        channel: "messenger",
+        subaction: "messengerTemplateMessage",
+        saveAsDraft: false,
+      },
+    })
+
+    expect(selectForUpdate).toHaveBeenCalledTimes(1)
+    expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(60)
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).toHaveBeenCalledWith(expect.anything(), {
+      workspaceId: "ws-1",
+      channel: "messenger",
+      ctx: restrictedContext,
+      excludeBroadcastId: "b-1",
+    })
+  })
+
+  test("keeps a non-trial Messenger activation unchanged after identity reads", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    updateReturning.mockResolvedValue([{ id: "b-1" }])
+
+    await broadcastService.updateDraft({
+      workspaceId: "ws-1",
+      broadcastId: "b-1",
+      canViewEmailAndPhone: true,
+      data: {
+        ...flowDraftData,
+        channel: "messenger",
+        subaction: "messengerTemplateMessage",
+        saveAsDraft: false,
+        sendRatePerMinute: 30,
+      },
+    })
+
+    expect(broadcastPlanPolicyService.resolveForWorkspace).toHaveBeenCalledWith(
+      "ws-1",
+    )
+    expect(selectForUpdate).not.toHaveBeenCalled()
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.resolveSendRateOverride,
+    ).not.toHaveBeenCalled()
+    expect(updateReturning.mock.calls[0][0].values).toMatchObject({
+      status: "scheduled",
+      sendRatePerMinute: 30,
+    })
+  })
+
+  test("rejects an over-cap restricted draft without writing targets or audit", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertSendRateAllowed,
+    ).mockImplementation(() => {
+      throw new Error("send rate limited")
+    })
+
+    await expect(
+      broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: {
+          ...flowDraftData,
+          channel: "messenger",
+          subaction: "messengerTemplateMessage",
+          saveAsDraft: false,
+          sendRatePerMinute: 61,
+        },
+      }),
+    ).rejects.toThrow("send rate limited")
+
+    expect(updateReturning).not.toHaveBeenCalled()
+    expect(deleteTargetsWhere).not.toHaveBeenCalled()
+    expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+  })
+
+  test("rolls back a restricted draft when its active slot is occupied", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).mockRejectedValue(new Error("active slot limited"))
+
+    await expect(
+      broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: {
+          ...flowDraftData,
+          channel: "messenger",
+          subaction: "messengerTemplateMessage",
+          saveAsDraft: false,
+        },
+      }),
+    ).rejects.toThrow("active slot limited")
+
+    expect(broadcastPlanPolicyService.lockActivation).toHaveBeenCalled()
+    expect(updateReturning).not.toHaveBeenCalled()
+    expect(deleteTargetsWhere).not.toHaveBeenCalled()
+    expect(mockDispatchAuditRecord).not.toHaveBeenCalled()
+  })
+
+  test("throws the restricted stale-draft error before slot enforcement", async () => {
+    findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+    selectForUpdate.mockResolvedValue([])
+    vi.mocked(broadcastPlanPolicyService.restrictionFor).mockReturnValue(
+      restrictedContext,
+    )
+    vi.mocked(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).mockRejectedValue(new Error("active slot limited"))
+
+    await expect(
+      broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "stale",
+        canViewEmailAndPhone: true,
+        data: {
+          ...flowDraftData,
+          channel: "messenger",
+          subaction: "messengerTemplateMessage",
+          saveAsDraft: false,
+        },
+      }),
+    ).rejects.toThrow("Broadcast is not a draft")
+
+    expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    expect(
+      broadcastPlanPolicyService.assertActiveSlotAvailable,
+    ).not.toHaveBeenCalled()
+    expect(updateReturning).not.toHaveBeenCalled()
+  })
 })
 
 describe("broadcastService.updateDraft template data integrity", () => {
@@ -596,5 +1313,423 @@ describe("broadcastService.updateDraft template data integrity", () => {
     })
 
     expect(updateReturning.mock.calls[0][0].values.templateData).toBeNull()
+  })
+})
+
+describe("repeating drafts", () => {
+  const recurrence = {
+    frequency: "daily" as const,
+    interval: 1,
+    timeOfDay: "09:00",
+    timezone: "Asia/Ho_Chi_Minh",
+    startsOn: "2026-10-01",
+    end: { kind: "never" as const },
+  }
+  const nextRunAt = new Date("2026-10-14T02:00:00.000Z")
+  const draftRow = {
+    id: "b-1",
+    channel: "whatsapp",
+    sendRatePerMinute: null,
+    targetMode: "channel",
+  }
+
+  const loadMocks = async () => {
+    const { broadcastRecurrenceService } = await import(
+      "../src/broadcast/recurrence.service"
+    )
+    const { broadcastRecurrenceRepository } = await import(
+      "@chatbotx.io/database/repositories"
+    )
+    vi.mocked(broadcastRecurrenceService.upsertRule).mockResolvedValue({
+      id: "series-1",
+    } as never)
+    vi.mocked(broadcastRecurrenceService.arm).mockResolvedValue({
+      nextRunAt,
+      sendRateOverride: undefined,
+    })
+    return {
+      service: broadcastRecurrenceService,
+      repository: broadcastRecurrenceRepository,
+    }
+  }
+
+  describe("scheduleDraft", () => {
+    test("stores the rule, arms the series and makes the next run the schedule - nothing is sent now", async () => {
+      const { service } = await loadMocks()
+      selectForUpdate.mockResolvedValue([draftRow])
+      updateReturning.mockResolvedValue([{ id: "b-1", status: "recurring" }])
+
+      const result = await broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "recurring",
+        schedulesAt: new Date(),
+        recurrence,
+      })
+
+      expect(result).toEqual({ id: "b-1" })
+      expect(service.upsertRule).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ broadcastId: "b-1", rule: recurrence }),
+      )
+      expect(updateReturning.mock.calls[0][0].values).toMatchObject({
+        status: "recurring",
+        schedulesType: "recurring",
+        schedulesAt: nextRunAt,
+      })
+      expect(mockDispatchAuditRecord).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "launch" }),
+      )
+      expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+    })
+
+    test("only a series can be armed: a run of another series is out of scope", async () => {
+      await loadMocks()
+      selectForUpdate.mockResolvedValue([draftRow])
+      updateReturning.mockResolvedValue([{ id: "b-1", status: "recurring" }])
+
+      await broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "recurring",
+        schedulesAt: new Date(),
+        recurrence,
+      })
+
+      expect(
+        updateReturning.mock.calls.some(([call]) =>
+          flatten(call.condition).some(
+            (part) =>
+              JSON.stringify(part) ===
+              JSON.stringify({ __isNull: "broadcast.occurrenceAt" }),
+          ),
+        ),
+      ).toBe(true)
+    })
+
+    test("a submitted send rate is stored even when the plan sets no override", async () => {
+      await loadMocks()
+      selectForUpdate.mockResolvedValue([draftRow])
+      updateReturning.mockResolvedValue([{ id: "b-1" }])
+
+      await broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "recurring",
+        schedulesAt: new Date(),
+        sendRatePerMinute: 250,
+        recurrence,
+      })
+
+      expect(updateReturning.mock.calls[0][0].values.sendRatePerMinute).toBe(
+        250,
+      )
+    })
+
+    test("without a new rule it re-arms the saved one", async () => {
+      const { service, repository } = await loadMocks()
+      selectForUpdate.mockResolvedValue([draftRow])
+      vi.mocked(repository.lockForWrite).mockResolvedValue([
+        { id: "series-1" },
+      ] as never)
+      updateReturning.mockResolvedValue([{ id: "b-1" }])
+
+      await broadcastService.scheduleDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        schedulesType: "recurring",
+        schedulesAt: new Date(),
+      })
+
+      expect(service.upsertRule).not.toHaveBeenCalled()
+      expect(service.arm).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ recurrence: { id: "series-1" } }),
+      )
+    })
+
+    test("a draft with neither a new nor a saved rule is a recurrence validation error", async () => {
+      const { repository } = await loadMocks()
+      selectForUpdate.mockResolvedValue([draftRow])
+      vi.mocked(repository.lockForWrite).mockResolvedValue([])
+
+      await expect(
+        broadcastService.scheduleDraft({
+          workspaceId: "ws-1",
+          broadcastId: "b-1",
+          schedulesType: "recurring",
+          schedulesAt: new Date(),
+        }),
+      ).rejects.toMatchObject({ code: "validation", field: "recurrence" })
+      expect(updateReturning).not.toHaveBeenCalled()
+    })
+
+    test("a broadcast that is not a draft is rejected without touching the series", async () => {
+      const { service } = await loadMocks()
+      selectForUpdate.mockResolvedValue([])
+
+      await expect(
+        broadcastService.scheduleDraft({
+          workspaceId: "ws-1",
+          broadcastId: "b-1",
+          schedulesType: "recurring",
+          schedulesAt: new Date(),
+          recurrence,
+        }),
+      ).rejects.toThrow("Broadcast is not a draft")
+      expect(service.upsertRule).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("updateDraft", () => {
+    const repeatingData = {
+      channel: "whatsapp" as const,
+      flowId: "flow-9",
+      subaction: "whatsappTemplateMessage" as const,
+      schedulesType: "recurring" as const,
+      schedulesAt: null,
+      recurrence,
+      contactFilter: { operator: "and" as const, conditions: [] },
+      saveAsDraft: false,
+    }
+
+    test("checks the draft, stores the rule first (locking the series), then rewrites the draft and arms it", async () => {
+      const { service } = await loadMocks()
+      findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+      selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+      updateReturning.mockResolvedValue([
+        { id: "b-1", channel: "whatsapp", sendRatePerMinute: null },
+      ])
+
+      const result = await broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: repeatingData,
+      })
+
+      expect(result).toMatchObject({ id: "b-1", status: "recurring" })
+      expect(service.upsertRule.mock.invocationCallOrder[0]).toBeLessThan(
+        updateReturning.mock.invocationCallOrder[0],
+      )
+      // First write keeps it a draft; the activation flips it to recurring.
+      expect(updateReturning.mock.calls[0][0].values.status).toBe("draft")
+      expect(updateReturning.mock.calls[1][0].values).toMatchObject({
+        status: "recurring",
+        schedulesAt: nextRunAt,
+      })
+      expect(broadcastPlanPolicyService.lockActivation).not.toHaveBeenCalled()
+      expect(mockDispatchAuditRecord).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "broadcast_recurrence_started" }),
+      )
+    })
+
+    test("only a series can be armed: a run of another series is out of scope", async () => {
+      await loadMocks()
+      findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+      selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+      updateReturning.mockResolvedValue([
+        { id: "b-1", channel: "whatsapp", sendRatePerMinute: null },
+      ])
+
+      await broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: repeatingData,
+      })
+
+      expect(
+        updateReturning.mock.calls.some(([call]) =>
+          flatten(call.condition).some(
+            (part) =>
+              JSON.stringify(part) ===
+              JSON.stringify({ __isNull: "broadcast.occurrenceAt" }),
+          ),
+        ),
+      ).toBe(true)
+    })
+
+    test("saving it as a draft stores the rule but does not arm", async () => {
+      const { service } = await loadMocks()
+      findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+      selectForUpdate.mockResolvedValue([{ id: "b-1" }])
+      updateReturning.mockResolvedValue([{ id: "b-1", channel: "whatsapp" }])
+
+      const result = await broadcastService.updateDraft({
+        workspaceId: "ws-1",
+        broadcastId: "b-1",
+        canViewEmailAndPhone: true,
+        data: { ...repeatingData, saveAsDraft: true },
+      })
+
+      expect(result).toEqual({ id: "b-1", status: "draft" })
+      expect(service.arm).not.toHaveBeenCalled()
+      expect(updateReturning).toHaveBeenCalledTimes(1)
+    })
+
+    test("a draft that is gone is rejected before the series is touched", async () => {
+      const { service } = await loadMocks()
+      findFirstFlow.mockResolvedValue({ id: "flow-9", name: "Autumn sale" })
+      selectForUpdate.mockResolvedValue([])
+
+      await expect(
+        broadcastService.updateDraft({
+          workspaceId: "ws-1",
+          broadcastId: "b-1",
+          canViewEmailAndPhone: true,
+          data: repeatingData,
+        }),
+      ).rejects.toThrow("Broadcast is not a draft")
+      expect(service.upsertRule).not.toHaveBeenCalled()
+    })
+  })
+})
+
+describe("broadcastService.list — repeating broadcasts", () => {
+  test("a one-off that kept a disarmed series row does not present a schedule, same as the detail", async () => {
+    const { broadcastRepository } = await import(
+      "@chatbotx.io/database/repositories"
+    )
+    const series = { id: "series-1", rule: {} }
+    Object.assign(broadcastRepository, {
+      listWithRelations: vi.fn().mockResolvedValue([
+        {
+          id: "t",
+          schedulesType: "recurring",
+          occurrenceAt: null,
+          recurrence: series,
+        },
+        {
+          id: "o",
+          schedulesType: "now",
+          occurrenceAt: null,
+          recurrence: series,
+        },
+        {
+          id: "r",
+          schedulesType: "future",
+          occurrenceAt: new Date("2026-10-13T02:00:00.000Z"),
+          recurrence: null,
+        },
+      ]),
+      count: vi.fn().mockResolvedValue(3),
+    })
+
+    const result = await broadcastService.list({ workspaceId: "ws-1" })
+
+    expect(result.data.map((row) => [row.id, row.recurrence])).toEqual([
+      ["t", { ...series, nextSendAt: null }],
+      ["o", null],
+      ["r", null],
+    ])
+  })
+
+  test("a series row carries the next run that really sends", async () => {
+    const { broadcastRepository } = await import(
+      "@chatbotx.io/database/repositories"
+    )
+    const { broadcastRecurrenceService } = await import(
+      "../src/broadcast/recurrence.service"
+    )
+    const nextSendAt = new Date("2026-10-18T02:00:00Z")
+    vi.mocked(broadcastRecurrenceService.nextSendAtOf).mockReturnValue(
+      nextSendAt,
+    )
+    Object.assign(broadcastRepository, {
+      listWithRelations: vi.fn().mockResolvedValue([
+        {
+          id: "t",
+          schedulesType: "recurring",
+          occurrenceAt: null,
+          recurrence: { id: "series-1", rule: {} },
+        },
+      ]),
+      count: vi.fn().mockResolvedValue(1),
+    })
+
+    const result = await broadcastService.list({ workspaceId: "ws-1" })
+
+    expect(result.data[0].recurrence?.nextSendAt).toEqual(nextSendAt)
+  })
+})
+
+describe("broadcastService.findByIdOrName — repeating broadcasts", () => {
+  const upcoming = ["2026-10-14T02:00:00.000Z"]
+  const series = {
+    id: "series-1",
+    rule: {},
+    nextRunAt: new Date("2026-10-14T02:00:00.000Z"),
+    occurrenceCount: 0,
+  }
+
+  const find = async (broadcast: Record<string, unknown>) => {
+    const { broadcastRepository } = await import(
+      "@chatbotx.io/database/repositories"
+    )
+    const { broadcastRecurrenceService } = await import(
+      "../src/broadcast/recurrence.service"
+    )
+    vi.mocked(broadcastRepository.findByIdOrName).mockResolvedValue(
+      broadcast as never,
+    )
+    vi.mocked(broadcastRecurrenceService.upcomingRunsOf).mockReturnValue(
+      upcoming,
+    )
+    return await broadcastService.findByIdOrName({
+      workspaceId: "ws-1",
+      idOrName: "b-1",
+    })
+  }
+
+  test("a repeating broadcast carries its schedule with the next runs", async () => {
+    const result = await find({
+      id: "b-1",
+      schedulesType: "recurring",
+      occurrenceAt: null,
+      recurrence: series,
+    })
+    expect(result.recurrence).toMatchObject({
+      id: "series-1",
+      upcomingRuns: upcoming,
+    })
+  })
+
+  test("the detail carries the next run that really sends", async () => {
+    const { broadcastRecurrenceService } = await import(
+      "../src/broadcast/recurrence.service"
+    )
+    const nextSendAt = new Date("2026-10-18T02:00:00Z")
+    vi.mocked(broadcastRecurrenceService.nextSendAtOf).mockReturnValue(
+      nextSendAt,
+    )
+    const result = await find({
+      id: "b-1",
+      schedulesType: "recurring",
+      occurrenceAt: null,
+      recurrence: series,
+    })
+    expect(result.recurrence?.nextSendAt).toEqual(nextSendAt)
+    expect(broadcastRecurrenceService.nextSendAtOf).toHaveBeenCalledWith(series)
+  })
+
+  test("a paused series lists no upcoming runs", async () => {
+    const result = await find({
+      id: "b-1",
+      schedulesType: "recurring",
+      occurrenceAt: null,
+      recurrence: { ...series, nextRunAt: null },
+    })
+    expect(result.recurrence?.upcomingRuns).toEqual([])
+  })
+
+  test("a one-off edited from a repeating draft does not present the schedule it no longer follows", async () => {
+    const result = await find({
+      id: "b-1",
+      schedulesType: "now",
+      occurrenceAt: null,
+      recurrence: series,
+    })
+    expect(result.recurrence).toBeNull()
   })
 })

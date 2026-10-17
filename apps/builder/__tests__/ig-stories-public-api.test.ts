@@ -70,9 +70,20 @@ vi.mock("@/features/ig-stories/lib/instagram-stories", () => ({
 vi.mock("@chatbotx.io/database/partials", async () => {
   const { z } = await import("zod")
   return {
-    fbCommentIncludeKeywordsSchema: z.boolean(),
-    fbCommentReplySchema: z.object({}),
+    broadcastPlanLimitDataSchema: z.object({}),
+    PRODUCT_MESSAGE_UNRESOLVABLE_CODE: "productMessageUnresolvable",
+    productMessageUnresolvableDataSchema: z.object({}),
+    commentIncludeKeywordsSchema: z.boolean(),
+    commentReplySchema: z.object({}),
+    igStoryAutomationTriggers: z.enum(["storyReply", "storyMention"]),
     igStoryAutomationTypes: z.enum(["instagram", "facebook"]),
+    commentAutomationTypes: z.enum([
+      "messenger",
+      "instagram",
+      "instagramFacebook",
+      "threads",
+      "tiktok",
+    ]),
     igStoryTargetSchema: z.object({}),
   }
 })
@@ -180,10 +191,35 @@ describe("POST /v1/ig-stories", () => {
       data,
     })
   })
+
+  test("passes the trigger to the service apart from the write data", async () => {
+    const input = {
+      name: "Thanks for the mention",
+      type: "instagram",
+      trigger: "storyMention",
+      story: { type: "all", value: [] },
+      reply: { type: "text", value: "Thank you!" },
+      includeKeywords: { type: "all", value: [] },
+    }
+    igStoryAutomationService.create.mockResolvedValueOnce({
+      id: "story-2",
+      ...input,
+    })
+
+    await procedure.handler?.({ context, input })
+
+    const { type, trigger, ...data } = input
+    expect(igStoryAutomationService.create).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      type,
+      trigger,
+      data,
+    })
+  })
 })
 
-describe("PUT /v1/ig-stories/{id}", () => {
-  const procedure = findProcedure("PUT", "/v1/ig-stories/{id}")
+describe("PATCH /v1/ig-stories/{id}", () => {
+  const procedure = findProcedure("PATCH", "/v1/ig-stories/{id}")
 
   test("updates an Instagram Story Automation in the token workspace", async () => {
     const updated = { id: "story-1", name: "Renamed" }
@@ -257,7 +293,10 @@ describe("GET /v1/ig-stories/instagram-stories", () => {
       procedure.handler?.({ context, input: { variant: "instagram" } }),
     ).resolves.toEqual(response)
 
-    expect(listInstagramLoginStories).toHaveBeenCalledWith("workspace-1")
+    expect(listInstagramLoginStories).toHaveBeenCalledWith(
+      "workspace-1",
+      undefined,
+    )
     expect(listInstagramFacebookStories).not.toHaveBeenCalled()
   })
 
@@ -272,6 +311,9 @@ describe("GET /v1/ig-stories/instagram-stories", () => {
       }),
     ).resolves.toEqual(response)
 
-    expect(listInstagramFacebookStories).toHaveBeenCalledWith("workspace-1")
+    expect(listInstagramFacebookStories).toHaveBeenCalledWith(
+      "workspace-1",
+      undefined,
+    )
   })
 })

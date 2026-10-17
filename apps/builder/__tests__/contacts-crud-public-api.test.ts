@@ -36,6 +36,7 @@ type RouteConfig = {
   method: string
   path: string
   summary: string
+  description?: string
   tags: string[]
   successStatus?: number
 }
@@ -82,7 +83,6 @@ const listContacts = vi.fn()
 const countContacts = vi.fn()
 const resolveContactId = vi.fn()
 const findPublicContactOrFail = vi.fn()
-const listByCustomFieldValue = vi.fn()
 
 const createContact = vi.fn()
 
@@ -95,6 +95,24 @@ const unblockAndRecord = vi.fn()
 const upsertByIdentifier = vi.fn()
 
 const contactImportService = { startImport: vi.fn() }
+
+const resolveAvatars = vi.hoisted(() =>
+  vi.fn(async (contacts: { avatar: string | null }[]) =>
+    contacts.map((contact) => ({
+      ...contact,
+      avatar: contact.avatar
+        ? `https://app.test/media/${contact.avatar}`
+        : null,
+    })),
+  ),
+)
+vi.mock("@/features/contacts/queries/resolve-contact-avatars", () => ({
+  resolveContactAvatars: resolveAvatars,
+}))
+
+vi.mock("@chatbotx.io/business/audit", () => ({
+  getAuditActor: () => ({ ipAddress: "203.0.113.9", userAgent: "curl/8" }),
+}))
 
 vi.mock("@chatbotx.io/business", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@chatbotx.io/business")>()
@@ -109,14 +127,15 @@ vi.mock("@chatbotx.io/business", async (importOriginal) => {
       createWithInbox: createContact,
       deleteAndRecord: deleteContact,
       updateFieldsAndCustomFields: updateContactFields,
-      listByCustomFieldValue,
       blockAndRecord,
       unblockAndRecord,
       upsertByIdentifier,
     },
-    importService: { startContactImport: contactImportService.startImport },
   }
 })
+vi.mock("@chatbotx.io/business/import", () => ({
+  importService: { startContactImport: contactImportService.startImport },
+}))
 
 await import("@/features/contacts/api/public/crud")
 
@@ -155,6 +174,9 @@ describe("GET /v1/contacts", () => {
       },
     })
 
+    expect(resolveAvatars).toHaveBeenCalledWith([], "workspace-1", {
+      publicUrls: true,
+    })
     expect(listContacts).toHaveBeenCalledWith({
       page: 1,
       perPage: 20,
@@ -164,33 +186,6 @@ describe("GET /v1/contacts", () => {
       scope: "unscoped",
       include: ["tags"],
       withCount: false,
-    })
-  })
-})
-
-describe("POST /v1/contacts/search", () => {
-  const procedure = findProcedure("POST", "/v1/contacts/search")
-
-  test("delegates to the same contactService.list as GET /v1/contacts", async () => {
-    listContacts.mockResolvedValueOnce({
-      data: [],
-      pageCount: 0,
-      totalCount: 0,
-      totalCountCapped: false,
-    })
-
-    await procedure.handler?.({
-      context: { workspace: { id: "workspace-1" } },
-      input: { page: 1, perPage: 20 },
-    })
-
-    expect(listContacts).toHaveBeenCalledWith({
-      page: 1,
-      perPage: 20,
-      workspaceId: "workspace-1",
-      scope: "unscoped",
-      include: undefined,
-      withCount: undefined,
     })
   })
 })
@@ -238,7 +233,27 @@ describe("GET /v1/contacts/{identifier}", () => {
       id: "contact-1",
       workspaceId: "workspace-1",
     })
-    expect(result).toEqual(publicContact)
+    expect(result).toEqual({ ...publicContact, avatar: null })
+  })
+
+  test("returns the avatar as a resolved URL, not the stored key", async () => {
+    resolveContactId.mockResolvedValueOnce("contact-1")
+    findPublicContactOrFail.mockResolvedValueOnce({
+      id: "contact-1",
+      avatar: "ws/avatar.jpg",
+    })
+
+    const result = await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { identifier: "id:contact-1" },
+    })
+
+    expect(resolveAvatars).toHaveBeenCalledWith(
+      [{ id: "contact-1", avatar: "ws/avatar.jpg" }],
+      "workspace-1",
+      { publicUrls: true },
+    )
+    expect(result.avatar).toBe("https://app.test/media/ws/avatar.jpg")
   })
 })
 
@@ -268,8 +283,8 @@ describe("POST /v1/contacts", () => {
   })
 })
 
-describe("PUT /v1/contacts/{identifier}", () => {
-  const procedure = findProcedure("PUT", "/v1/contacts/{identifier}")
+describe("PATCH /v1/contacts/{identifier}", () => {
+  const procedure = findProcedure("PATCH", "/v1/contacts/{identifier}")
 
   test("resolves the contact id via resolveIdByIdentifier before updating fields", async () => {
     resolveContactId.mockResolvedValueOnce("contact-1")
@@ -417,5 +432,38 @@ describe("POST /v1/contacts/{identifier}/upsert", () => {
     expect(call.data).not.toHaveProperty("email")
     expect(call.data).not.toHaveProperty("phoneNumber")
     expect(call.data).not.toHaveProperty("gender")
+  })
+})
+
+describe("POST /v1/contacts/import", () => {
+  const procedure = findProcedure("POST", "/v1/contacts/import")
+
+  test("starts the import with no user and the caller's request info for the audit trail", async () => {
+    contactImportService.startImport.mockResolvedValueOnce({ importId: "9" })
+
+    const result = await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: {
+        fileId: "5",
+        channel: "messenger",
+        inboxId: "7",
+        contactId: "psid",
+      },
+    })
+
+    expect(contactImportService.startImport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "workspace-1",
+        userId: null,
+        inboxId: "7",
+        fileId: "5",
+        actor: { ipAddress: "203.0.113.9", userAgent: "curl/8" },
+      }),
+    )
+    expect(result).toEqual({ importId: "9" })
+  })
+
+  test("documents the 409 for a running import", () => {
+    expect(procedure.route.description).toContain("409")
   })
 })

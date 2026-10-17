@@ -1,6 +1,6 @@
 import type { Job } from "bullmq"
 import { QueueEvents } from "bullmq"
-import { getRedisConnection } from "./connection"
+import { getQueueConnection } from "./connection"
 import { queueNames } from "./types"
 
 // Bounds the wait so a stalled/backlogged integration worker can never block
@@ -51,7 +51,7 @@ function getIntegrationQueueEvents(): QueueEvents {
   }
 
   integrationQueueEvents = new QueueEvents(queueNames.enum.integration, {
-    connection: getRedisConnection().duplicate(),
+    connection: getQueueConnection(queueNames.enum.integration).duplicate(),
   })
   return integrationQueueEvents
 }
@@ -69,7 +69,7 @@ export function getHeavyQueueEvents(): QueueEvents {
   }
 
   heavyQueueEvents = new QueueEvents(queueNames.enum.heavy, {
-    connection: getRedisConnection().duplicate(),
+    connection: getQueueConnection(queueNames.enum.heavy).duplicate(),
   })
   return heavyQueueEvents
 }
@@ -162,4 +162,26 @@ export async function waitForIntegrationJobCompletion(
   } catch {
     // Best-effort ordering only — never rethrow.
   }
+}
+
+// Strict variant (synchronous ESL API contract).
+// waitForIntegrationJobCompletion above is deliberately best-effort: it
+// swallows timeouts/failures since it only exists to preserve ordering. Callers
+// needing the job's actual result cannot use that semantics — a swallowed
+// timeout would silently return undefined and look like success.
+// waitForJobResult is the strict counterpart: it rejects on timeout or job
+// failure.
+
+/**
+ * Strict wait: resolves with the job's result, or rejects on timeout or job
+ * failure — unlike waitForIntegrationJobCompletion, callers must handle the
+ * rejection themselves. For a synchronous request/reply job whose reply the
+ * caller must read back.
+ */
+export async function waitForJobResult<T>(
+  job: Job<unknown, T>,
+  queueEvents: QueueEvents,
+  timeoutMs: number,
+): Promise<T> {
+  return await job.waitUntilFinished(queueEvents, timeoutMs)
 }

@@ -1,6 +1,7 @@
 import { FieldOperationType } from "@chatbotx.io/flow-config"
-import { zodBigintAsString } from "@chatbotx.io/utils"
 import { z } from "zod"
+import { publicContactIdentifier } from "@/lib/public-api/contact-identifier"
+import { ianaTimezoneSchema } from "@/lib/public-api/iana-timezone"
 
 // The public API speaks friendly operation names (`increase`, not the
 // internal `"O04"` opaque code `FieldOperationType.increase` maps to) so an
@@ -26,9 +27,12 @@ export const publicFieldOperationNameToCode: Record<
 }
 
 const contactCustomFieldOperationPublicRequest = z.object({
-  customFieldId: zodBigintAsString().describe(
-    "Custom field id (numeric string). Get it from `customFields.list`.",
-  ),
+  customFieldId: z
+    .string()
+    .min(1)
+    .describe(
+      "Custom field id (numeric string) or field name. Get either from `customFields.list`.",
+    ),
   operation: publicFieldOperationNames.describe(
     "Operation to apply. `increase`/`decrease` treat the current value as a number and are a no-op if it isn't.",
   ),
@@ -39,17 +43,17 @@ const contactCustomFieldOperationPublicRequest = z.object({
 })
 
 export const addContactCustomFieldOperationsPublicRequest = z.object({
-  identifier: z
-    .string()
-    .min(1)
-    .describe(
-      "Contact identifier: the numeric contact id, an email address, or a phone number.",
-    ),
+  identifier: publicContactIdentifier,
   operations: z
     .array(contactCustomFieldOperationPublicRequest)
     .min(1)
     .max(20)
     .describe("Operations to apply in order, up to 20 per request."),
+  clientTimezone: ianaTimezoneSchema
+    .optional()
+    .describe(
+      "IANA timezone of the caller, e.g. `Asia/Ho_Chi_Minh`. Anchors a date-only value to that calendar day; defaults to the contact's, then the workspace's zone.",
+    ),
 })
 export type AddContactCustomFieldOperationsPublicRequest = z.infer<
   typeof addContactCustomFieldOperationsPublicRequest

@@ -19,9 +19,9 @@ const mocks = vi.hoisted(() => ({
   messengerUpdateDatasetIdIfNull: vi.fn(),
   messengerUpdateDatasetId: vi.fn(),
   messengerUpdateCapiTestEventCode: vi.fn(),
-  findMostRecentByInbox: vi.fn(),
   messengerUpdateCapiAccessToken: vi.fn(),
   messengerClearCapiAccessToken: vi.fn(),
+  messengerConnectCustomCapi: vi.fn(),
   instagramFindWorkspaceIntegration: vi.fn(),
   instagramClaimCapiScopeCacheRefresh: vi.fn(),
   instagramUpdateCapiScopeCache: vi.fn(),
@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   instagramUpdateDatasetId: vi.fn(),
   instagramUpdateCapiAccessToken: vi.fn(),
   instagramClearCapiAccessToken: vi.fn(),
+  instagramConnectCustomCapi: vi.fn(),
   whatsappFindByInboxIdForWorkspace: vi.fn(),
   whatsappFindByIdForWorkspace: vi.fn(),
   whatsappClaimCapiScopeCacheRefresh: vi.fn(),
@@ -56,9 +57,6 @@ vi.mock("@chatbotx.io/database/repositories", () => ({
     insertIgnoreDuplicate: mocks.insertIgnoreDuplicate,
     updateCapiStatus: mocks.metaCapiUpdateCapiStatus,
   },
-  contactInboxRepository: {
-    findMostRecentByInbox: mocks.findMostRecentByInbox,
-  },
   integrationMessengerRepository: {
     updateCapiTestEventCode: mocks.messengerUpdateCapiTestEventCode,
     findWorkspaceIntegration: mocks.messengerFindWorkspaceIntegration,
@@ -68,6 +66,7 @@ vi.mock("@chatbotx.io/database/repositories", () => ({
     updateDatasetId: mocks.messengerUpdateDatasetId,
     updateCapiAccessToken: mocks.messengerUpdateCapiAccessToken,
     clearCapiAccessToken: mocks.messengerClearCapiAccessToken,
+    connectCustomCapi: mocks.messengerConnectCustomCapi,
   },
   integrationInstagramRepository: {
     findWorkspaceIntegration: mocks.instagramFindWorkspaceIntegration,
@@ -77,6 +76,7 @@ vi.mock("@chatbotx.io/database/repositories", () => ({
     updateDatasetId: mocks.instagramUpdateDatasetId,
     updateCapiAccessToken: mocks.instagramUpdateCapiAccessToken,
     clearCapiAccessToken: mocks.instagramClearCapiAccessToken,
+    connectCustomCapi: mocks.instagramConnectCustomCapi,
   },
   integrationWhatsappRepository: {
     findByIdForWorkspace: mocks.whatsappFindByIdForWorkspace,
@@ -186,8 +186,15 @@ const whatsappIntegration = {
   capiAccessToken: null,
 }
 
-// `test:<fresh id>:<contactInboxId>:<dedup segment>` — see `buildSourceKey`.
-const TEST_SOURCE_KEY_PATTERN = /^test:[^:]+:ci-9:/
+// `test:<fresh id>` — the event_id a "Send test event" is posted with.
+const TEST_EVENT_ID_PATTERN = /^test:/
+
+// A messenger integration that has everything "Send test event" needs.
+const testableMessengerIntegration = {
+  ...messengerIntegration,
+  capiTestEventCode: "TEST1",
+  datasetId: "ds-1",
+}
 
 describe("MetaConversionsService", () => {
   beforeEach(() => {
@@ -1115,6 +1122,336 @@ describe("MetaConversionsService", () => {
     )
   })
 
+  describe("connectCapiWithToken", () => {
+    test("creates the messenger dataset with the dedicated token, then stores dataset and token in one write", async () => {
+      mocks.decryptObject.mockResolvedValueOnce({
+        accessToken: "dedicated-token",
+      })
+      const provisionDataset = vi.fn().mockResolvedValue("ds-new")
+      const validate = vi.fn().mockResolvedValue("ds-new")
+      mocks.messengerConnectCustomCapi.mockResolvedValueOnce({
+        ...messengerIntegration,
+        datasetId: "ds-new",
+        capiAccessToken: { encrypted: true },
+      })
+
+      await expect(
+        metaConversionsService.connectCapiWithToken({
+          channel: "messenger",
+          integration: messengerIntegration,
+          accessToken: " dedicated-token ",
+          provisionDataset,
+          validate,
+        }),
+      ).resolves.toEqual(expect.objectContaining({ datasetId: "ds-new" }))
+
+      expect(mocks.encryptObject).toHaveBeenCalledWith({
+        accessToken: "dedicated-token",
+      })
+      expect(provisionDataset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: "dedicated-token",
+          resourceId: "page-1",
+          resourceName: "Acme Page",
+        }),
+      )
+      expect(mocks.messengerConnectCustomCapi).toHaveBeenCalledTimes(1)
+      expect(mocks.messengerConnectCustomCapi).toHaveBeenCalledWith(
+        {
+          id: "im-1",
+          workspaceId: "ws-1",
+          datasetId: "ds-new",
+          capiAccessToken: { encrypted: true },
+        },
+        undefined,
+      )
+      expect(mocks.messengerUpdateDatasetId).not.toHaveBeenCalled()
+    })
+
+    test("creates the instagram dataset under the IG account with the dedicated token", async () => {
+      mocks.decryptObject.mockResolvedValueOnce({
+        accessToken: "dedicated-token",
+      })
+      const provisionDataset = vi.fn().mockResolvedValue("ds-ig")
+      const validate = vi.fn().mockResolvedValue("ds-ig")
+      mocks.instagramConnectCustomCapi.mockResolvedValueOnce({
+        ...instagramFacebookIntegration,
+        datasetId: "ds-ig",
+      })
+
+      await metaConversionsService.connectCapiWithToken({
+        channel: "instagram",
+        integration: instagramFacebookIntegration,
+        accessToken: "dedicated-token",
+        provisionDataset,
+        validate,
+      })
+
+      expect(provisionDataset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: "dedicated-token",
+          resourceId: "ig-user-1",
+        }),
+      )
+      expect(mocks.instagramConnectCustomCapi).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "ig-1", datasetId: "ds-ig" }),
+        undefined,
+      )
+    })
+
+    test("keeps the agency system user as the whatsapp dataset creator and the dedicated token as its fallback", async () => {
+      mocks.decryptObject.mockResolvedValueOnce({
+        accessToken: "dedicated-token",
+      })
+      mocks.whatsappResolveDatasetCreationTokens.mockResolvedValueOnce({
+        primaryToken: "system-user-token",
+        fallbackToken: "dedicated-token",
+      })
+      const provisionDataset = vi.fn().mockResolvedValue("ds-wa")
+      const validate = vi.fn().mockResolvedValue("ds-wa")
+      mocks.whatsappConnectCustomCapi.mockResolvedValueOnce({
+        ...whatsappIntegration,
+        datasetId: "ds-wa",
+      })
+
+      await metaConversionsService.connectCapiWithToken({
+        channel: "whatsapp",
+        integration: whatsappIntegration,
+        accessToken: "dedicated-token",
+        provisionDataset,
+        validate,
+      })
+
+      expect(mocks.whatsappResolveDatasetCreationTokens).toHaveBeenCalledWith(
+        expect.objectContaining({ connectToken: "dedicated-token" }),
+      )
+      expect(provisionDataset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: "system-user-token",
+          resourceId: "waba-1",
+        }),
+      )
+      expect(mocks.whatsappConnectCustomCapi).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "wa-1", datasetId: "ds-wa" }),
+        undefined,
+      )
+    })
+
+    test("stores nothing when Meta refuses to create the dataset", async () => {
+      const provisionDataset = vi
+        .fn()
+        .mockRejectedValue(new Error("(#200) permission"))
+      const validate = vi.fn()
+
+      await expect(
+        metaConversionsService.connectCapiWithToken({
+          channel: "messenger",
+          integration: messengerIntegration,
+          accessToken: "dedicated-token",
+          provisionDataset,
+          validate,
+        }),
+      ).rejects.toThrow("(#200) permission")
+
+      expect(mocks.messengerConnectCustomCapi).not.toHaveBeenCalled()
+      expect(mocks.messengerUpdateCapiAccessToken).not.toHaveBeenCalled()
+    })
+
+    test("rejects an Instagram Business Login integration before calling Meta", async () => {
+      const provisionDataset = vi.fn()
+      const validate = vi.fn()
+
+      await expect(
+        metaConversionsService.connectCapiWithToken({
+          channel: "instagram",
+          integration: instagramBusinessLoginIntegration,
+          accessToken: "dedicated-token",
+          provisionDataset,
+          validate,
+        }),
+      ).rejects.toThrow(
+        "Instagram Business Login integrations do not support Meta CAPI",
+      )
+
+      expect(provisionDataset).not.toHaveBeenCalled()
+      expect(mocks.instagramConnectCustomCapi).not.toHaveBeenCalled()
+    })
+
+    test("rejects a blank token before encrypting or calling Meta", async () => {
+      const provisionDataset = vi.fn()
+      const validate = vi.fn()
+
+      await expect(
+        metaConversionsService.connectCapiWithToken({
+          channel: "messenger",
+          integration: messengerIntegration,
+          accessToken: "   ",
+          provisionDataset,
+          validate,
+        }),
+      ).rejects.toThrow()
+
+      expect(mocks.encryptObject).not.toHaveBeenCalled()
+      expect(provisionDataset).not.toHaveBeenCalled()
+    })
+
+    describe("a dataset the row already stores", () => {
+      const storedDataset = "999001"
+
+      test.each([
+        ["a timeout or network failure", { code: "metaConversionsError" }],
+        ["a rate limit", { code: 4 }],
+        ["a Meta server error", { code: 2 }],
+      ])("is never replaced when checking it fails with %s", async (_label, fields) => {
+        const provisionDataset = vi.fn()
+        const validate = vi
+          .fn()
+          .mockRejectedValue(Object.assign(new Error("Meta failed"), fields))
+
+        await expect(
+          metaConversionsService.connectCapiWithToken({
+            channel: "messenger",
+            integration: { ...messengerIntegration, datasetId: storedDataset },
+            accessToken: "dedicated-token",
+            provisionDataset,
+            validate,
+          }),
+        ).rejects.toThrow("Meta failed")
+
+        expect(provisionDataset).not.toHaveBeenCalled()
+        expect(mocks.messengerConnectCustomCapi).not.toHaveBeenCalled()
+      })
+
+      test("is kept, and only checked with the new token, when that token can read it", async () => {
+        mocks.decryptObject.mockResolvedValueOnce({
+          accessToken: "dedicated-token",
+        })
+        const provisionDataset = vi.fn()
+        const validate = vi.fn().mockResolvedValue(storedDataset)
+        mocks.messengerConnectCustomCapi.mockResolvedValueOnce({
+          ...messengerIntegration,
+          datasetId: storedDataset,
+        })
+
+        await metaConversionsService.connectCapiWithToken({
+          channel: "messenger",
+          integration: { ...messengerIntegration, datasetId: storedDataset },
+          accessToken: " dedicated-token ",
+          provisionDataset,
+          validate,
+        })
+
+        expect(validate).toHaveBeenCalledWith({
+          datasetId: storedDataset,
+          accessToken: "dedicated-token",
+        })
+        expect(provisionDataset).not.toHaveBeenCalled()
+        expect(mocks.messengerConnectCustomCapi).toHaveBeenCalledWith(
+          expect.objectContaining({ datasetId: storedDataset }),
+          undefined,
+        )
+      })
+
+      test("is replaced by the dataset Meta has linked when the new token cannot read it", async () => {
+        mocks.decryptObject.mockResolvedValueOnce({
+          accessToken: "dedicated-token",
+        })
+        const provisionDataset = vi.fn().mockResolvedValue("ds-linked")
+        const validate = vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("(#100) no access"), { code: 100 }),
+          )
+        mocks.messengerConnectCustomCapi.mockResolvedValueOnce({
+          ...messengerIntegration,
+          datasetId: "ds-linked",
+        })
+
+        await metaConversionsService.connectCapiWithToken({
+          channel: "messenger",
+          integration: { ...messengerIntegration, datasetId: storedDataset },
+          accessToken: "dedicated-token",
+          provisionDataset,
+          validate,
+        })
+
+        expect(provisionDataset).toHaveBeenCalledTimes(1)
+        expect(mocks.messengerConnectCustomCapi).toHaveBeenCalledWith(
+          expect.objectContaining({ datasetId: "ds-linked" }),
+          undefined,
+        )
+      })
+
+      test("stores nothing when the stored dataset is unreadable and Meta refuses to link one", async () => {
+        const provisionDataset = vi
+          .fn()
+          .mockRejectedValue(new Error("(#200) permission"))
+        const validate = vi
+          .fn()
+          .mockRejectedValue(
+            Object.assign(new Error("(#100) no access"), { code: 100 }),
+          )
+
+        await expect(
+          metaConversionsService.connectCapiWithToken({
+            channel: "messenger",
+            integration: { ...messengerIntegration, datasetId: storedDataset },
+            accessToken: "dedicated-token",
+            provisionDataset,
+            validate,
+          }),
+        ).rejects.toThrow("(#200) permission")
+
+        expect(mocks.messengerConnectCustomCapi).not.toHaveBeenCalled()
+      })
+
+      test("keeps a whatsapp dataset without asking the agency System User to create one", async () => {
+        mocks.decryptObject.mockResolvedValueOnce({
+          accessToken: "dedicated-token",
+        })
+        const provisionDataset = vi.fn()
+        const validate = vi.fn().mockResolvedValue(storedDataset)
+        mocks.whatsappConnectCustomCapi.mockResolvedValueOnce({
+          ...whatsappIntegration,
+          datasetId: storedDataset,
+        })
+
+        await metaConversionsService.connectCapiWithToken({
+          channel: "whatsapp",
+          integration: { ...whatsappIntegration, datasetId: storedDataset },
+          accessToken: "dedicated-token",
+          provisionDataset,
+          validate,
+        })
+
+        expect(provisionDataset).not.toHaveBeenCalled()
+        expect(
+          mocks.whatsappResolveDatasetCreationTokens,
+        ).not.toHaveBeenCalled()
+      })
+    })
+
+    test("does not validate anything when the row has no dataset yet", async () => {
+      const provisionDataset = vi.fn().mockResolvedValue("ds-new")
+      const validate = vi.fn()
+      mocks.messengerConnectCustomCapi.mockResolvedValueOnce({
+        ...messengerIntegration,
+        datasetId: "ds-new",
+      })
+
+      await metaConversionsService.connectCapiWithToken({
+        channel: "messenger",
+        integration: messengerIntegration,
+        accessToken: "dedicated-token",
+        provisionDataset,
+        validate,
+      })
+
+      expect(validate).not.toHaveBeenCalled()
+      expect(provisionDataset).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe("provisionDatasetNow", () => {
     test("overwrites a stale stored dataset id when Meta returns a different one", async () => {
       mocks.messengerUpdateDatasetId.mockResolvedValueOnce({
@@ -1304,76 +1641,161 @@ describe("MetaConversionsService", () => {
       expect(mocks.messengerUpdateCapiTestEventCode).not.toHaveBeenCalled()
     })
 
-    test("enqueueTestEvent refuses to run without a saved test code", async () => {
+    test("sendTestEvent refuses to run without a saved test code", async () => {
+      const send = vi.fn()
+
       await expect(
-        metaConversionsService.enqueueTestEvent({
+        metaConversionsService.sendTestEvent({
           channel: "messenger",
           integration: messengerIntegration,
+          messagingId: "psid-1",
+          provisionDataset: vi.fn(),
+          send,
         }),
       ).rejects.toMatchObject({
         name: "CapiTestEventError",
         reason: "testEventCodeRequired",
       })
-      expect(mocks.insertIgnoreDuplicate).not.toHaveBeenCalled()
+      expect(send).not.toHaveBeenCalled()
     })
 
-    test("enqueueTestEvent fails clearly when the inbox has no contact yet", async () => {
-      mocks.findMostRecentByInbox.mockResolvedValue(null)
+    test("sendTestEvent refuses to post for an integration whose CAPI was disconnected", async () => {
+      const send = vi.fn()
+      const provisionDataset = vi.fn()
 
       await expect(
-        metaConversionsService.enqueueTestEvent({
+        metaConversionsService.sendTestEvent({
           channel: "messenger",
-          integration: { ...messengerIntegration, capiTestEventCode: "TEST1" },
+          integration: {
+            ...testableMessengerIntegration,
+            capiDisconnectedAt: new Date("2026-09-01T00:00:00.000Z"),
+          },
+          messagingId: "psid-1",
+          provisionDataset,
+          send,
         }),
-      ).rejects.toMatchObject({ reason: "noContactForTest" })
-      expect(mocks.insertIgnoreDuplicate).not.toHaveBeenCalled()
+      ).rejects.toMatchObject({
+        name: "CapiTestEventError",
+        reason: "capiDisconnected",
+      })
+      expect(send).not.toHaveBeenCalled()
+      expect(provisionDataset).not.toHaveBeenCalled()
     })
 
-    test("enqueueTestEvent queues one sample Purchase for the inbox's most recent contact", async () => {
-      mocks.findMostRecentByInbox.mockResolvedValue({
-        id: "ci-9",
+    test("sendTestEvent rejects a messaging id with unexpected characters", async () => {
+      const send = vi.fn()
+
+      await expect(
+        metaConversionsService.sendTestEvent({
+          channel: "messenger",
+          integration: testableMessengerIntegration,
+          messagingId: "psid 1;",
+          provisionDataset: vi.fn(),
+          send,
+        }),
+      ).rejects.toMatchObject({
+        name: "CapiTestEventError",
+        reason: "invalidMessagingId",
+      })
+      expect(send).not.toHaveBeenCalled()
+    })
+
+    test("sendTestEvent sends one sample Purchase to the entered page-scoped user id", async () => {
+      const send = vi.fn().mockResolvedValue(undefined)
+
+      await metaConversionsService.sendTestEvent({
         channel: "messenger",
-        inboxId: "inbox-1",
+        integration: testableMessengerIntegration,
+        messagingId: " psid-1 ",
+        provisionDataset: vi.fn(),
+        send,
       })
 
-      const event = await metaConversionsService.enqueueTestEvent({
-        channel: "messenger",
-        integration: { ...messengerIntegration, capiTestEventCode: "TEST1" },
-      })
-
-      expect(mocks.findMostRecentByInbox).toHaveBeenCalledWith({
-        inboxId: "inbox-1",
-        workspaceId: "ws-1",
-        requireCtwaClid: false,
-      })
-      expect(event).toEqual(
-        expect.objectContaining({
-          source: "manualTest",
-          contactInboxId: "ci-9",
+      expect(send).toHaveBeenCalledTimes(1)
+      const [input] = send.mock.calls[0]
+      expect(input).toEqual({
+        datasetId: "ds-1",
+        accessToken: "messenger-token",
+        testEventCode: "TEST1",
+        event: {
           eventName: "Purchase",
-          actionSource: "business_messaging",
+          occurredAt: expect.any(Date),
+          eventId: expect.stringMatching(TEST_EVENT_ID_PATTERN),
+          messagingChannel: "messenger",
+          pageId: "page-1",
+          pageScopedUserId: "psid-1",
           value: "100",
           currency: "USD",
-        }),
+        },
+      })
+    })
+
+    test("sendTestEvent never stores a row, queues a job, or attaches a contact", async () => {
+      const send = vi.fn().mockResolvedValue(undefined)
+
+      await metaConversionsService.sendTestEvent({
+        channel: "messenger",
+        integration: testableMessengerIntegration,
+        messagingId: "psid-1",
+        provisionDataset: vi.fn(),
+        send,
+      })
+
+      expect(mocks.insertIgnoreDuplicate).not.toHaveBeenCalled()
+      expect(mocks.enqueueIntegrationJob).not.toHaveBeenCalled()
+      expect(send.mock.calls[0][0].event).not.toHaveProperty("userData")
+    })
+
+    test("sendTestEvent provisions a dataset first when none is stored yet", async () => {
+      mocks.messengerUpdateDatasetIdIfNull.mockResolvedValueOnce({
+        ...testableMessengerIntegration,
+        datasetId: "fresh",
+      })
+      const provisionDataset = vi.fn().mockResolvedValue("fresh")
+      const send = vi.fn().mockResolvedValue(undefined)
+
+      await metaConversionsService.sendTestEvent({
+        channel: "messenger",
+        integration: { ...testableMessengerIntegration, datasetId: null },
+        messagingId: "psid-1",
+        provisionDataset,
+        send,
+      })
+
+      expect(provisionDataset).toHaveBeenCalledTimes(1)
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ datasetId: "fresh" }),
       )
-      expect(event?.sourceKey).toMatch(TEST_SOURCE_KEY_PATTERN)
-      expect(mocks.enqueueIntegrationJob).toHaveBeenCalledTimes(1)
     })
   })
 
   describe("test events on WhatsApp", () => {
-    test("enqueueTestEvent only considers click-to-WhatsApp-attributed contacts", async () => {
-      mocks.findMostRecentByInbox.mockResolvedValue(null)
+    test("sendTestEvent identifies the person by the entered ctwa_clid and the WABA", async () => {
+      const send = vi.fn().mockResolvedValue(undefined)
 
-      await expect(
-        metaConversionsService.enqueueTestEvent({
-          channel: "whatsapp",
-          integration: { ...whatsappIntegration, capiTestEventCode: "TEST1" },
+      await metaConversionsService.sendTestEvent({
+        channel: "whatsapp",
+        integration: {
+          ...whatsappIntegration,
+          capiTestEventCode: "TEST1",
+          datasetId: "ds-wa",
+        },
+        messagingId: "ARAkLkA8rmlFeiCktEJQ-QTw",
+        provisionDataset: vi.fn(),
+        send,
+      })
+
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          datasetId: "ds-wa",
+          accessToken: "whatsapp-token",
+          testEventCode: "TEST1",
+          event: expect.objectContaining({
+            messagingChannel: "whatsapp",
+            wabaId: "waba-1",
+            ctwaClid: "ARAkLkA8rmlFeiCktEJQ-QTw",
+          }),
         }),
-      ).rejects.toMatchObject({ reason: "noContactForTest" })
-
-      expect(mocks.findMostRecentByInbox).toHaveBeenCalledWith(
-        expect.objectContaining({ requireCtwaClid: true }),
       )
     })
   })

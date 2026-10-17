@@ -3,6 +3,7 @@ import {
   type DatabaseClient,
   db,
   eq,
+  inArray,
   ne,
   relationsFilterToSQL,
 } from "@chatbotx.io/database/client"
@@ -12,6 +13,12 @@ import {
   type InboxDisconnectReason,
   inboxStatuses,
 } from "@chatbotx.io/database/partials"
+import {
+  aiHandoverBulkRunRepository,
+  aiHandoverSettingsRepository,
+  type InboxChannelOption,
+  inboxRepository,
+} from "@chatbotx.io/database/repositories"
 import { inboxModel } from "@chatbotx.io/database/schema"
 import type {
   InboxModel,
@@ -22,13 +29,24 @@ import type {
 import { getPaginationWithDefaults } from "@chatbotx.io/database/utils"
 import { createId } from "@chatbotx.io/utils"
 import { BaseService } from "../base.service"
-import { channelLimitReachedException } from "../errors"
+import { channelLimitReachedException, notFoundException } from "../errors"
 import { logger } from "../logger"
 import { quotaEnforcementService } from "../quota-enforcement/service"
+import { type IdLabel, selectLabelsByIds } from "../select-labels-by-ids"
 import { workspaceUsageService } from "../workspace-usage/service"
-import type { ListInboxesRequest, ListInboxesResponse } from "./schema"
+import type {
+  ListAllConnectedInboxesRequest,
+  ListAllConnectedInboxesResponse,
+  ListInboxesRequest,
+  ListInboxesResponse,
+} from "./schema"
 
-type InboxWhere = Partial<{ id: string; workspaceId: string }>
+type InboxWhere = Partial<{
+  id: string
+  workspaceId: string
+  channel: ChannelType
+  sourceId: string
+}>
 
 export type BroadcastInboxResolutionInput = {
   workspaceId: string
@@ -61,22 +79,33 @@ class InboxService extends BaseService {
     integrationTiktok: true,
   }
 
-  async list(input: ListInboxesRequest): Promise<ListInboxesResponse> {
-    // One `where`, shared by the page query and the count, so the two can
-    // never drift (they previously repeated the same literal side by side).
-    const where = {
-      workspaceId: input.workspaceId,
+  /**
+   * Connected inboxes of a workspace. Shared by `list` and
+   * `listAllConnectedByWorkspace` so the page query, its row count, and the
+   * unpaginated variant can never filter on different criteria.
+   */
+  private static connectedWhere(workspaceId: string) {
+    return {
+      workspaceId,
       status: inboxStatuses.enum.connected,
     }
+  }
+
+  private static integrationsWith(includes: ListInboxesRequest["includes"]) {
+    return includes?.includes("integration")
+      ? InboxService.withIntegrations
+      : undefined
+  }
+
+  async list(input: ListInboxesRequest): Promise<ListInboxesResponse> {
+    const where = InboxService.connectedWhere(input.workspaceId)
 
     const pagination = getPaginationWithDefaults(input)
     const [data, totalRows] = await Promise.all([
       db.query.inboxModel.findMany({
         ...pagination,
         where,
-        with: input.includes?.includes("integration")
-          ? InboxService.withIntegrations
-          : undefined,
+        with: InboxService.integrationsWith(input.includes),
       }),
       db.$count(inboxModel, relationsFilterToSQL(inboxModel, where)),
     ])
@@ -85,6 +114,25 @@ class InboxService extends BaseService {
     const pageCount = Math.ceil(totalRows / limit)
 
     return { data, pageCount }
+  }
+
+  /**
+   * Every connected inbox of a workspace, unpaginated. `list` caps at
+   * `maxLimit` (50) rows; a workspace with more connected inboxes than that
+   * would silently lose the rest, which is why any caller that must see the
+   * complete set (the builder inbox store, and through it the broadcast page
+   * picker) uses this. Eager-loads integrations only when asked, matching
+   * `list`'s `includes` contract.
+   */
+  async listAllConnectedByWorkspace(
+    input: ListAllConnectedInboxesRequest,
+  ): Promise<ListAllConnectedInboxesResponse> {
+    const data = await db.query.inboxModel.findMany({
+      where: InboxService.connectedWhere(input.workspaceId),
+      with: InboxService.integrationsWith(input.includes),
+    })
+
+    return { data }
   }
 
   async listWithIntegrationsByWorkspace(
@@ -99,6 +147,19 @@ class InboxService extends BaseService {
     })
   }
 
+  /**
+   * Bounded id/name options for a channel-filtered select (e.g. the Calls
+   * page's inbox filter). Thin pass-through to the repository — no caching
+   * here, matching find()'s deliberately disabled cache, since nothing in this
+   * service currently invalidates an inbox-scoped cache tag on write.
+   */
+  async listChannelOptionsByWorkspace(input: {
+    workspaceId: string
+    channel: ChannelType
+  }): Promise<InboxChannelOption[]> {
+    return await inboxRepository.listOptionsByWorkspaceAndChannel(input)
+  }
+
   async find(props: { where: InboxWhere }): Promise<InboxModel | undefined> {
     const { where } = props
     // return await withCache(
@@ -111,6 +172,42 @@ class InboxService extends BaseService {
     //     tags: ["inboxes"],
     //   },
     // )
+  }
+
+  async findByIdOrFail(props: {
+    workspaceId: string
+    id: string
+  }): Promise<InboxModel> {
+    const inbox = await this.find({
+      where: { id: props.id, workspaceId: props.workspaceId },
+    })
+    if (!inbox) {
+      throw notFoundException("Inbox not found")
+    }
+    return inbox
+  }
+
+  async updateMarkReadOnOutbound(props: {
+    workspaceId: string
+    id: string
+    enabled: boolean
+  }): Promise<InboxModel> {
+    const [inbox] = await db
+      .update(inboxModel)
+      .set({ markReadOnOutbound: props.enabled })
+      .where(
+        and(
+          eq(inboxModel.id, props.id),
+          eq(inboxModel.workspaceId, props.workspaceId),
+        ),
+      )
+      .returning()
+
+    if (!inbox) {
+      throw notFoundException("Inbox not found")
+    }
+
+    return inbox
   }
 
   /**
@@ -136,6 +233,32 @@ class InboxService extends BaseService {
       where: { id: props.id },
       with: InboxService.withIntegrations,
     })
+  }
+
+  /**
+   * Whether the workspace has ever connected an inbox on any of channels.
+   * Deliberately ignores Inbox.status, so a disconnected-but-once-connected
+   * channel still counts, matching the grandfathering rule the settings
+   * accordion applies. LIMIT 1 keys off Inbox_workspaceId_idx.
+   */
+  async hasAnyChannel(props: {
+    workspaceId: string
+    channels: readonly ChannelType[]
+  }): Promise<boolean> {
+    if (props.channels.length === 0) {
+      return false
+    }
+    const row = await db
+      .select({ id: inboxModel.id })
+      .from(inboxModel)
+      .where(
+        and(
+          eq(inboxModel.workspaceId, props.workspaceId),
+          inArray(inboxModel.channel, [...props.channels]),
+        ),
+      )
+      .limit(1)
+    return row.length > 0
   }
 
   /**
@@ -292,12 +415,22 @@ class InboxService extends BaseService {
     return inboxes.map((inbox) => inbox.id)
   }
 
+  /**
+   * `skipQuota` bypasses this method's own `tryConsume`/`increment` for a
+   * brand-new inbox — used only by `ConnectionService.connectTargets`
+   * (`@chatbotx.io/connections`), which activates the Connection through
+   * `connectionStateService.transition` right after this call: `transition`
+   * owns the quota edge for that path, so consuming here too would charge
+   * the workspace twice for one new channel. Every other caller leaves it
+   * `false` (default) and keeps today's behaviour unchanged.
+   */
   async create(props: {
     data: Omit<typeof inboxModel.$inferInsert, "id"> & { id?: string }
     ownerId: string
     tx?: DatabaseClient
+    skipQuota?: boolean
   }): Promise<{ inbox: InboxModel; wasCreated: boolean }> {
-    const { data, ownerId, tx = db } = props
+    const { data, ownerId, tx = db, skipQuota = false } = props
 
     const existing = await tx.query.inboxModel.findFirst({
       where: {
@@ -309,6 +442,10 @@ class InboxService extends BaseService {
 
     if (existing) {
       if (existing.status === inboxStatuses.enum.disconnected) {
+        if (!skipQuota) {
+          await this.consumeChannelQuota(ownerId)
+        }
+
         const [updated] = await tx
           .update(inboxModel)
           .set({
@@ -319,17 +456,18 @@ class InboxService extends BaseService {
           })
           .where(eq(inboxModel.id, existing.id))
           .returning()
+
+        if (!skipQuota) {
+          await this.creditChannelUsage(data.workspaceId)
+        }
+
         return { inbox: updated, wasCreated: true }
       }
       return { inbox: existing, wasCreated: false }
     }
 
-    const consumed = await quotaEnforcementService.tryConsume({
-      userId: ownerId,
-      metric: "channels",
-    })
-    if (!consumed.ok) {
-      throw channelLimitReachedException()
+    if (!skipQuota) {
+      await this.consumeChannelQuota(ownerId)
     }
 
     const [inbox] = await tx
@@ -337,16 +475,34 @@ class InboxService extends BaseService {
       .values({ id: data.id ?? createId(), ...data })
       .returning()
 
+    if (!skipQuota) {
+      await this.creditChannelUsage(data.workspaceId)
+    }
+
+    return { inbox, wasCreated: true }
+  }
+
+  /** Authoritative `channels` quota gate shared by `create`'s fresh-insert and revive branches. */
+  private async consumeChannelQuota(ownerId: string): Promise<void> {
+    const consumed = await quotaEnforcementService.tryConsume({
+      userId: ownerId,
+      metric: "channels",
+    })
+    if (!consumed.ok) {
+      throw channelLimitReachedException()
+    }
+  }
+
+  /** Display-only breakdown credit mirroring `consumeChannelQuota`; never lets a failure undo the quota unit already consumed above. */
+  private async creditChannelUsage(workspaceId: string): Promise<void> {
     await workspaceUsageService
-      .increment(data.workspaceId, "channels")
+      .increment(workspaceId, "channels")
       .catch((err) => {
         logger.warn(
-          { err, workspaceId: data.workspaceId },
+          { err, workspaceId },
           "workspace usage channel increment failed",
         )
       })
-
-    return { inbox, wasCreated: true }
   }
 
   async disconnect(props: {
@@ -365,7 +521,18 @@ class InboxService extends BaseService {
         disconnectedAt: new Date(),
         disconnectReason: props.reason,
       })
-      .where(eq(inboxModel.id, props.inboxId))
+      .where(
+        and(
+          eq(inboxModel.id, props.inboxId),
+          eq(inboxModel.workspaceId, props.workspaceId),
+        ),
+      )
+    // Whatever the channel, a disconnected Page must not keep a bulk AI
+    // hand-over running: stop it in the same transaction as the disconnect.
+    const ref = { workspaceId: props.workspaceId, inboxId: props.inboxId }
+    if (await aiHandoverSettingsRepository.lockExisting(ref, client)) {
+      await aiHandoverBulkRunRepository.cancelLive(ref, client)
+    }
 
     // Best-effort: never block/roll back the disconnect if release fails, the
     // nightly reconcile self-heals.
@@ -386,6 +553,62 @@ class InboxService extends BaseService {
         logger.warn(
           { err, inboxId: props.inboxId, workspaceId: props.workspaceId },
           "inbox disconnect: workspace usage channel decrement failed",
+        )
+      })
+  }
+
+  /**
+   * Temporary counterpart of `disconnect`'s pre-backfill fallback above:
+   * resumes an `Inbox` row `tenantService.suspend()` paused directly (no
+   * `Connection` row existed yet to route the pause through the engine) by
+   * re-consuming the `channels` quota unit that disconnect released, then
+   * mirroring the row back to `connected` — the same shape
+   * `connectionStateService.transition`'s `teardown.resume` edge produces
+   * for a backfilled connection. Throws `channelLimitReachedException` when
+   * the owner's quota is exhausted, same as `create` above; the caller
+   * (`tenantService.reactivate`) must catch it per-row so one exhausted
+   * owner doesn't abort the rest of the sweep. Remove alongside
+   * `inboxRepository.listTenantSuspendedWithoutConnectionByOwner` once the
+   * `Connection` backfill's `--verify` is 0.
+   */
+  async resumeTenantSuspended(props: {
+    inboxId: string
+    workspaceId: string
+    ownerId: string
+    tx?: DatabaseClient
+  }): Promise<void> {
+    const client = props.tx ?? db
+
+    const consumed = await quotaEnforcementService.tryConsume({
+      userId: props.ownerId,
+      metric: "channels",
+    })
+    if (!consumed.ok) {
+      throw channelLimitReachedException()
+    }
+
+    await client
+      .update(inboxModel)
+      .set({
+        status: inboxStatuses.enum.connected,
+        disconnectedAt: null,
+        disconnectReason: null,
+      })
+      .where(
+        and(
+          eq(inboxModel.id, props.inboxId),
+          eq(inboxModel.workspaceId, props.workspaceId),
+        ),
+      )
+
+    // Display-only breakdown, mirroring `create`'s increment. Never let a
+    // failure here affect the authoritative quota unit already consumed above.
+    await workspaceUsageService
+      .increment(props.workspaceId, "channels")
+      .catch((err) => {
+        logger.warn(
+          { err, inboxId: props.inboxId, workspaceId: props.workspaceId },
+          "inbox resume: workspace usage channel increment failed",
         )
       })
   }
@@ -455,6 +678,14 @@ class InboxService extends BaseService {
       where: { id },
       with: { integrationWhatsapp: true },
     })
+  }
+
+  /** Existing rows only, including disconnected inboxes. */
+  async listLabelsByIds(input: {
+    workspaceId: string
+    ids: string[]
+  }): Promise<IdLabel[]> {
+    return await selectLabelsByIds(inboxModel, input)
   }
 }
 export const inboxService = new InboxService()

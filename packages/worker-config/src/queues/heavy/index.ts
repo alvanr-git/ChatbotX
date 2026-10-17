@@ -13,7 +13,7 @@ import { z } from "zod"
 import {
   defaultJobOptions,
   fakeQueue,
-  getRedisConnection,
+  getQueueConnection,
   isNoRedisEnv,
 } from "../../lib/connection"
 import { queueNames } from "../../lib/types"
@@ -158,10 +158,19 @@ const heavyFlowContinuationSchema = z
     appointmentId: z.string().min(1).optional(),
     sendFrom: z.literal("inbox").optional(),
     nodeVisits: z.record(z.string(), z.number().int().nonnegative()).optional(),
+    // Must mirror every field of `CommentAnchor`. Zod strips unknown keys, so
+    // an omitted field is silently dropped on the way back out of the heavy
+    // queue — and the `.transform(... as HeavyFlowContinuation)` below hides
+    // the mismatch from the compiler. Dropping `spent` un-spends a claimed
+    // anchor: the next message-producing step sees `!spent`, re-claims it, and
+    // fires a second comment_id-anchored DM that Meta rejects with "The
+    // comment is invalid for a private reply".
     commentAnchor: z
       .object({
         commentId: z.string().min(1),
         replyChannel: z.enum(["public", "private"]),
+        automationId: z.string().min(1).optional(),
+        spent: z.boolean().optional(),
       })
       .optional(),
     trackingContext: z
@@ -300,6 +309,6 @@ export type HeavyAnalyzeImageResultData = z.infer<
 export const heavyQueue = isNoRedisEnv()
   ? fakeQueue
   : new Queue<HeavyJobData>(queueNames.enum.heavy, {
-      connection: getRedisConnection(),
+      connection: getQueueConnection(queueNames.enum.heavy),
       defaultJobOptions,
     })

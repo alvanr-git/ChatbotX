@@ -212,6 +212,8 @@ export const REASON_MESSAGE_KEYS: Partial<
   channelLimit: "channels.connectMany.reason.channelLimit",
   workspaceLimit: "channels.connectMany.reason.workspaceLimit",
   providerRejected: "channels.connectMany.reason.providerRejected",
+  internalError: "channels.connectMany.reason.unknown",
+  inProgress: "channels.connectMany.reason.inProgress",
   unknown: "channels.connectMany.reason.unknown",
 }
 
@@ -239,6 +241,7 @@ export function connectFailureMessageKey(
 /** Amber note under a `connected` row carrying a warning (e.g. follow-up failed). */
 export const WARNING_MESSAGE_KEYS: Record<ConnectWarning, MessageKey> = {
   followUpFailed: "channels.connectMany.reason.followUpFailed",
+  webhookSubscribeFailed: "channels.connectMany.reason.webhookSubscribeFailed",
 }
 
 export type RowNote = {

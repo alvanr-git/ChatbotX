@@ -72,6 +72,7 @@ const before = listMigrationFolders()
 const result = spawnSync("drizzle-kit", ["generate", `--name=${PROBE_NAME}`], {
   cwd: join(__dirname, ".."),
   encoding: "utf8",
+  shell: true,
 })
 
 if (result.error) {

@@ -4,8 +4,9 @@ import type {
   ButtonStepProps,
   EdgeSchema,
   FlowNode,
+  StepType,
 } from "@chatbotx.io/flow-config"
-import { encodeButtonPayload } from "@chatbotx.io/flow-config"
+import { encodeButtonPayload, stepTypes } from "@chatbotx.io/flow-config"
 import { SdkException } from "@chatbotx.io/sdk"
 import type { IntegrationJobRunFlowNode } from "@chatbotx.io/worker-config"
 import { beforeEach, describe, expect, type Mock, test, vi } from "vitest"
@@ -14,6 +15,7 @@ import { beforeEach, describe, expect, type Mock, test, vi } from "vitest"
 
 const integrationQueueAdd = vi.fn(async () => undefined)
 const chatQueueAdd = vi.fn(async () => undefined)
+const stateContinuationJobIdPattern = /^flow-state-[a-f0-9]{64}$/
 const detectConversationAndContactInbox = vi.fn()
 const detectFlowVersion = vi.fn()
 const findSendableBroadcast = vi.fn()
@@ -68,6 +70,20 @@ vi.mock("@chatbotx.io/database/schema", async (importOriginal) => {
     await importOriginal<typeof import("@chatbotx.io/database/schema")>()
   return { ...actual }
 })
+const armQuickReplySettings = vi.fn(async (..._args: unknown[]) => undefined)
+const clearQuickReplyPendingOnFlowEntry = vi.fn(
+  async (..._args: unknown[]) => undefined,
+)
+const clearQuickReplyChallengeOnTap = vi.fn(
+  async (..._args: unknown[]) => undefined,
+)
+vi.mock("../src/integration/handlers/quick-reply-settings", () => ({
+  armQuickReplySettings: (...args: unknown[]) => armQuickReplySettings(...args),
+  clearQuickReplyPendingOnFlowEntry: (...args: unknown[]) =>
+    clearQuickReplyPendingOnFlowEntry(...args),
+  clearQuickReplyChallengeOnTap: (...args: unknown[]) =>
+    clearQuickReplyChallengeOnTap(...args),
+}))
 vi.mock("../src/lib/logger", () => ({
   logger: { debug: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
@@ -372,6 +388,7 @@ describe("flow action target resolution", () => {
     findRichResponseByButton.mockClear()
     detectConversationAndContactInbox.mockReset()
     detectFlowVersion.mockReset()
+    clearQuickReplyChallengeOnTap.mockClear()
     // WhatsApp, Zalo, Telegram and TikTok all deliver a tapped reply through a
     // single webhook field, so the channel cannot say whether it was a step
     // button or a node quick reply.
@@ -422,11 +439,28 @@ describe("flow action target resolution", () => {
     expect(integrationQueueAdd).toHaveBeenCalled()
     const [action, job] = integrationQueueAdd.mock.calls[0] as unknown as [
       string,
-      { data: { nodeId: string } },
+      { data: { nodeId: string; isBulkBroadcast?: boolean } },
     ]
     expect(action).toBe("sendFlow")
     expect(job.data.nodeId).toBe("node-2")
+    expect(job.data.isBulkBroadcast).toBeUndefined()
   }
+
+  test("a quick reply tap clears a pending quick reply retry", async () => {
+    mockFlowWithReply({
+      steps: [],
+      quickReplies: [makeQuickReply(REPLY_ID, "Yes")],
+    })
+
+    await runFlowQuickReply({
+      conversationId: "conv-1",
+      contactInboxId: "ci-1",
+      action: replyAction(),
+      ref: null,
+    } as never)
+
+    expect(clearQuickReplyChallengeOnTap).toHaveBeenCalledOnce()
+  })
 
   test("runFlowPostback advances the flow for a node quick reply", async () => {
     mockFlowWithReply({
@@ -587,23 +621,60 @@ describe("seekConnectedNode", () => {
 })
 
 describe("MESSAGE_PRODUCING_STEP_TYPES", () => {
-  test("matches exactly the step types mapped to sendFlowMessage in flowStepHandlers", async () => {
-    const { MESSAGE_PRODUCING_STEP_TYPES } = await import(
+  // Exhaustiveness itself is a compile-time property of
+  // `Record<StepType, boolean>` — tsc fails if a new step type is unclassified.
+  // What the compiler cannot check is the other direction: a step WIRED to
+  // `sendFlowMessage` but marked `false` would be silently denied the anchor.
+  test("every step mapped to sendFlowMessage is marked as producing a message", async () => {
+    const { STEP_PRODUCES_MESSAGE } = await import(
       "../src/integration/handlers/flow-utils"
     )
     const { flowStepHandlers, sendFlowMessage } = await import(
       "../src/integration/handlers/step"
     )
 
-    const actualMessageProducingTypes = new Set(
-      Object.entries(flowStepHandlers)
-        .filter(([, handler]) => handler === sendFlowMessage)
-        .map(([stepType]) => stepType),
+    const wiredToSendFlowMessage = Object.entries(flowStepHandlers)
+      .filter(([, handler]) => handler === sendFlowMessage)
+      .map(([stepType]) => stepType)
+
+    const misclassified = wiredToSendFlowMessage.filter(
+      (stepType) => !STEP_PRODUCES_MESSAGE[stepType as StepType],
     )
 
-    expect(new Set(MESSAGE_PRODUCING_STEP_TYPES)).toEqual(
-      actualMessageProducingTypes,
+    expect(misclassified).toEqual([])
+  })
+
+  // `getUserData` is the case the classification exists for: it sends its
+  // prompt from its own handler, so no wiring check can infer it.
+  test("marks getUserData as producing a message even though it is not wired to sendFlowMessage", async () => {
+    const { STEP_PRODUCES_MESSAGE, MESSAGE_PRODUCING_STEP_TYPES } =
+      await import("../src/integration/handlers/flow-utils")
+    const { flowStepHandlers, sendFlowMessage } = await import(
+      "../src/integration/handlers/step"
     )
+
+    expect(flowStepHandlers[stepTypes.enum.getUserData]).not.toBe(
+      sendFlowMessage,
+    )
+    expect(STEP_PRODUCES_MESSAGE[stepTypes.enum.getUserData]).toBe(true)
+    expect(MESSAGE_PRODUCING_STEP_TYPES.has(stepTypes.enum.getUserData)).toBe(
+      true,
+    )
+  })
+
+  // These two also send from their own handler, but through `sendChatMessage`,
+  // whose job type carries no `commentAnchor` — so they must NOT claim it.
+  // Pinned so the pairing is broken loudly if someone flips them without
+  // adding the forwarding.
+  test("keeps steps that cannot forward the anchor out of the set", async () => {
+    const { STEP_PRODUCES_MESSAGE } = await import(
+      "../src/integration/handlers/flow-utils"
+    )
+
+    expect(STEP_PRODUCES_MESSAGE[stepTypes.enum.appointmentScheduling]).toBe(
+      false,
+    )
+    expect(STEP_PRODUCES_MESSAGE[stepTypes.enum.questionnaires]).toBe(false)
   })
 })
 
@@ -686,6 +757,64 @@ describe("executeMultipleSteps — explicit status routing", () => {
       { data: { nodeId: string } },
     ]
     expect(jobArg.data.nodeId).toBe("success-node")
+  })
+
+  test("keeps a durable execution key and deduplicates a retried state branch", async () => {
+    const stateId = "state-ok"
+    const step = makeStep("autoAssignConversation", [
+      { id: stateId, stateType: "success" },
+    ])
+    const flowVersion = makeFlowVersion(
+      [],
+      [
+        {
+          id: "e1",
+          source: "n1",
+          sourceHandle: stateId,
+          target: "success-node",
+          targetHandle: "input",
+        },
+      ],
+    )
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    mockSpy(flowStepHandlers, "autoAssignConversation").mockResolvedValue({
+      status: "success",
+      result: null,
+    })
+
+    await executeMultipleSteps({
+      ...makeBaseProps(flowVersion),
+      flowExecutionKey: "parent-job-1:123",
+      nodeVisits: { "node-1": 1 },
+      steps: [step],
+    })
+    await executeMultipleSteps({
+      ...makeBaseProps(flowVersion),
+      flowExecutionKey: "parent-job-1:123",
+      nodeVisits: { "node-1": 1 },
+      steps: [step],
+    })
+
+    const [, job, firstOptions] = integrationQueueAdd.mock
+      .calls[0] as unknown as [
+      string,
+      { data: { flowExecutionKey?: string; nodeId: string } },
+      { jobId?: string },
+    ]
+    const [, , secondOptions] = integrationQueueAdd.mock
+      .calls[1] as unknown as [
+      string,
+      { data: { flowExecutionKey?: string; nodeId: string } },
+      { jobId?: string },
+    ]
+    expect(job.data).toMatchObject({
+      flowExecutionKey: "parent-job-1:123",
+      nodeId: "success-node",
+    })
+    expect(firstOptions.jobId).toMatch(stateContinuationJobIdPattern)
+    expect(secondOptions.jobId).toBe(firstOptions.jobId)
   })
 
   test("error status routes to error-connected node, not success node", async () => {
@@ -1064,6 +1193,43 @@ describe("runStepsAndQuickReplies — per-step re-dispatch", () => {
     expect(action).toBe("sendFlow")
     expect(job.data.startFromStepId).toBe("step-2")
     expect(job.data.nodeId).toBe("node-1")
+  })
+
+  test("hands the parent's execution key to the next step so a retried parent cannot fork it", async () => {
+    const step1 = { ...makeStep("sendText"), id: "step-1" }
+    const step2 = { ...makeStep("sendText"), id: "step-2" }
+
+    await runStepsAndQuickReplies({
+      ...makeBaseProps(),
+      details: { steps: [step1, step2] },
+      triggerNextNode: false,
+      flowExecutionKey: "job-parent-1",
+    })
+
+    const [, job] = integrationQueueAdd.mock.calls[0] as unknown as [
+      string,
+      { data: { flowExecutionKey?: string } },
+    ]
+    expect(job.data.flowExecutionKey).toBe("job-parent-1")
+  })
+
+  test("preserves bulk outbound state for the next step in an initial broadcast flow", async () => {
+    const step1 = { ...makeStep("sendText"), id: "step-1" }
+    const step2 = { ...makeStep("sendText"), id: "step-2" }
+    const props = {
+      ...makeBaseProps(),
+      details: { steps: [step1, step2] },
+      isBulkBroadcast: true,
+      triggerNextNode: false,
+    }
+
+    await runStepsAndQuickReplies(props)
+
+    const [, job] = integrationQueueAdd.mock.calls[0] as unknown as [
+      string,
+      { data: { isBulkBroadcast?: boolean } },
+    ]
+    expect(job.data.isBulkBroadcast).toBe(true)
   })
 
   test("runs beforeStep on initial entry (startFromStepId undefined)", async () => {
@@ -1756,6 +1922,171 @@ describe("runStepsAndQuickReplies — commentAnchor propagation", () => {
   })
 })
 
+// `getUserData` sends its prompt through its own handler rather than
+// `sendFlowMessage`, so it was left out of MESSAGE_PRODUCING_STEP_TYPES and
+// handed `commentAnchor: undefined`. A question-first flow then never claimed
+// the single comment_id-anchored DM Meta grants per comment, and a question
+// after a `sendText` reached the channel with no anchor at all — so
+// `assertCommentPrivateReplyFollowUpDeliverable` never ran and a closed window
+// surfaced as a generic Send API rejection instead of a readable reason.
+describe("executeMultipleSteps — getUserData claims the commentAnchor", () => {
+  const commentAnchor = {
+    commentId: "comment-1",
+    replyChannel: "private" as const,
+  }
+  const spentAnchor = { ...commentAnchor, spent: true }
+
+  async function spyOnGetUserData() {
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    return mockSpy(flowStepHandlers, "getUserData").mockResolvedValue({
+      status: "wait",
+      result: null,
+    })
+  }
+
+  test("hands the unspent private anchor to a getUserData step that sends first", async () => {
+    const getUserDataSpy = await spyOnGetUserData()
+    const props = {
+      ...makeBaseProps(),
+      steps: [makeStep("getUserData")],
+      commentAnchor,
+    }
+
+    await executeMultipleSteps(props)
+
+    expect(getUserDataSpy.mock.calls[0]?.[0].commentAnchor).toEqual(
+      commentAnchor,
+    )
+  })
+
+  // `getUserData` returns "wait", which ends this pass — the step after it runs
+  // from a later job. The spent anchor rides out on the result so that job (and
+  // the channel handler behind it) knows the one anchored DM is already gone.
+  test("marks the anchor spent on the result, so the resumed run takes the window-gated path", async () => {
+    await spyOnGetUserData()
+    const props = {
+      ...makeBaseProps(),
+      steps: [makeStep("getUserData")],
+      commentAnchor,
+    }
+
+    const result = await executeMultipleSteps(props)
+
+    expect(result?.commentAnchor).toEqual(spentAnchor)
+  })
+
+  test("hands a spent anchor to a getUserData step that follows a sendText", async () => {
+    const getUserDataSpy = await spyOnGetUserData()
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    mockSpy(flowStepHandlers, "sendText").mockResolvedValue(undefined)
+    const props = {
+      ...makeBaseProps(),
+      steps: [
+        { ...makeStep("sendText"), id: "step-1" },
+        { ...makeStep("getUserData"), id: "step-2" },
+      ],
+      commentAnchor,
+    }
+
+    await executeMultipleSteps(props)
+
+    expect(getUserDataSpy.mock.calls[0]?.[0].commentAnchor).toEqual(spentAnchor)
+  })
+
+  // A public anchor is never consumed, so the prompt posts as a comment reply —
+  // which is what the contact's next comment resolves back to. Before this it
+  // went out as a plain DM on the comment-anchored conversation, where nothing
+  // could reach the contact.
+  test("hands an unconsumed public anchor to getUserData", async () => {
+    const getUserDataSpy = await spyOnGetUserData()
+    const publicAnchor = {
+      commentId: "comment-1",
+      replyChannel: "public" as const,
+    }
+    const props = {
+      ...makeBaseProps(),
+      steps: [makeStep("getUserData")],
+      commentAnchor: publicAnchor,
+    }
+
+    await executeMultipleSteps(props)
+
+    expect(getUserDataSpy.mock.calls[0]?.[0].commentAnchor).toEqual(
+      publicAnchor,
+    )
+  })
+
+  test("leaves commentAnchor undefined when the run did not start from a comment", async () => {
+    const getUserDataSpy = await spyOnGetUserData()
+    const props = { ...makeBaseProps(), steps: [makeStep("getUserData")] }
+
+    await executeMultipleSteps(props)
+
+    expect(getUserDataSpy).toHaveBeenCalledOnce()
+    expect(getUserDataSpy.mock.calls[0]?.[0].commentAnchor).toBeUndefined()
+  })
+
+  // The claim must not happen until the handler has run and not errored.
+  // `getUserData` writes its challenge row before sending, so a DB failure
+  // there returns "error" having sent nothing — and because the step declares
+  // only [success, skip], an error does not branch and the loop continues. If
+  // the anchor were claimed up front, the next step would be refused a private
+  // reply that was never sent.
+  test("does not claim the anchor when the step errored before sending", async () => {
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    mockSpy(flowStepHandlers, "getUserData").mockResolvedValue({
+      status: "error",
+      result: null,
+      errorMessage: "challenge write failed",
+    })
+    const sendTextSpy = mockSpy(flowStepHandlers, "sendText").mockResolvedValue(
+      undefined,
+    )
+    const props = {
+      ...makeBaseProps(),
+      steps: [
+        { ...makeStep("getUserData"), id: "step-1" },
+        { ...makeStep("sendText"), id: "step-2" },
+      ],
+      commentAnchor,
+    }
+
+    await executeMultipleSteps(props)
+
+    expect(sendTextSpy).toHaveBeenCalledOnce()
+    expect(sendTextSpy.mock.calls[0]?.[0].commentAnchor).toEqual(commentAnchor)
+  })
+
+  test("still claims the anchor for a message step that succeeded", async () => {
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    mockSpy(flowStepHandlers, "sendText").mockResolvedValue(undefined)
+    const sendImageSpy = mockSpy(
+      flowStepHandlers,
+      "sendImage",
+    ).mockResolvedValue(undefined)
+    const props = {
+      ...makeBaseProps(),
+      steps: [
+        { ...makeStep("sendText"), id: "step-1" },
+        { ...makeStep("sendImage"), id: "step-2" },
+      ],
+      commentAnchor,
+    }
+
+    await executeMultipleSteps(props)
+
+    expect(sendImageSpy.mock.calls[0]?.[0].commentAnchor).toEqual(spentAnchor)
+  })
+})
+
 describe("runStepsAndQuickReplies — public commentAnchor is never consumed", () => {
   beforeEach(() => {
     integrationQueueAdd.mockClear()
@@ -2297,5 +2628,78 @@ describe("runFlowNode — stop/resume guard", () => {
     await expect(runFlowNode(initialDispatchJobData)).rejects.toBe(sentinel)
 
     expect(resetContactForResume).not.toHaveBeenCalled()
+  })
+})
+
+describe("runStepsAndQuickReplies — quick reply settings", () => {
+  beforeEach(() => {
+    integrationQueueAdd.mockClear()
+    armQuickReplySettings.mockClear()
+    clearQuickReplyPendingOnFlowEntry.mockClear()
+  })
+
+  const quickReply = makeQuickReply("qr-1", "Yes")
+  const carrierStep = {
+    id: "s-1",
+    stepType: "sendText",
+    text: "Hi",
+    buttons: [],
+  } as unknown as BaseStepSchema
+
+  test("arms after the carrier step on a node entry", async () => {
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    const sendSpy = mockSpy(flowStepHandlers, "sendText").mockResolvedValue({
+      status: "success",
+      result: null,
+    })
+    try {
+      const details = { steps: [carrierStep], quickReplies: [quickReply] }
+      await runStepsAndQuickReplies({
+        ...makeBaseProps(),
+        details,
+        targetType: "node",
+        targetId: "node-1",
+        targetNodeId: "node-1",
+        triggerNextNode: false,
+      })
+      expect(clearQuickReplyPendingOnFlowEntry).toHaveBeenCalledOnce()
+      expect(sendSpy).toHaveBeenCalledOnce()
+      expect(armQuickReplySettings).toHaveBeenCalledWith(
+        expect.objectContaining({ nodeId: "node-1", details }),
+      )
+    } finally {
+      sendSpy.mockRestore()
+    }
+  })
+
+  test("does not arm or clear for a tapped quick reply target", async () => {
+    const { flowStepHandlers } = await import(
+      "../src/integration/handlers/step"
+    )
+    const sendSpy = mockSpy(flowStepHandlers, "sendText").mockResolvedValue({
+      status: "success",
+      result: null,
+    })
+    try {
+      await runStepsAndQuickReplies({
+        ...makeBaseProps(),
+        details: {
+          ...makeQuickReply("qr-1", "Yes"),
+          steps: [carrierStep],
+          quickReplies: [quickReply],
+        },
+        targetType: "quickReply",
+        targetId: "qr-1",
+        targetNodeId: "node-1",
+        triggerNextNode: false,
+      })
+      expect(sendSpy).toHaveBeenCalledOnce()
+      expect(armQuickReplySettings).not.toHaveBeenCalled()
+      expect(clearQuickReplyPendingOnFlowEntry).not.toHaveBeenCalled()
+    } finally {
+      sendSpy.mockRestore()
+    }
   })
 })

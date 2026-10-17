@@ -1,5 +1,6 @@
 import {
   createMessageRepository,
+  flowRepository,
   mediaLibraryFileRepository,
 } from "@chatbotx.io/database/repositories"
 import type {
@@ -14,6 +15,7 @@ import {
   uploader,
   uploadMultipleFiles,
 } from "@chatbotx.io/filesystem"
+import type { SendProductsContent } from "@chatbotx.io/flow-config"
 import { RealtimeEventType } from "@chatbotx.io/partysocket-config"
 import { createId } from "@chatbotx.io/utils"
 import {
@@ -24,13 +26,20 @@ import {
 } from "@chatbotx.io/worker-config"
 import { contactInboxService } from "../contact-inbox/service"
 import { conversationService } from "../conversation/service"
-import { ChatbotXException } from "../errors"
+import {
+  ChatbotXException,
+  notFoundException,
+  validationException,
+} from "../errors"
 import { logger } from "../logger"
+import { publishToWorkspaceParty } from "../platform/realtime-broadcast"
 import { resolveTenantSettings } from "../platform/settings"
+import { productMessageService } from "../product-message/service"
 import { getPublicFileUrl } from "../utils"
 
 type CreateOutgoingInput = (
   | { flowId: string; nodeId?: string }
+  | { products: SendProductsContent }
   | {
       text?: string
       files?: File[]
@@ -50,6 +59,17 @@ type CreateOutgoingInput = (
   replyToMessageId?: string
   replyToMessageCreatedAt?: Date
   isPrivateReply?: boolean
+  /**
+   * Agent dismissed the WhatsApp standby lock: the worker skips the
+   * thread-control send gate for this message.
+   */
+  bypassThreadControlLock?: boolean
+  /**
+   * Explicit content attributes for the created message row (e.g. the
+   * WhatsApp `call_permission_request` marker read by the outgoing-message
+   * handler). Overrides the `isPrivateReply`-derived default when set.
+   */
+  contentAttributes?: Record<string, unknown> | null
 }
 
 /**
@@ -87,6 +107,24 @@ const copyMediaLibraryFileToConversationAttachment = async (props: {
   }
 }
 
+/** Carries the bypass flag to the send worker via `metadata`. */
+const withBypassThreadControlLock = (
+  contentAttributes: Record<string, unknown> | null,
+  bypass: boolean | undefined,
+): Record<string, unknown> | null => {
+  if (bypass !== true) {
+    return contentAttributes
+  }
+  const metadata = contentAttributes?.metadata
+  return {
+    ...contentAttributes,
+    metadata: {
+      ...(typeof metadata === "object" && metadata !== null ? metadata : {}),
+      bypassThreadControlLock: true,
+    },
+  }
+}
+
 export const createOutgoing = async (props: {
   conversation: ConversationModel
   contactInbox: ContactInboxModel
@@ -96,6 +134,17 @@ export const createOutgoing = async (props: {
   const { conversation, input: parsedInput, user, contactInbox } = props
 
   if ("flowId" in parsedInput) {
+    // The worker resolves the flow inside the conversation's workspace and
+    // fails asynchronously when it is missing; reject it here so the caller
+    // gets a 404 instead of a 204 for a send that can never happen.
+    if (
+      !(await flowRepository.existsInWorkspace({
+        workspaceId: conversation.workspaceId,
+        id: parsedInput.flowId,
+      }))
+    ) {
+      throw notFoundException("Flow not found")
+    }
     await integrationQueue.add(IntegrationJobAction.sendFlow, {
       type: IntegrationJobAction.sendFlow,
       data: {
@@ -108,6 +157,30 @@ export const createOutgoing = async (props: {
     })
     return null
   }
+
+  // A product message is a standalone DM; a comment reply would be routed to
+  // the comment handler, which cannot send it.
+  if (
+    "products" in parsedInput &&
+    (parsedInput.replyToMessageId || parsedInput.isPrivateReply)
+  ) {
+    throw validationException(
+      "products",
+      "Products can't be sent as a comment reply",
+    )
+  }
+  // Resolved before any row exists, so a message that cannot be sent leaves
+  // nothing behind. A caller asked for exactly these products, so a message
+  // that would go out without some of them is refused rather than trimmed.
+  const productMessage =
+    "products" in parsedInput
+      ? await productMessageService.prepareOutgoing({
+          workspaceId: conversation.workspaceId,
+          channel: contactInbox.channel,
+          content: parsedInput.products,
+          onMissing: "reject",
+        })
+      : undefined
 
   const { storageUrl } = await resolveTenantSettings({
     workspaceId: conversation.workspaceId,
@@ -193,9 +266,11 @@ export const createOutgoing = async (props: {
 
   const parentId = parsedInput.replyToMessageId ?? null
 
+  const plainText = "text" in parsedInput ? (parsedInput.text ?? null) : null
+
   const now = new Date()
   const messageInput = {
-    text: "text" in parsedInput ? (parsedInput.text ?? null) : null,
+    text: productMessage ? productMessage.text : plainText,
     messageType: "outgoing" as const,
     workspaceId: conversation.workspaceId,
     conversationId: targetConversation.id,
@@ -208,9 +283,12 @@ export const createOutgoing = async (props: {
       ? ("comment" as const)
       : ("message" as const),
     parentId,
-    contentAttributes: parsedInput.isPrivateReply
-      ? { isPrivateReply: true }
-      : null,
+    contentAttributes: withBypassThreadControlLock(
+      productMessage?.contentAttributes ??
+        parsedInput.contentAttributes ??
+        (parsedInput.isPrivateReply ? { isPrivateReply: true } : null),
+      parsedInput.bypassThreadControlLock,
+    ),
   }
 
   const attachmentInputs = uploadedFiles.map((file) => ({
@@ -252,26 +330,18 @@ export const createOutgoing = async (props: {
     })),
   }
 
+  publishToWorkspaceParty(messageWithAttachments.workspaceId, {
+    eventType: RealtimeEventType.messageCreated,
+    data: {
+      ...messageWithAttachments,
+      clientId: parsedInput.clientId,
+    },
+  })
+
   const jobs: {
     jobType: (typeof ChatJobAction)[keyof typeof ChatJobAction]
     promise: Promise<unknown>
   }[] = [
-    {
-      jobType: ChatJobAction.broadcastEvent,
-      promise: chatQueue.add(ChatJobAction.broadcastEvent, {
-        type: ChatJobAction.broadcastEvent,
-        data: {
-          workspaceId: messageWithAttachments.workspaceId,
-          event: {
-            eventType: RealtimeEventType.messageCreated,
-            data: {
-              ...messageWithAttachments,
-              clientId: parsedInput.clientId,
-            },
-          },
-        },
-      }),
-    },
     {
       jobType: ChatJobAction.sendChannelMessage,
       promise: chatQueue.add(
@@ -294,7 +364,7 @@ export const createOutgoing = async (props: {
           : []),
       ),
     },
-    ...(user && messageInput.text
+    ...(user && messageInput.text && !productMessage
       ? [
           {
             jobType: ChatJobAction.checkOutboundAutomatedResponse,

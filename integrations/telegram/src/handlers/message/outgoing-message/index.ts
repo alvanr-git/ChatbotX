@@ -7,6 +7,7 @@ import {
   type SendQuickReplyStepSchema,
   type SendTextStepSchema,
   type SendVideoStepSchema,
+  type StepType,
   stepTypes,
 } from "@chatbotx.io/flow-config"
 import {
@@ -40,6 +41,18 @@ import {
 import { convertFlowStepCarousel } from "./send-carousel"
 import { convertFlowStepQuickReply } from "./send-quick-reply"
 import { convertFlowStepText } from "./send-text"
+
+export const handledFlowStepTypes = [
+  stepTypes.enum.sendText,
+  stepTypes.enum.sendImage,
+  stepTypes.enum.sendVideo,
+  stepTypes.enum.sendMultipleImages,
+  stepTypes.enum.sendAudio,
+  stepTypes.enum.sendFile,
+  stepTypes.enum.sendGif,
+  stepTypes.enum.sendQuickReply,
+  stepTypes.enum.sendCarousel,
+] as const satisfies readonly StepType[]
 
 export const sendMessage: MessageHandlers<TelegramAuthValue>["sendMessage"] =
   async (props) => {
@@ -138,6 +151,7 @@ export const sendMessage: MessageHandlers<TelegramAuthValue>["sendMessage"] =
 
     return {
       messageIds,
+      sentCount: messageIds.length,
     }
   }
 
@@ -285,7 +299,7 @@ export const sendFlowStep: MessageHandlers<TelegramAuthValue>["sendFlowStep"] =
           break
         }
         default:
-          break
+          throw new Error(`Unsupported Telegram flow step: ${step.stepType}`)
       }
     } catch (error) {
       logger.error(error, "An error occurred while sending flow step")
@@ -294,5 +308,6 @@ export const sendFlowStep: MessageHandlers<TelegramAuthValue>["sendFlowStep"] =
 
     return {
       messageIds,
+      sentCount: messageIds.length,
     }
   }

@@ -3,14 +3,21 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
+  and: vi.fn((...conditions: unknown[]) => ({
+    and: conditions.filter((condition) => condition !== undefined),
+  })),
   findMany: vi.fn(),
   findFirst: vi.fn(),
   audienceFindMany: vi.fn(),
   count: vi.fn(),
   eq: vi.fn((field: unknown, value: unknown) => ({ field, value })),
+  inArray: vi.fn((field: unknown, values: unknown[]) => ({ field, values })),
+  isNull: vi.fn((field: unknown) => ({ isNull: field })),
+  ne: vi.fn((field: unknown, value: unknown) => ({ ne: [field, value] })),
 }))
 
 vi.mock("@chatbotx.io/database/client", () => ({
+  and: mocks.and,
   db: {
     query: {
       broadcastModel: {
@@ -24,11 +31,21 @@ vi.mock("@chatbotx.io/database/client", () => ({
     $count: mocks.count,
   },
   eq: mocks.eq,
+  inArray: mocks.inArray,
+  isNull: mocks.isNull,
+  ne: mocks.ne,
   relationsFilterToSQL: vi.fn(() => "sql-filter"),
 }))
 
 vi.mock("@chatbotx.io/database/schema", () => ({
-  broadcastModel: { name: "broadcastModel.name" },
+  broadcastModel: {
+    id: "broadcastModel.id",
+    name: "broadcastModel.name",
+    workspaceId: "broadcastModel.workspaceId",
+    channel: "broadcastModel.channel",
+    status: "broadcastModel.status",
+    deletedAt: "broadcastModel.deletedAt",
+  },
   contactsOnBroadcastsModel: { broadcastId: "broadcastId-column" },
 }))
 
@@ -65,6 +82,25 @@ describe("broadcastRepository.listWithRelations", () => {
     expect(call.with.integrationWhatsapp).toBeDefined()
   })
 
+  // The broadcast "view" dialog reads each page's template/flow from
+  // `targets`; without it a multi-page broadcast shows no page, flow or
+  // template at all.
+  test("loads every target page with its page and flow names", async () => {
+    mocks.findMany.mockResolvedValue([])
+
+    await broadcastRepository.listWithRelations({ workspaceId: "ws-1" })
+
+    const call = mocks.findMany.mock.calls[0]?.[0] as {
+      with: { targets: unknown }
+    }
+    expect(call.with.targets).toEqual({
+      with: {
+        inbox: { columns: { id: true, name: true } },
+        flow: { columns: { id: true, name: true } },
+      },
+    })
+  })
+
   test("passes the status filter through to the where clause", async () => {
     mocks.findMany.mockResolvedValue([])
 
@@ -91,6 +127,135 @@ describe("broadcastRepository.listWithRelations", () => {
       where: { status?: string }
     }
     expect(call.where.status).toBeUndefined()
+  })
+})
+
+describe("broadcastRepository recurrence filters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const whereOf = async (
+    input: Parameters<typeof broadcastRepository.listWithRelations>[0],
+  ) => {
+    mocks.findMany.mockResolvedValue([])
+    await broadcastRepository.listWithRelations(input)
+    return (
+      mocks.findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> }
+    ).where
+  }
+
+  test("shows runs and templates by default, so existing callers see no change", async () => {
+    const where = await whereOf({ workspaceId: "ws-1" })
+    expect(where.occurrenceAt).toBeUndefined()
+    expect(where.OR).toBeUndefined()
+    expect(where.parentBroadcastId).toBeUndefined()
+    expect(where.schedulesType).toBeUndefined()
+  })
+
+  test("includeRuns=false hides runs through occurrenceAt, which outlives a purged template", async () => {
+    const where = await whereOf({ workspaceId: "ws-1", includeRuns: false })
+    expect(where.occurrenceAt).toEqual({ isNull: true })
+  })
+
+  test("excludeTemplates keeps everything except a recurring broadcast without an occurrence", async () => {
+    const where = await whereOf({ workspaceId: "ws-1", excludeTemplates: true })
+    expect(where.OR).toEqual([
+      { schedulesType: { ne: "recurring" } },
+      { occurrenceAt: { isNotNull: true } },
+    ])
+  })
+
+  test("parentBroadcastId and schedulesType narrow the list", async () => {
+    const where = await whereOf({
+      workspaceId: "ws-1",
+      parentBroadcastId: "tpl-1",
+      schedulesType: "recurring",
+    })
+    expect(where.parentBroadcastId).toBe("tpl-1")
+    expect(where.schedulesType).toBe("recurring")
+  })
+
+  test("loads the schedule summary and the parent name without extra queries", async () => {
+    mocks.findMany.mockResolvedValue([])
+    await broadcastRepository.listWithRelations({ workspaceId: "ws-1" })
+    const call = mocks.findMany.mock.calls[0]?.[0] as {
+      with: {
+        recurrence: { columns: Record<string, boolean> }
+        parent: unknown
+      }
+    }
+    expect(Object.keys(call.with.recurrence.columns)).toEqual(
+      expect.arrayContaining([
+        "rule",
+        "nextRunAt",
+        "occurrenceCount",
+        "pausedAt",
+        "endedAt",
+      ]),
+    )
+    expect(call.with.parent).toEqual({ columns: { id: true, name: true } })
+  })
+})
+
+describe("broadcastRepository list filters", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test("narrows by channel and schedule window", async () => {
+    mocks.findMany.mockResolvedValue([])
+    const from = new Date("2026-10-01T00:00:00Z")
+    const to = new Date("2026-10-31T00:00:00Z")
+
+    await broadcastRepository.listWithRelations({
+      workspaceId: "ws-1",
+      channel: "whatsapp",
+      scheduledFrom: from,
+      scheduledTo: to,
+    })
+
+    const call = mocks.findMany.mock.calls[0]?.[0] as {
+      where: { channel?: string; schedulesAt?: { gte?: Date; lte?: Date } }
+    }
+    expect(call.where.channel).toBe("whatsapp")
+    expect(call.where.schedulesAt).toEqual({ gte: from, lte: to })
+  })
+
+  test("adds no schedule or channel condition when none is given", async () => {
+    mocks.findMany.mockResolvedValue([])
+
+    await broadcastRepository.listWithRelations({ workspaceId: "ws-1" })
+
+    const call = mocks.findMany.mock.calls[0]?.[0] as {
+      where: { channel?: string; schedulesAt?: unknown }
+    }
+    expect(call.where.channel).toBeUndefined()
+    expect(call.where.schedulesAt).toBeUndefined()
+  })
+
+  test("an empty or unknown sort still orders by newest first", async () => {
+    mocks.findMany.mockResolvedValue([])
+
+    await broadcastRepository.listWithRelations({
+      workspaceId: "ws-1",
+      sort: [],
+    })
+
+    const call = mocks.findMany.mock.calls[0]?.[0] as { orderBy: unknown }
+    expect(call.orderBy).toEqual({ createdAt: "desc" })
+  })
+
+  test("get-by-id loads the target pages too", async () => {
+    mocks.findFirst.mockResolvedValue({ id: "b" })
+
+    await broadcastRepository.findByIdOrName({
+      workspaceId: "ws-1",
+      idOrName: "7",
+    })
+
+    const call = mocks.findFirst.mock.calls[0]?.[0] as { with: unknown }
+    expect(call.with).toHaveProperty("targets")
   })
 })
 
@@ -124,6 +289,58 @@ describe("broadcastRepository.listAudience / countAudience", () => {
 
     expect(result).toBe(3)
     expect(mocks.count).toHaveBeenCalled()
+  })
+})
+
+describe("broadcastRepository.countActive", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  test("counts active rows by workspace, channel, statuses, and non-deleted state", async () => {
+    mocks.count.mockResolvedValue(1)
+
+    const result = await broadcastRepository.countActive({
+      workspaceId: "ws-1",
+      channel: "messenger",
+      statuses: ["scheduled", "sending"],
+    })
+
+    expect(result).toBe(1)
+    expect(mocks.count).toHaveBeenCalledWith(expect.anything(), {
+      and: [
+        { field: "broadcastModel.workspaceId", value: "ws-1" },
+        { field: "broadcastModel.channel", value: "messenger" },
+        {
+          field: "broadcastModel.status",
+          values: ["scheduled", "sending"],
+        },
+        { isNull: "broadcastModel.deletedAt" },
+      ],
+    })
+    expect(mocks.ne).not.toHaveBeenCalled()
+  })
+
+  test("excludes the supplied broadcast id and uses the passed transaction", async () => {
+    const transactionCount = vi.fn().mockResolvedValue(2)
+
+    const result = await broadcastRepository.countActive(
+      {
+        workspaceId: "ws-1",
+        channel: "messenger",
+        statuses: ["scheduled", "sending"],
+        excludeId: "broadcast-1",
+      },
+      { $count: transactionCount } as never,
+    )
+
+    expect(result).toBe(2)
+    expect(transactionCount).toHaveBeenCalledWith(expect.anything(), {
+      and: expect.arrayContaining([
+        { ne: ["broadcastModel.id", "broadcast-1"] },
+      ]),
+    })
+    expect(mocks.count).not.toHaveBeenCalled()
   })
 })
 

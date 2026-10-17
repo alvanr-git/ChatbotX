@@ -6,7 +6,7 @@ import { InputNumberField } from "@chatbotx.io/ui/components/form/input-number-f
 import { RadioGroupField } from "@chatbotx.io/ui/components/form/radio-group-field"
 import { SelectField } from "@chatbotx.io/ui/components/form/select-field"
 import { SwitchField } from "@chatbotx.io/ui/components/form/switch-field"
-import { TextareaField } from "@chatbotx.io/ui/components/form/textarea-field"
+import { Button } from "@chatbotx.io/ui/components/ui/button"
 import {
   Card,
   CardContent,
@@ -23,14 +23,23 @@ import {
 } from "@chatbotx.io/ui/components/ui/form"
 import { TagsInputField } from "@chatbotx.io/ui/components/ui/muhammada86/tags-input-field"
 import { useTranslations } from "next-intl"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { UseFormReturn } from "react-hook-form"
 import { useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { useAIAgentSelectOptions } from "@/features/ai-agents/hooks/use-ai-agents"
 import { useFlowSelectOptions } from "@/features/flows/provider/flow-hook"
+import {
+  AutomationAccountField,
+  useAccountChoiceMissing,
+} from "@/features/shared/comment-automation/automation-account-field"
+import { ExcludeKeywordsField } from "@/features/shared/comment-automation/exclude-keywords-field"
+import { ReplyTextsField } from "@/features/shared/comment-automation/reply-texts-field"
+import { ReplyToField } from "@/features/shared/comment-automation/reply-to-field"
 import { useWorkspaceId } from "@/hooks/routing"
+import { useThreadsPosts } from "../hooks/use-threads-posts"
 import type { CreateThreadsCommentRequest } from "../schema/action"
+import { SelectThreadsPostsDialog } from "./select-threads-posts-dialog"
 
 type Props = {
   form: UseFormReturn<CreateThreadsCommentRequest>
@@ -56,6 +65,17 @@ export function ThreadsCommentForm({
     name: "publicReply.type",
   })
   const postType = useWatch({ control: form.control, name: "post.type" })
+  const postValue =
+    useWatch({ control: form.control, name: "post.value" }) ?? []
+  const inboxId = useWatch({ control: form.control, name: "inboxId" })
+  const accountChoiceMissing = useAccountChoiceMissing("threads")
+  // Reads the picker's cached posts only; never fetches on its own.
+  const { data: threadsPosts } = useThreadsPosts(useWorkspaceId(), {
+    enabled: false,
+  })
+  const findPostOwner = (id: string) =>
+    threadsPosts?.posts.find((post) => post.id === id)?.inboxId
+  const [selectPostsOpen, setSelectPostsOpen] = useState(false)
   const includeKeywordsType = useWatch({
     control: form.control,
     name: "includeKeywords.type",
@@ -85,8 +105,24 @@ export function ThreadsCommentForm({
     }
   }, [form, postType])
 
+  const hideKeywords = useWatch({
+    control: form.control,
+    name: "hideComments.hasKeywords",
+  })
+
   useEffect(() => {
-    if (includeKeywordsType === "all") {
+    if (!hideKeywords) {
+      form.setValue("hideComments.keywords", [], {
+        shouldDirty: true,
+        shouldValidate: true,
+      })
+    }
+  }, [form, hideKeywords])
+
+  useEffect(() => {
+    // Neither `all` nor `mentions` reads keywords; a stale list would only
+    // fail validation for a field the user can no longer see.
+    if (includeKeywordsType === "all" || includeKeywordsType === "mentions") {
       form.setValue("includeKeywords.value", [], {
         shouldDirty: true,
         shouldValidate: true,
@@ -135,6 +171,12 @@ export function ThreadsCommentForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <AutomationAccountField
+            findTargetOwner={findPostOwner}
+            targetField="post"
+            type="threads"
+          />
+
           <RadioGroupField
             label={t("threadsCommentAutomation.trackCommentsOn")}
             name="post.type"
@@ -158,18 +200,30 @@ export function ThreadsCommentForm({
               name="post.value"
               render={() => (
                 <FormItem>
-                  <FormLabel>
-                    {t("threadsCommentAutomation.specificPostIds")}
-                  </FormLabel>
                   <FormControl>
-                    <TagsInputField
-                      name="post.value"
-                      placeholder={t(
-                        "threadsCommentAutomation.postIdPlaceholder",
-                      )}
-                    />
+                    <Button
+                      className="w-full"
+                      onClick={() => setSelectPostsOpen(true)}
+                      type="button"
+                      variant="outline"
+                    >
+                      {t("threadsCommentAutomation.chooseSpecificPosts")}
+                      {postValue.length > 0 && ` (${postValue.length})`}
+                    </Button>
                   </FormControl>
                   <FormMessage />
+                  <SelectThreadsPostsDialog
+                    inboxId={inboxId}
+                    onChange={(ids) =>
+                      form.setValue("post.value", ids, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    onOpenChange={setSelectPostsOpen}
+                    open={selectPostsOpen}
+                    value={postValue}
+                  />
                 </FormItem>
               )}
             />
@@ -203,10 +257,11 @@ export function ThreadsCommentForm({
           />
 
           {replyType === "text" ? (
-            <TextareaField
+            <ReplyTextsField
+              channel="threads"
               label={t("threadsCommentAutomation.replyMessage")}
-              name="publicReply.value"
-              required
+              name="publicReply"
+              placeholder={t("threadsCommentAutomation.replyMessage")}
             />
           ) : null}
           {replyType === "flow" ? (
@@ -233,68 +288,22 @@ export function ThreadsCommentForm({
           <CardTitle>{t("threadsCommentAutomation.card.filters")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SelectField
-            label={t("threadsCommentAutomation.includeKeywordsType")}
-            name="includeKeywords.type"
-            options={[
-              {
-                label: t("threadsCommentAutomation.keywordsType.all"),
-                value: "all",
-              },
-              {
-                label: t("threadsCommentAutomation.keywordsType.equal"),
-                value: "equal",
-              },
-              {
-                label: t("threadsCommentAutomation.keywordsType.contain"),
-                value: "contain",
-              },
-            ]}
-            required
+          <ReplyToField
+            labels={{
+              type: t("threadsCommentAutomation.includeKeywordsType"),
+              keywords: t("threadsCommentAutomation.includeKeywords"),
+              keywordsPlaceholder: t(
+                "threadsCommentAutomation.keywordsPlaceholder",
+              ),
+              all: t("threadsCommentAutomation.keywordsType.all"),
+              equal: t("threadsCommentAutomation.keywordsType.equal"),
+              contain: t("threadsCommentAutomation.keywordsType.contain"),
+            }}
           />
 
-          {includeKeywordsType === "all" ? null : (
-            <FormField
-              control={form.control}
-              name="includeKeywords.value"
-              render={() => (
-                <FormItem>
-                  <FormLabel>
-                    {t("threadsCommentAutomation.includeKeywords")}
-                  </FormLabel>
-                  <FormControl>
-                    <TagsInputField
-                      name="includeKeywords.value"
-                      placeholder={t(
-                        "threadsCommentAutomation.keywordsPlaceholder",
-                      )}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-
-          <FormField
-            control={form.control}
-            name="excludeKeywords"
-            render={() => (
-              <FormItem>
-                <FormLabel>
-                  {t("threadsCommentAutomation.excludeKeywords")}
-                </FormLabel>
-                <FormControl>
-                  <TagsInputField
-                    name="excludeKeywords"
-                    placeholder={t(
-                      "threadsCommentAutomation.keywordsPlaceholder",
-                    )}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
+          <ExcludeKeywordsField
+            label={t("threadsCommentAutomation.excludeKeywords")}
+            placeholder={t("threadsCommentAutomation.keywordsPlaceholder")}
           />
 
           <SwitchField
@@ -320,6 +329,12 @@ export function ThreadsCommentForm({
             label={t("threadsCommentAutomation.options.ignoreCommentReplies")}
             name="options.ignoreCommentReplies"
             required
+          />
+          <SwitchField
+            description={t("commentAutomation.trackUserTags.descriptionText")}
+            descriptionType="tooltip"
+            label={t("commentAutomation.trackUserTags.label")}
+            name="options.trackUserTags"
           />
         </CardContent>
       </Card>
@@ -401,6 +416,98 @@ export function ThreadsCommentForm({
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {t("threadsCommentAutomation.card.hideComments")}
+          </CardTitle>
+          <CardDescription>
+            {t("threadsCommentAutomation.hideCommentsDescription")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <SwitchField
+            label={t("threadsCommentAutomation.hideComments.all")}
+            name="hideComments.all"
+            required
+          />
+          <SwitchField
+            label={t("threadsCommentAutomation.hideComments.hasPhoneNumber")}
+            name="hideComments.hasPhoneNumber"
+            required
+          />
+          <SwitchField
+            label={t("threadsCommentAutomation.hideComments.hasLink")}
+            name="hideComments.hasLink"
+            required
+          />
+          <SwitchField
+            label={t("commentAutomation.hideComments.hasGif")}
+            name="hideComments.hasGif"
+            required
+          />
+          <SwitchField
+            label={t("commentAutomation.hideComments.hasEmoji")}
+            name="hideComments.hasEmoji"
+            required
+          />
+          <SwitchField
+            label={t("threadsCommentAutomation.hideComments.hasKeywords")}
+            name="hideComments.hasKeywords"
+            required
+          />
+          {hideKeywords ? (
+            <FormField
+              control={form.control}
+              name="hideComments.keywords"
+              render={() => (
+                <FormItem>
+                  <FormLabel>
+                    {t("threadsCommentAutomation.hideComments.keywords")}
+                  </FormLabel>
+                  <FormControl>
+                    <TagsInputField
+                      name="hideComments.keywords"
+                      placeholder={t(
+                        "threadsCommentAutomation.keywordsPlaceholder",
+                      )}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
+          <SelectField
+            label={t("threadsCommentAutomation.hideComments.showCommentsAfter")}
+            name="hideComments.showCommentsAfter"
+            options={[
+              {
+                label: t("threadsCommentAutomation.showCommentsAfter.none"),
+                value: "none",
+              },
+              ...(
+                [
+                  "6h",
+                  "12h",
+                  "1d",
+                  "2d",
+                  "3d",
+                  "4d",
+                  "5d",
+                  "6d",
+                  "7d",
+                  "8d",
+                  "9d",
+                  "10d",
+                ] as const
+              ).map((value) => ({ label: value, value })),
+            ]}
+            required
+          />
+        </CardContent>
+      </Card>
+
       <div className="flex items-center justify-end gap-2">
         <button
           className="rounded-md border px-4 py-2 text-sm"
@@ -411,7 +518,7 @@ export function ThreadsCommentForm({
         </button>
         <button
           className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm"
-          disabled={isSubmitting}
+          disabled={isSubmitting || accountChoiceMissing}
           type="submit"
         >
           {submitLabel}

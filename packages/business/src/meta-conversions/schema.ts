@@ -19,6 +19,7 @@ import {
   metaCapiValueSchema,
 } from "@chatbotx.io/utils/meta-capi"
 import { z } from "zod"
+import type { ChannelIdentity } from "./channel-identity"
 import { splitContentIds } from "./event-input"
 
 const capiDatasetIdSchema = z.string().trim().regex(/^\d+$/)
@@ -166,11 +167,29 @@ export type SaveCapiTestEventCodeInput<
   testEventCode: string | null
 }
 
-export type EnqueueTestEventInput<
+export type CapiTestEventSendInput<
+  TChannel extends MetaConversionsChannel = MetaConversionsChannel,
+> = {
+  datasetId: string
+  accessToken: string
+  testEventCode: string
+  event: {
+    eventName: "Purchase"
+    occurredAt: Date
+    eventId: string
+    value: string
+    currency: string
+  } & ChannelIdentity<TChannel>
+}
+
+export type SendTestEventInput<
   TChannel extends MetaConversionsChannel = MetaConversionsChannel,
 > = {
   channel: TChannel
   integration: MetaConversionsIntegrationByChannel[TChannel]
+  messagingId: string
+  provisionDataset: EnsureDatasetIdInput<TChannel>["provisionDataset"]
+  send: (input: CapiTestEventSendInput<TChannel>) => Promise<void>
 }
 
 export type ProvisionDatasetNowInput<
@@ -187,6 +206,18 @@ export type SaveCapiAccessTokenInput<
   validate: (input: DatasetValidationInput) => Promise<string>
 }
 
+export type ConnectCapiWithTokenInput<
+  TChannel extends CapiConnectChannel = CapiConnectChannel,
+> = {
+  channel: TChannel
+  integration: MetaConversionsIntegrationByChannel[TChannel]
+  /** Token minted by the dedicated Conversions API OAuth, never the channel token. */
+  accessToken: string
+  provisionDataset: EnsureDatasetIdInput<TChannel>["provisionDataset"]
+  /** Checks a dataset id against the new token; used to keep a dataset the row already stores. */
+  validate: (input: DatasetValidationInput) => Promise<string>
+}
+
 export type ClearCapiAccessTokenInput<
   TChannel extends CapiConnectChannel = CapiConnectChannel,
 > = {
@@ -196,6 +227,10 @@ export type ClearCapiAccessTokenInput<
 
 export const saveDatasetIdInput = z.object({
   datasetId: capiDatasetIdSchema,
+})
+
+export const connectCapiWithTokenInput = z.object({
+  accessToken: capiAccessTokenSchema,
 })
 
 export const saveCapiAccessTokenInput = z.object({

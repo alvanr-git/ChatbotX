@@ -1,28 +1,9 @@
 "use client"
 
-import type { CommentAutomationEventType } from "@chatbotx.io/analytics/schemas"
 import { useFormatter } from "next-intl"
 import { memo, useCallback, useState } from "react"
 import { CommentAutomationContactsDialog } from "./comment-automation-contacts-dialog"
-
-/**
- * Which lifetime counter on the automation row backs each column. The counters
- * live on `FBCommentAutomation` rather than being aggregated from
- * `FBCommentAutomationEvent`, which a nightly cron purges after 30 days — so
- * unlike `BroadcastStatsCell` this needs no fetch and no store at all: the
- * numbers arrive with the row.
- */
-export const commentAutomationStatCounters = {
-  "message:sent": "sentCount",
-  "message:delivered": "deliveredCount",
-  "message:seen": "seenCount",
-  "flow:clicked": "clickedCount",
-  "message:failed": "failedCount",
-  "comment:missed": "missedCount",
-} as const satisfies Partial<Record<CommentAutomationEventType, string>>
-
-export type CommentAutomationStatField =
-  keyof typeof commentAutomationStatCounters
+import type { CommentAutomationStatField } from "./lib/stat-counters"
 
 type Props = {
   workspaceId: string
@@ -33,7 +14,8 @@ type Props = {
    * What this column's rate is measured against. The delivery columns divide by
    * attempts (`sentCount`); Misses divides by the comments the automation
    * engaged with (`repliesCount + missedCount`), because an attempt and a
-   * decline are different events and `sentCount` counts private DMs only.
+   * decline are different events and `sentCount` counts attempts on one half
+   * of the comment only.
    */
   denominator: number
 }
@@ -60,7 +42,8 @@ export const CommentAutomationStatsCell = memo(
     // Sent IS the denominator for the delivery columns, so it has nothing to
     // compare itself to. Misses suppresses its rate whenever the denominator is
     // nothing but the misses themselves — a bare "100%" on an automation that
-    // replies publicly only (which counts zero replies by design) says nothing
+    // has answered nothing its counters measure (a Messenger automation
+    // replying publicly only, which counts zero replies by design) says nothing
     // true about it, while the raw count still does.
     const rateIsMeaningless =
       field === "message:sent" ||

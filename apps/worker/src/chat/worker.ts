@@ -1,14 +1,18 @@
-import { broadcastToWorkspaceParty } from "@chatbotx.io/business"
+import {
+  broadcastToWorkspaceParty,
+  flushAllPendingWorkspaceBroadcasts,
+} from "@chatbotx.io/business"
 import type { RealtimeEventData } from "@chatbotx.io/partysocket-config"
 import { SdkException } from "@chatbotx.io/sdk"
 import {
   ChatJobAction,
   type ChatJobData,
   defaultWorkerOptions,
-  getRedisConnection,
+  getQueueConnection,
   queueNames,
 } from "@chatbotx.io/worker-config"
 import { type Job, Worker } from "bullmq"
+import { env } from "../env"
 import { ensureBootstrapped } from "../lib/bootstrap"
 import { isBlockedWorkspace } from "../lib/is-blocked-workspace"
 import { isBotMessageQuotaReached } from "../lib/is-bot-message-quota-reached"
@@ -26,12 +30,16 @@ import {
   sendTypingToChannel,
 } from "./handlers/send-message"
 import { sendMessengerTemplateMessage } from "./handlers/send-messenger-template"
-import { sendWhatsappTemplateMessage } from "./handlers/send-whatsapp-template"
+import {
+  sendWhatsappTemplateMessage,
+  sendWhatsappTemplateToConversation,
+} from "./handlers/send-whatsapp-template"
 
 const botSendActions = new Set<ChatJobData["type"]>([
   ChatJobAction.sendFlowMessage,
   ChatJobAction.sendChatMessage,
   ChatJobAction.sendWhatsappTemplateMessage,
+  ChatJobAction.sendWhatsappTemplateToConversation,
   ChatJobAction.sendMessengerTemplateMessage,
 ])
 
@@ -97,6 +105,12 @@ async function startChatWorker() {
                 !isFinalAttempt(job),
               )
               return
+            case ChatJobAction.sendWhatsappTemplateToConversation:
+              await sendWhatsappTemplateToConversation(
+                job.data.data,
+                !isFinalAttempt(job),
+              )
+              return
             case ChatJobAction.sendMessengerTemplateMessage:
               await sendMessengerTemplateMessage(
                 job.data.data,
@@ -121,6 +135,7 @@ async function startChatWorker() {
                 "notifyExportResult job received but no handler is implemented",
               )
               return
+            // TODO: Remove after the rolling-deploy queue drain completes.
             case ChatJobAction.broadcastEvent:
               await broadcastToWorkspaceParty(
                 job.data.data.workspaceId,
@@ -137,8 +152,9 @@ async function startChatWorker() {
       )
     },
     {
-      connection: getRedisConnection(),
+      connection: getQueueConnection(queueNames.enum.chat),
       ...defaultWorkerOptions,
+      concurrency: env.CHAT_WORKER_CONCURRENCY,
     },
   )
 
@@ -156,6 +172,9 @@ async function startChatWorker() {
     isShuttingDown = true
     try {
       await worker.close()
+      // After close(): drains events published by jobs that finished during
+      // the close drain, whose coalesce timers would never fire past exit.
+      await flushAllPendingWorkspaceBroadcasts()
       process.exit(0)
     } catch (err) {
       logger.error(err, "[ChatWorker] Error during shutdown")

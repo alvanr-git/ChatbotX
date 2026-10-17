@@ -51,6 +51,7 @@ const contactCustomFieldService = {
   deleteByKey: vi.fn(),
   clearByContactId: vi.fn(),
 }
+const findCustomFieldByKeyOrFail = vi.fn()
 const tagService = { attachToContact: vi.fn(), detachFromContact: vi.fn() }
 
 const resolveContactId = vi.fn()
@@ -76,6 +77,7 @@ vi.mock("../src/features/contacts/lib/list-contact-tags", () => ({
 
 vi.mock("@chatbotx.io/business", () => ({
   contactService: { resolveIdByIdentifier: resolveContactId },
+  customFieldService: { findByKeyOrFail: findCustomFieldByKeyOrFail },
   tagService: {
     ...tagService,
     attachByNamesToContacts: addContactTags,
@@ -203,24 +205,29 @@ describe("GET /v1/contacts/{identifier}/custom-fields", () => {
   })
 })
 
-describe("GET /v1/contacts/{identifier}/custom-fields/{customFieldId}", () => {
+describe("GET /v1/contacts/{identifier}/custom-fields/{idOrName}", () => {
   const procedure = findProcedure(
     "GET",
-    "/v1/contacts/{identifier}/custom-fields/{customFieldId}",
+    "/v1/contacts/{identifier}/custom-fields/{idOrName}",
   )
 
-  test("resolves the contact id via resolveIdByIdentifier, then returns findContactCustomField", async () => {
+  test("resolves the contact id and the field by id, then returns findContactCustomField", async () => {
     const field = { customFieldId: "cf-1", value: "a" }
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-1" })
     findContactCustomField.mockResolvedValueOnce(field)
 
     const result = await procedure.handler?.({
       context: { workspace: { id: "workspace-1" } },
-      input: { identifier: "id:123", customFieldId: "cf-1" },
+      input: { identifier: "id:123", idOrName: "cf-1" },
     })
 
     expect(resolveContactId).toHaveBeenCalledWith({
       identifier: "id:123",
       workspaceId: "workspace-1",
+    })
+    expect(findCustomFieldByKeyOrFail).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      key: "cf-1",
     })
     expect(findContactCustomField).toHaveBeenCalledWith({
       contactId: "contact-1",
@@ -229,25 +236,53 @@ describe("GET /v1/contacts/{identifier}/custom-fields/{customFieldId}", () => {
     })
     expect(result).toEqual(field)
   })
+
+  test("resolves the field by name", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-2" })
+    findContactCustomField.mockResolvedValueOnce({
+      customFieldId: "cf-2",
+      value: "b",
+    })
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { identifier: "id:123", idOrName: "Full Name" },
+    })
+
+    expect(findCustomFieldByKeyOrFail).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      key: "Full Name",
+    })
+    expect(findContactCustomField).toHaveBeenCalledWith({
+      contactId: "contact-1",
+      customFieldId: "cf-2",
+      workspaceId: "workspace-1",
+    })
+  })
 })
 
-describe("POST /v1/contacts/{identifier}/custom-fields/{customFieldId}", () => {
+describe("PUT /v1/contacts/{identifier}/custom-fields/{idOrName}", () => {
   const procedure = findProcedure(
-    "POST",
-    "/v1/contacts/{identifier}/custom-fields/{customFieldId}",
+    "PUT",
+    "/v1/contacts/{identifier}/custom-fields/{idOrName}",
   )
 
-  test("resolves the contact id via resolveIdByIdentifier before setting the value", async () => {
+  test("resolves the contact id and the field by id before setting the value", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-1" })
     setContactCustomFieldValue.mockResolvedValueOnce(undefined)
 
     await procedure.handler?.({
       context: { workspace: { id: "workspace-1" } },
-      input: { identifier: "id:123", customFieldId: "cf-1", value: "hello" },
+      input: { identifier: "id:123", idOrName: "cf-1", value: "hello" },
     })
 
     expect(resolveContactId).toHaveBeenCalledWith({
       identifier: "id:123",
       workspaceId: "workspace-1",
+    })
+    expect(findCustomFieldByKeyOrFail).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      key: "cf-1",
     })
     expect(setContactCustomFieldValue).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
@@ -256,34 +291,44 @@ describe("POST /v1/contacts/{identifier}/custom-fields/{customFieldId}", () => {
       value: "hello",
     })
   })
-})
 
-describe("PUT /v1/contacts/{identifier}/custom-fields", () => {
-  const procedure = findProcedure(
-    "PUT",
-    "/v1/contacts/{identifier}/custom-fields",
-  )
+  test("forwards the caller's clientTimezone to anchor a date value", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-1" })
+    setContactCustomFieldValue.mockResolvedValueOnce(undefined)
 
-  test("resolves the contact id via resolveIdByIdentifier before setting multiple values", async () => {
-    contactCustomFieldService.setValues.mockResolvedValueOnce(undefined)
-
-    const fields = [
-      { customFieldId: "cf-1", value: "a" },
-      { customFieldId: "cf-2", value: "b" },
-    ]
     await procedure.handler?.({
       context: { workspace: { id: "workspace-1" } },
-      input: { identifier: "id:123", fields },
+      input: {
+        identifier: "id:123",
+        idOrName: "cf-1",
+        value: "2026-10-03",
+        clientTimezone: "Asia/Ho_Chi_Minh",
+      },
     })
 
-    expect(resolveContactId).toHaveBeenCalledWith({
-      identifier: "id:123",
-      workspaceId: "workspace-1",
+    expect(setContactCustomFieldValue).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceTimezone: "Asia/Ho_Chi_Minh" }),
+    )
+  })
+
+  test("resolves the field by name before setting the value", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-2" })
+    setContactCustomFieldValue.mockResolvedValueOnce(undefined)
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { identifier: "id:123", idOrName: "Full Name", value: "hello" },
     })
-    expect(contactCustomFieldService.setValues).toHaveBeenCalledWith({
+
+    expect(findCustomFieldByKeyOrFail).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      key: "Full Name",
+    })
+    expect(setContactCustomFieldValue).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
       contactId: "contact-1",
-      fields,
+      customFieldId: "cf-2",
+      value: "hello",
     })
   })
 })
@@ -387,6 +432,7 @@ describe("PATCH /v1/contacts/{identifier}/custom-fields", () => {
   )
 
   test("maps friendly operation names to internal FieldOperationType codes", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValueOnce({ id: "cf-1" })
     applyCustomFieldOperations.mockResolvedValue(undefined)
 
     await procedure.handler?.({
@@ -399,6 +445,10 @@ describe("PATCH /v1/contacts/{identifier}/custom-fields", () => {
       },
     })
 
+    expect(findCustomFieldByKeyOrFail).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      key: "cf-1",
+    })
     expect(applyCustomFieldOperations).toHaveBeenCalledWith({
       workspaceId: "workspace-1",
       contactId: "contact-1",
@@ -406,7 +456,47 @@ describe("PATCH /v1/contacts/{identifier}/custom-fields", () => {
     })
   })
 
+  test("resolves each operation's field by id or name before applying", async () => {
+    findCustomFieldByKeyOrFail
+      .mockResolvedValueOnce({ id: "cf-1" })
+      .mockResolvedValueOnce({ id: "cf-2" })
+    applyCustomFieldOperations.mockResolvedValue(undefined)
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: {
+        identifier: "id:123",
+        operations: [
+          {
+            customFieldId: "Loyalty Points",
+            operation: "increase",
+            value: "1",
+          },
+          { customFieldId: "cf-2", operation: "set", value: "x" },
+        ],
+      },
+    })
+
+    expect(findCustomFieldByKeyOrFail).toHaveBeenNthCalledWith(1, {
+      workspaceId: "workspace-1",
+      key: "Loyalty Points",
+    })
+    expect(findCustomFieldByKeyOrFail).toHaveBeenNthCalledWith(2, {
+      workspaceId: "workspace-1",
+      key: "cf-2",
+    })
+    expect(applyCustomFieldOperations).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      contactId: "contact-1",
+      operations: [
+        { customFieldId: "cf-1", operation: "O04", value: "1" },
+        { customFieldId: "cf-2", operation: "O01", value: "x" },
+      ],
+    })
+  })
+
   test("makes a single applyOperations call carrying every operation in order", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValue({ id: "cf-1" })
     applyCustomFieldOperations.mockResolvedValue(undefined)
 
     await procedure.handler?.({
@@ -429,5 +519,41 @@ describe("PATCH /v1/contacts/{identifier}/custom-fields", () => {
         { customFieldId: "cf-1", operation: "O02", value: "b" },
       ],
     })
+  })
+
+  test("forwards clientTimezone for the whole batch", async () => {
+    findCustomFieldByKeyOrFail.mockResolvedValue({ id: "cf-1" })
+    applyCustomFieldOperations.mockResolvedValue(undefined)
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: {
+        identifier: "id:123",
+        clientTimezone: "America/New_York",
+        operations: [{ customFieldId: "cf-1", operation: "set", value: "x" }],
+      },
+    })
+
+    expect(applyCustomFieldOperations).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceTimezone: "America/New_York" }),
+    )
+  })
+})
+
+describe("clientTimezone validation", () => {
+  test("an unknown IANA zone is rejected instead of silently becoming UTC", async () => {
+    const { addContactCustomFieldOperationsPublicRequest: schema } =
+      await import("@/features/contacts/schema/public/custom-fields")
+    const base = {
+      identifier: "id:1",
+      operations: [{ customFieldId: "1", operation: "set", value: "x" }],
+    }
+
+    expect(
+      schema.safeParse({ ...base, clientTimezone: "Asia/Ho_Chi_Minh" }).success,
+    ).toBe(true)
+    expect(
+      schema.safeParse({ ...base, clientTimezone: "Asia/Hanoi" }).success,
+    ).toBe(false)
   })
 })

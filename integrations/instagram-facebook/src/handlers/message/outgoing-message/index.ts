@@ -7,6 +7,7 @@ import {
   type SendQuickReplyStepSchema,
   type SendTextStepSchema,
   type SendVideoStepSchema,
+  type StepType,
   stepTypes,
 } from "@chatbotx.io/flow-config"
 import {
@@ -18,8 +19,12 @@ import {
   type SendFlowStepProps,
 } from "@chatbotx.io/sdk"
 import { sendPrivateReplyMessage } from "../../../apis/comment"
-import { sendInstagramMessage } from "../../../apis/page"
-import { mapToChannelError } from "../../../lib/error-mapper"
+import { sendMessage as sendMessageApi } from "../../../apis/message"
+import { takeThreadControl } from "../../../apis/page"
+import {
+  isNotThreadOwnerError,
+  mapToChannelError,
+} from "../../../lib/error-mapper"
 import { logger } from "../../../lib/logger"
 import {
   INSTAGRAM_MESSAGE_METADATA,
@@ -27,16 +32,55 @@ import {
   type InstagramMessageAttachmentPayload,
   type InstagramSendMessage,
   type InstagramSendMessageRequest,
-} from "../../../schemas"
+} from "../../../schema"
+import { convertCanonicalQuickReplies } from "./canonical-quick-replies"
 import { getAttachmentTemplate } from "./send-attachment"
 import { convertFlowStepCarousel } from "./send-carousel"
 import { convertFlowStepFile } from "./send-file"
 import { convertFlowStepGif } from "./send-gif"
 import { convertFlowStepMedia } from "./send-media"
 import { convertFlowStepMultipleImages } from "./send-multiple-images"
-import { convertCanonicalInstagramQuickReplies } from "./send-quick-replies"
 import { convertFlowStepQuickReply } from "./send-quick-reply"
 import { convertFlowStepText } from "./send-text"
+
+export const handledFlowStepTypes = [
+  stepTypes.enum.sendText,
+  stepTypes.enum.sendImage,
+  stepTypes.enum.sendVideo,
+  stepTypes.enum.sendMultipleImages,
+  stepTypes.enum.sendAudio,
+  stepTypes.enum.sendFile,
+  stepTypes.enum.sendGif,
+  stepTypes.enum.sendQuickReply,
+  stepTypes.enum.sendCarousel,
+] as const satisfies readonly StepType[]
+
+/**
+ * One Send API call with the Handover Protocol recovery: when Meta refuses the
+ * send because another app owns the thread (2534037), take the thread back for
+ * this IGSID and retry exactly once. Any other error, a second 2534037, or a
+ * failing or refused take_thread_control propagates unchanged. Scoped to ONE
+ * message so a multi-message step never re-sends what already landed (fork,
+ * s171).
+ */
+const sendWithHandover = async (
+  auth: InstagramAuthValue,
+  contact: OutgoingContact,
+  payload: InstagramSendMessageRequest,
+) => {
+  try {
+    return await sendMessageApi(auth, payload)
+  } catch (error) {
+    if (!isNotThreadOwnerError(error)) {
+      throw error
+    }
+    logger.info(
+      `Send refused (2534037): taking thread control for IGSID ${contact.sourceId} and retrying once`,
+    )
+    await takeThreadControl(auth, contact.sourceId)
+    return await sendMessageApi(auth, payload)
+  }
+}
 
 export const sendMessage: MessageHandlers<InstagramAuthValue>["sendMessage"] =
   async (props) => {
@@ -46,16 +90,17 @@ export const sendMessage: MessageHandlers<InstagramAuthValue>["sendMessage"] =
     } = props
 
     const messageIds: string[] = []
+    let sentCount = 0
     try {
-      const instagramMessages = [...convertMessageToInstagramMessage(message)]
+      const instagramMessages = [...convertMessage(message)]
       const lastMessage = instagramMessages.at(-1)
       if (lastMessage && quickReplies && quickReplies.length > 0) {
-        lastMessage.quick_replies =
-          convertCanonicalInstagramQuickReplies(quickReplies)
+        lastMessage.quick_replies = convertCanonicalQuickReplies(quickReplies)
       }
       for (const instagramMessage of instagramMessages) {
         const payload = buildMessagePayload(contact, instagramMessage)
-        const response = await sendInstagramMessage(ctx.auth, payload)
+        const response = await sendWithHandover(ctx.auth, contact, payload)
+        sentCount += 1
         if (response.message_id) {
           messageIds.push(response.message_id)
         }
@@ -68,10 +113,11 @@ export const sendMessage: MessageHandlers<InstagramAuthValue>["sendMessage"] =
 
     return {
       messageIds,
+      sentCount,
     }
   }
 
-export function* convertMessageToInstagramMessage(
+export function* convertMessage(
   message: OutgoingMessage,
 ): Generator<InstagramSendMessage> {
   if (message.contentType === contentTypes.enum.text) {
@@ -162,7 +208,7 @@ const buildMessagePayload = (
 // Every converter below yields a whole message (`{ text }`, `{ attachment }`,
 // `{ attachments }`), never a bare attachment payload — so `sendFlowStep` can
 // stamp `quick_replies` on the last one it gets back.
-export async function* convertFlowStepToInstagramMessage(
+export async function* convertFlowStep(
   props: SendFlowStepProps<InstagramAuthValue>,
 ): AsyncGenerator<InstagramSendMessage> {
   const {
@@ -218,85 +264,85 @@ export async function* convertFlowStepToInstagramMessage(
       ) as Generator<InstagramSendMessage>
       break
     default:
-      break
+      throw new Error(`Unsupported Instagram flow step: ${step.stepType}`)
   }
 }
 
-export const sendFlowStep = async (
-  props: SendFlowStepProps<InstagramAuthValue>,
-) => {
-  const {
-    ctx,
-    data: { contact, commentAnchor, quickReplies },
-  } = props
-  const messageIds: string[] = []
-  try {
-    // Collected up front rather than sent as they stream: Instagram renders
-    // the quick replies of the *last* message only, and which message is last
-    // isn't knowable mid-stream. A step yields at most a couple of messages,
-    // and each flow step is already its own job, so nothing is held for long.
-    // Without this the `quickReplies` the worker passes in
-    // (`sendFlowStepToChannel`) were dropped on every step but sendQuickReply.
-    const instagramMessages: InstagramSendMessage[] = []
-    for await (const instagramMessage of convertFlowStepToInstagramMessage(
-      props,
-    )) {
-      instagramMessages.push(instagramMessage)
-    }
-
-    const lastMessage = instagramMessages.at(-1)
-    if (lastMessage && quickReplies && quickReplies.length > 0) {
-      lastMessage.quick_replies =
-        convertCanonicalInstagramQuickReplies(quickReplies)
-    }
-
-    // Claimed by the first Instagram message sent below, if an unspent private
-    // comment anchor is present — a single flow step can yield more than one
-    // message (e.g. text + attachments), so only the very first send uses the
-    // comment_id-anchored API (exempt from the messaging window). Everything
-    // after it — in this step or a later one, which arrives with `spent: true`
-    // — takes the normal path, gated by the guard below.
-    // A "public" anchor is never honored here — it's
-    // delivered via the comment channel's sendComment, not this message
-    // channel's sendFlowStep (see send-flow-step.ts). This check is
-    // defense-in-depth against a public anchor ever reaching this handler by
-    // mistake.
-    const isCommentPrivateRun = commentAnchor?.replyChannel === "private"
-    let anchorCommentId =
-      isCommentPrivateRun && !commentAnchor.spent
-        ? commentAnchor.commentId
-        : undefined
-    for (const instagramMessage of instagramMessages) {
-      // The comment bought exactly one anchored DM and it is gone; a normal DM
-      // only reaches the contact if they have messaged in the last 24h.
-      if (isCommentPrivateRun && !anchorCommentId) {
-        assertCommentPrivateReplyFollowUpDeliverable({
-          commentId: commentAnchor.commentId,
-          lastIncomingMessageAt: contact.lastIncomingMessageAt,
-        })
+export const sendFlowStep: MessageHandlers<InstagramAuthValue>["sendFlowStep"] =
+  async (props: SendFlowStepProps<InstagramAuthValue>) => {
+    const {
+      ctx,
+      data: { contact, commentAnchor, quickReplies },
+    } = props
+    const messageIds: string[] = []
+    let sentCount = 0
+    try {
+      // Collected up front rather than sent as they stream: Instagram renders
+      // the quick replies of the *last* message only, and which message is last
+      // isn't knowable mid-stream. A step yields at most a couple of messages,
+      // and each flow step is already its own job, so nothing is held for long.
+      // Without this the `quickReplies` the worker passes in
+      // (`sendFlowStepToChannel`) were dropped on every step but sendQuickReply.
+      const instagramMessages: InstagramSendMessage[] = []
+      for await (const instagramMessage of convertFlowStep(props)) {
+        instagramMessages.push(instagramMessage)
       }
-      const response = anchorCommentId
-        ? await sendPrivateReplyMessage(
-            ctx.auth,
-            anchorCommentId,
-            instagramMessage,
-          )
-        : await sendInstagramMessage(
-            ctx.auth,
-            buildMessagePayload(contact, instagramMessage),
-          )
-      anchorCommentId = undefined
-      if (response.message_id) {
-        messageIds.push(response.message_id)
-      }
-      logger.info(`Message sent for IGSID: ${contact.sourceId}`)
-    }
-  } catch (error) {
-    logger.error(error, "An error occurred while sending the message")
-    throw mapToChannelError(error)
-  }
 
-  return {
-    messageIds,
+      const lastMessage = instagramMessages.at(-1)
+      if (lastMessage && quickReplies && quickReplies.length > 0) {
+        lastMessage.quick_replies = convertCanonicalQuickReplies(quickReplies)
+      }
+
+      // Claimed by the first Instagram message sent below, if an unspent private
+      // comment anchor is present — a single flow step can yield more than one
+      // message (e.g. text + attachments), so only the very first send uses the
+      // comment_id-anchored API (exempt from the messaging window). Everything
+      // after it — in this step or a later one, which arrives with `spent: true`
+      // — takes the normal path, gated by the guard below.
+      // A "public" anchor is never honored here — it's
+      // delivered via the comment channel's sendComment, not this message
+      // channel's sendFlowStep (see send-flow-step.ts). This check is
+      // defense-in-depth against a public anchor ever reaching this handler by
+      // mistake.
+      const isCommentPrivateRun = commentAnchor?.replyChannel === "private"
+      let anchorCommentId =
+        isCommentPrivateRun && !commentAnchor.spent
+          ? commentAnchor.commentId
+          : undefined
+      for (const instagramMessage of instagramMessages) {
+        // The comment bought exactly one anchored DM and it is gone; a normal DM
+        // only reaches the contact if they have messaged in the last 24h.
+        if (isCommentPrivateRun && !anchorCommentId) {
+          assertCommentPrivateReplyFollowUpDeliverable({
+            commentId: commentAnchor.commentId,
+            lastIncomingMessageAt: contact.lastIncomingMessageAt,
+          })
+        }
+        const response = anchorCommentId
+          ? await sendPrivateReplyMessage(
+              ctx.auth,
+              anchorCommentId,
+              instagramMessage,
+            )
+          : await sendWithHandover(
+              ctx.auth,
+              contact,
+              buildMessagePayload(contact, instagramMessage),
+            )
+        anchorCommentId = undefined
+        sentCount += 1
+        if (response.message_id) {
+          messageIds.push(response.message_id)
+        }
+        logger.info(`Message sent for IGSID: ${contact.sourceId}`)
+      }
+    } catch (error) {
+      logger.error(error, "An error occurred while sending the message")
+      throw mapToChannelError(error)
+    }
+
+    return {
+      messageIds,
+      sentCount,
+    }
   }
-}

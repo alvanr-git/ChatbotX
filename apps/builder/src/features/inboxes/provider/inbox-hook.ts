@@ -1,7 +1,19 @@
+import type { ListInboxesResponse } from "@chatbotx.io/business"
 import { channelTypes } from "@chatbotx.io/database/partials"
 import type { SelectOption } from "@chatbotx.io/ui/components/form/select-field"
-import { useEffect, useMemo, useState } from "react"
-import { useInboxStore } from "./inbox-store-context"
+import {
+  type QueryStatus,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
+import { useCallback, useMemo } from "react"
+import { useWorkspaceId } from "@/hooks/routing"
+import { orpc } from "@/lib/orpc/query"
+
+export type InboxListState = {
+  inboxes: ListInboxesResponse["data"]
+  status: QueryStatus
+}
 
 export const allInboxConfigs = {
   omnichannel: {
@@ -38,38 +50,79 @@ export const allInboxConfigs = {
   },
 } as const
 
-export const useConfiguredInboxTypeOptions = () => {
-  const [inboxTypes, setInboxTypes] = useState<string[]>([])
-  const inboxes = useInboxStore((state) => state.inboxes)
+export const useInboxes = (
+  workspaceId: string | undefined,
+  options?: { enabled?: boolean },
+) =>
+  useQuery(
+    orpc.inboxesAPI.listAllInboxesAuthenticatedAPI.queryOptions({
+      // The unpaginated endpoint: the paginated list caps at 50 rows, which
+      // would hide inboxes from every consumer in a workspace with more than 50.
+      input: { workspaceId: workspaceId ?? "", includes: ["integration"] },
+      enabled: Boolean(workspaceId) && (options?.enabled ?? true),
+      select: (res) => res.data,
+    }),
+  )
 
-  useEffect(() => {
-    const setOfInboxTypes = new Set<string>(["omnichannel"])
+export const useInvalidateInboxes = () => {
+  const queryClient = useQueryClient()
+  return useCallback(
+    () =>
+      queryClient.invalidateQueries({
+        queryKey: orpc.inboxesAPI.listAllInboxesAuthenticatedAPI.key(),
+      }),
+    [queryClient],
+  )
+}
+
+// Shared fallback while the query is pending or has failed. A fresh `[]` on
+// every render would change the identity of the result each time, and any
+// effect keyed on it that sets state (e.g. `NodeEditorMenu`) loops forever.
+const EMPTY_INBOXES: ListInboxesResponse["data"] = []
+
+export const useInboxListState = (options?: {
+  enabled?: boolean
+}): InboxListState => {
+  const workspaceId = useWorkspaceId()
+  const { data, status } = useInboxes(workspaceId, options)
+  // A failed background refetch keeps the cached list but flips `status` to
+  // "error"; report success so consumers keep showing the inboxes they have.
+  return data
+    ? { inboxes: data, status: "success" }
+    : { inboxes: EMPTY_INBOXES, status }
+}
+
+export const useInboxList = (options?: { enabled?: boolean }) =>
+  useInboxListState(options).inboxes
+
+export const useConfiguredInboxTypeOptions = (options?: {
+  enabled?: boolean
+}) => {
+  const inboxes = useInboxList(options)
+
+  return useMemo(() => {
+    const inboxTypes = new Set<string>(["omnichannel"])
     for (const inbox of inboxes) {
       // Ignore SMTP inbox type
       if (inbox.channel !== channelTypes.enum.smtp) {
-        setOfInboxTypes.add(inbox.channel)
+        inboxTypes.add(inbox.channel)
       }
     }
-    setInboxTypes(Array.from(setOfInboxTypes))
-  }, [inboxes])
 
-  return useMemo(
-    () =>
-      inboxTypes
-        .filter((inboxType) => inboxType in allInboxConfigs)
-        .map(
-          (inboxType) =>
-            allInboxConfigs[inboxType as keyof typeof allInboxConfigs],
-        ),
-    [inboxTypes],
-  )
+    return Array.from(inboxTypes)
+      .filter((inboxType) => inboxType in allInboxConfigs)
+      .map(
+        (inboxType) =>
+          allInboxConfigs[inboxType as keyof typeof allInboxConfigs],
+      )
+  }, [inboxes])
 }
 
 export const useInboxOptionsByChannel = (
   channel?: string,
   excludeChannels: string[] = [channelTypes.enum.smtp],
 ): SelectOption[] => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>
@@ -97,7 +150,7 @@ export const useInboxOptionsByChannel = (
 export const useInboxOptionsForChannels = (
   channels: readonly string[],
 ): SelectOption[] => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>
@@ -112,7 +165,7 @@ export const useInboxOptionsForChannels = (
 }
 
 export const useWhatsappInboxOptions = (): SelectOption[] => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>
@@ -127,7 +180,7 @@ export const useWhatsappInboxOptions = (): SelectOption[] => {
 }
 
 export const useMessengerInboxOptions = (): SelectOption[] => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>
@@ -142,7 +195,7 @@ export const useMessengerInboxOptions = (): SelectOption[] => {
 }
 
 export const useSmtpInboxOptions = (): SelectOption[] => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>
@@ -160,7 +213,7 @@ export const useSmtpInboxOptions = (): SelectOption[] => {
 }
 
 export const useSmtpInboxFromAddressMap = (): Record<string, string> => {
-  const inboxes = useInboxStore((state) => state.inboxes)
+  const inboxes = useInboxList()
 
   return useMemo(
     () =>

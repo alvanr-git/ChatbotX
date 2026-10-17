@@ -158,7 +158,7 @@ function PostGrid({
 }) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {SKELETON_KEYS.map((key) => (
           <Skeleton className="h-36 w-full rounded-md" key={key} />
         ))}
@@ -175,7 +175,7 @@ function PostGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {posts.map((post) => (
         <PostCard
           key={post.id}
@@ -193,11 +193,14 @@ export function SelectFacebookPostsDialog({
   onOpenChange,
   value,
   onChange,
+  inboxId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   value: string[]
   onChange: (ids: string[]) => void
+  /** The automation's account; set, only that Page's posts are offered. */
+  inboxId?: string | null
 }) {
   const t = useTranslations()
 
@@ -218,10 +221,14 @@ export function SelectFacebookPostsDialog({
     }
   }, [open, value, fetchPosts])
 
-  const filterByPage = (posts: FacebookPost[]) =>
-    selectedPageId === ALL_PAGES_VALUE
+  const filterByPage = (posts: FacebookPost[]) => {
+    if (inboxId) {
+      return posts.filter((post) => post.inboxId === inboxId)
+    }
+    return selectedPageId === ALL_PAGES_VALUE
       ? posts
       : posts.filter((post) => post.pageId === selectedPageId)
+  }
 
   const toggleId = (id: string) => {
     setSelectedIds((prev) =>
@@ -236,14 +243,14 @@ export function SelectFacebookPostsDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="max-h-[80vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {t("facebookCommentAutomation.selectPosts")}
           </DialogTitle>
         </DialogHeader>
 
-        {pages.length > 0 && (
+        {pages.length > 0 && !inboxId && (
           <Select
             onValueChange={(val) => setSelectedPageId(val as string)}
             value={selectedPageId}

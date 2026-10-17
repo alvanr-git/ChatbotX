@@ -3,16 +3,23 @@ import {
   type SendImageStepSchema,
   type SendMultipleImagesStepSchema,
   type SendTextStepSchema,
+  type SendViewCatalogStepSchema,
   type SendWaTemplateMessageStepSchema,
+  type StepType,
   stepTypes,
+  type WhatsappCallButtonStepSchema,
   type WhatsappFlowStepSchema,
+  type WhatsappLocationStepSchema,
   type WhatsappOptionListStepSchema,
 } from "@chatbotx.io/flow-config"
 import {
   contentTypes,
+  getWhatsappCallPermissionRequest,
+  isMessageProductEntity,
   isWhatsappNativeLocationRequest,
   type MessageButtonTemplate,
   type MessageHandlers,
+  type MessageProductEntity,
   type OutgoingMessage,
 } from "@chatbotx.io/sdk"
 import { Audio, Document, Image, Text, Video } from "whatsapp-api-js/messages"
@@ -40,9 +47,16 @@ import {
   convertFlowStepImage,
   convertFlowStepMultipleImages,
 } from "./send-image"
+import {
+  convertFlowStepSendProducts,
+  toWhatsappProductMessage,
+} from "./send-products"
 import { convertFlowStepText } from "./send-text"
+import { convertFlowStepViewCatalog } from "./send-view-catalog"
 import { convertFlowStepWaTemplate } from "./send-wa-template"
+import { convertFlowStepWhatsappCallButton } from "./whatsapp-call-button"
 import { convertFlowStepWhatsappFlow } from "./whatsapp-flow"
+import { convertFlowStepWhatsappLocation } from "./whatsapp-location"
 import { convertFlowStepWhatsappOptionList } from "./whatsapp-option-list"
 
 function buildLocationRequestMessage(bodyText: string): LocationRequestMessage {
@@ -66,6 +80,32 @@ function* convertMessageToWhatsappMessage(
     if (bodyText) {
       yield buildLocationRequestMessage(bodyText)
     }
+    return
+  }
+
+  // A permission-request message renders as Meta's call_permission_request
+  // interactive with the message text as its body — never as plain text.
+  if (
+    getWhatsappCallPermissionRequest(message.contentAttributes) &&
+    message.text
+  ) {
+    yield {
+      _type: "interactive_call_permission_request",
+      type: "interactive",
+      interactive: {
+        type: "call_permission_request",
+        body: { text: message.text },
+        action: { name: "call_permission_request" },
+      },
+    }
+    return
+  }
+
+  // A product message sent outside a flow (inbox, public API) carries its
+  // resolved products on the row; the text is only its preview, so it is never
+  // sent on its own.
+  if (isMessageProductEntity(message.contentAttributes)) {
+    yield toWhatsappProductMessage(message.contentAttributes.payload)
     return
   }
 
@@ -159,12 +199,42 @@ function* convertFlowStepToWhatsappMessage(
         >[0],
       )
       break
+    case stepTypes.enum.sendViewCatalog:
+      yield* convertFlowStepViewCatalog(
+        props as Parameters<
+          MessageHandlers<
+            WhatsappAuthValue,
+            SendViewCatalogStepSchema
+          >["sendFlowStep"]
+        >[0],
+      )
+      break
     case stepTypes.enum.whatsappOptionList:
       yield* convertFlowStepWhatsappOptionList(
         props as Parameters<
           MessageHandlers<
             WhatsappAuthValue,
             WhatsappOptionListStepSchema
+          >["sendFlowStep"]
+        >[0],
+      )
+      break
+    case stepTypes.enum.whatsappCallButton:
+      yield* convertFlowStepWhatsappCallButton(
+        props as Parameters<
+          MessageHandlers<
+            WhatsappAuthValue,
+            WhatsappCallButtonStepSchema
+          >["sendFlowStep"]
+        >[0],
+      )
+      break
+    case stepTypes.enum.whatsappLocation:
+      yield* convertFlowStepWhatsappLocation(
+        props as Parameters<
+          MessageHandlers<
+            WhatsappAuthValue,
+            WhatsappLocationStepSchema
           >["sendFlowStep"]
         >[0],
       )
@@ -179,17 +249,26 @@ function* convertFlowStepToWhatsappMessage(
         >[0],
       )
       break
-    default:
+    case stepTypes.enum.sendProducts:
+      yield* convertFlowStepSendProducts(props)
       break
+    default:
+      throw new Error(`Unsupported WhatsApp flow step: ${step.stepType}`)
   }
 }
 
-/** `whatsapp-api-js` does not model these payloads, so they are posted as-is. */
+/** `whatsapp-api-js` models none of these payloads, so they're posted as-is. */
 const isRawWhatsappMessage = (
   message: ClientMessage | RawWhatsappMessage,
 ): message is RawWhatsappMessage =>
   message._type === "template" ||
   message._type === "interactive_carousel" ||
+  message._type === "interactive_voice_call" ||
+  message._type === "interactive_call_permission_request" ||
+  message._type === "interactive_product" ||
+  message._type === "interactive_product_list" ||
+  message._type === "interactive_product_carousel" ||
+  message._type === "location" ||
   message._type === "location_request"
 
 /**
@@ -258,6 +337,29 @@ async function postRawMessage(props: {
   return await response.json()
 }
 
+export const handledFlowStepTypes = [
+  stepTypes.enum.sendText,
+  stepTypes.enum.sendImage,
+  stepTypes.enum.sendMultipleImages,
+  stepTypes.enum.sendCarousel,
+  stepTypes.enum.sendViewCatalog,
+  stepTypes.enum.sendWaTemplateMessage,
+  stepTypes.enum.whatsappOptionList,
+  stepTypes.enum.whatsappCallButton,
+  stepTypes.enum.whatsappFlow,
+  stepTypes.enum.sendProducts,
+  stepTypes.enum.whatsappLocation,
+] as const satisfies readonly StepType[]
+
+/**
+ * Outgoing message entities (`contentAttributes.type`) `sendMessage` renders as
+ * more than text. A channel whose policy declares `productMessages` must list
+ * `product_message` here, or such a row would go out as plain text.
+ */
+export const handledOutgoingContentEntities = [
+  "product_message",
+] as const satisfies readonly MessageProductEntity["type"][]
+
 export const sendMessage: MessageHandlers<WhatsappAuthValue>["sendMessage"] =
   async (props) => {
     const {
@@ -266,6 +368,7 @@ export const sendMessage: MessageHandlers<WhatsappAuthValue>["sendMessage"] =
     } = props
     const whatsappClient = getWhatsappClient(ctx.auth)
     const messageIds: string[] = []
+    let sentCount = 0
     const recipientParams = resolveRecipientParams(contact)
     const isBsuidKeyedRecipient = isBsuidRecipient(recipientParams)
 
@@ -287,6 +390,9 @@ export const sendMessage: MessageHandlers<WhatsappAuthValue>["sendMessage"] =
           },
           "sendMessage: dispatching outgoing message",
         )
+        // Raw payloads (unmodeled by whatsapp-api-js) must bypass the lib
+        // sender for every recipient, not just BSUID-keyed ones — mirrors
+        // sendFlowStep below.
         const sendResponse =
           isRawWhatsappMessage(whatsappMessage) || isBsuidKeyedRecipient
             ? await postRawMessage({
@@ -310,6 +416,8 @@ export const sendMessage: MessageHandlers<WhatsappAuthValue>["sendMessage"] =
           )
           throw mapToChannelError(serverError.error)
         }
+
+        sentCount += 1
 
         const messageId = (sendResponse as ServerSentMessageResponse)
           ?.messages?.[0]?.id
@@ -339,6 +447,7 @@ export const sendMessage: MessageHandlers<WhatsappAuthValue>["sendMessage"] =
     // as the Message row's sourceId (coexist echo dedup — see sendFlowStep).
     return {
       messageIds,
+      sentCount,
     }
   }
 
@@ -350,6 +459,7 @@ export const sendFlowStep: MessageHandlers<WhatsappAuthValue>["sendFlowStep"] =
     } = props
     const whatsappClient = getWhatsappClient(ctx.auth)
     const messageIds: string[] = []
+    let sentCount = 0
     const recipientParams = resolveRecipientParams(contact)
     const isBsuidKeyedRecipient = isBsuidRecipient(recipientParams)
 
@@ -390,6 +500,8 @@ export const sendFlowStep: MessageHandlers<WhatsappAuthValue>["sendFlowStep"] =
           throw mapToChannelError(serverError.error)
         }
 
+        sentCount += 1
+
         const messageId = (sendResponse as ServerSentMessageResponse)
           ?.messages?.[0]?.id
         if (messageId) {
@@ -413,5 +525,5 @@ export const sendFlowStep: MessageHandlers<WhatsappAuthValue>["sendFlowStep"] =
       throw mapToChannelError(error)
     }
 
-    return { messageIds }
+    return { messageIds, sentCount }
   }

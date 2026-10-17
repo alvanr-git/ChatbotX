@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { contactsByDimensionPublicRequest } from "@/features/analytics/schema/public"
 
 // `@chatbotx.io/analytics`'s barrel re-exports its services, which import
 // repositories that open a real `pg.Pool` via `@chatbotx.io/database/client`
@@ -66,9 +67,7 @@ const contactAnalyticsService = {
   getBlockedContactsCount: vi.fn(),
   getNewContactsCount: vi.fn(),
   getContactsCount: vi.fn(),
-  getContactsByCountry: vi.fn(),
-  getContactsByChannel: vi.fn(),
-  getContactsBySource: vi.fn(),
+  getContactsByDimension: vi.fn(),
 }
 
 const macAnalyticsService = {
@@ -121,7 +120,15 @@ const refLinkAnalyticsService = {
   getRefLinkContactStats: vi.fn(),
 }
 
+const commentAutomationAnalyticsService = {
+  getReplyStatsByDateRange: vi.fn(),
+  listUserComments: vi.fn(),
+  listBotReplies: vi.fn(),
+  listErrors: vi.fn(),
+}
+
 vi.mock("@chatbotx.io/analytics", () => ({
+  commentAutomationAnalyticsService,
   contactAnalyticsService,
   macAnalyticsService,
   messageAnalyticsService,
@@ -132,6 +139,13 @@ vi.mock("@chatbotx.io/analytics", () => ({
   flowAnalyticsService,
   magicLinkAnalyticsService,
   refLinkAnalyticsService,
+}))
+
+const flowServiceMock = { findById: vi.fn() }
+const smartDelayServiceMock = { countByFlowStep: vi.fn() }
+vi.mock("@chatbotx.io/business", () => ({
+  flowService: flowServiceMock,
+  smartDelayService: smartDelayServiceMock,
 }))
 
 const withCache = vi.fn((_key: string, loader: () => unknown) => loader())
@@ -197,6 +211,52 @@ describe("GET /v1/analytics/contacts-count", () => {
     )
     expect(withCache).toHaveBeenCalled()
     expect(result).toEqual({ data: { count: 5 } })
+  })
+})
+
+describe("GET /v1/analytics/contacts-by-dimension", () => {
+  const procedure = findProcedure("GET", "/v1/analytics/contacts-by-dimension")
+  const range = {
+    from: new Date("2026-10-01T00:00:00.000Z"),
+    to: new Date("2026-10-07T23:59:59.999Z"),
+    timezone: "UTC",
+  }
+
+  test("sources workspaceId from context and forwards dimension and metric", async () => {
+    const rows = [{ dimension: "messenger", count: 3, uniqueContacts: 3 }]
+    contactAnalyticsService.getContactsByDimension.mockResolvedValueOnce(rows)
+
+    const result = await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { ...range, dimension: "channel", metric: "total" },
+    })
+
+    expect(contactAnalyticsService.getContactsByDimension).toHaveBeenCalledWith(
+      {
+        ...range,
+        dimension: "channel",
+        metric: "total",
+        workspaceId: "workspace-1",
+      },
+    )
+    expect(result).toEqual({ data: rows })
+  })
+
+  test("request schema defaults metric to new and rejects total for country", () => {
+    const defaulted = contactsByDimensionPublicRequest.parse({
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      dimension: "country",
+    })
+    expect(defaulted.metric).toBe("new")
+
+    const rejected = contactsByDimensionPublicRequest.safeParse({
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      dimension: "country",
+      metric: "total",
+    })
+    expect(rejected.success).toBe(false)
   })
 })
 
@@ -319,8 +379,8 @@ describe("GET /v1/analytics/mac/active-count", () => {
   })
 })
 
-describe("GET /v1/analytics/flows/{flowId}", () => {
-  const procedure = findProcedure("GET", "/v1/analytics/flows/{flowId}")
+describe("GET /v1/analytics/flows/{flowId}/stats", () => {
+  const procedure = findProcedure("GET", "/v1/analytics/flows/{flowId}/stats")
 
   test("sources workspaceId from context and caches by workspace+flow", async () => {
     flowAnalyticsService.getFlowStats.mockResolvedValueOnce({})
@@ -342,8 +402,11 @@ describe("GET /v1/analytics/flows/{flowId}", () => {
   })
 })
 
-describe("DELETE /v1/analytics/flows/{flowId}", () => {
-  const procedure = findProcedure("DELETE", "/v1/analytics/flows/{flowId}")
+describe("DELETE /v1/analytics/flows/{flowId}/stats", () => {
+  const procedure = findProcedure(
+    "DELETE",
+    "/v1/analytics/flows/{flowId}/stats",
+  )
 
   test("resets stats session scoped to context workspace and invalidates cache tags", async () => {
     flowAnalyticsService.resetStatsSession.mockResolvedValueOnce(undefined)
@@ -372,8 +435,8 @@ describe("GET /v1/analytics/magic-links/stats", () => {
     await procedure.handler?.({
       context: { workspace: { id: "workspace-1" } },
       input: {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
+        from: "2026-01-01",
+        to: "2026-01-31",
         linkId: "link-1",
         timezone: "UTC",
       },
@@ -382,7 +445,11 @@ describe("GET /v1/analytics/magic-links/stats", () => {
     expect(
       magicLinkAnalyticsService.getMagicLinkStatsByDateRange,
     ).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: "workspace-1" }),
+      expect.objectContaining({
+        workspaceId: "workspace-1",
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      }),
     )
   })
 })
@@ -445,8 +512,8 @@ describe("GET /v1/analytics/ref-links/stats", () => {
     await procedure.handler?.({
       context: { workspace: { id: "workspace-1" } },
       input: {
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
+        from: "2026-01-01",
+        to: "2026-01-31",
         linkId: "link-1",
         timezone: "UTC",
       },
@@ -455,7 +522,11 @@ describe("GET /v1/analytics/ref-links/stats", () => {
     expect(
       refLinkAnalyticsService.getRefLinkStatsByDateRange,
     ).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: "workspace-1" }),
+      expect.objectContaining({
+        workspaceId: "workspace-1",
+        startDate: "2026-01-01",
+        endDate: "2026-01-31",
+      }),
     )
   })
 })
@@ -501,5 +572,120 @@ describe("GET /v1/analytics/ref-links/contacts", () => {
     expect(result.data[0]).not.toHaveProperty("firstName")
     expect(result.data[0]).not.toHaveProperty("lastName")
     expect(result.data[0]).not.toHaveProperty("avatar")
+  })
+})
+
+describe("GET /v1/analytics/flows/{flowId}/smart-delay-stats", () => {
+  const procedure = findProcedure(
+    "GET",
+    "/v1/analytics/flows/{flowId}/smart-delay-stats",
+  )
+
+  test("maps wait and follow-up step counts onto the draft version's nodes", async () => {
+    flowServiceMock.findById.mockResolvedValue({
+      flowVersions: [
+        {
+          isDraft: true,
+          nodes: [
+            {
+              id: "node-1",
+              type: "wait",
+              data: { details: { steps: [{ id: "step-1" }] } },
+            },
+          ],
+        },
+      ],
+    })
+    smartDelayServiceMock.countByFlowStep.mockResolvedValue([
+      { stepId: "step-1", status: "pending", total: 3 },
+      { stepId: "step-1", status: "completed", total: 5 },
+    ])
+
+    const result = await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: { flowId: "flow-1" },
+    })
+
+    expect(flowServiceMock.findById).toHaveBeenCalledWith({
+      id: "flow-1",
+      workspaceId: "workspace-1",
+    })
+    expect(smartDelayServiceMock.countByFlowStep).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      flowId: "flow-1",
+    })
+    expect(result).toEqual({ "node-1": { waiting: 3, sent: 5 } })
+  })
+
+  test("a flow without a draft version is not found", async () => {
+    flowServiceMock.findById.mockResolvedValue({ flowVersions: [] })
+
+    await expect(
+      procedure.handler?.({
+        context: { workspace: { id: "workspace-1" } },
+        input: { flowId: "flow-1" },
+      }),
+    ).rejects.toMatchObject({ code: "notFound" })
+  })
+})
+
+describe.each([
+  ["replies", "getReplyStatsByDateRange"],
+  ["user-comments", "listUserComments"],
+  ["bot-replies", "listBotReplies"],
+  ["errors", "listErrors"],
+] as const)("GET /v1/analytics/comment-automation/%s", (suffix, method) => {
+  const procedure = findProcedure(
+    "GET",
+    `/v1/analytics/comment-automation/${suffix}`,
+  )
+
+  test("maps from/to and injects the token's workspace, never a client one", async () => {
+    commentAutomationAnalyticsService[method].mockResolvedValue({
+      data: [],
+      pageCount: 1,
+    })
+
+    await procedure.handler?.({
+      context: { workspace: { id: "workspace-1" } },
+      input: {
+        automationId: "auto-1",
+        from: "2026-10-01",
+        to: "2026-10-02",
+        timezone: "UTC",
+        workspaceId: "attacker",
+      },
+    })
+
+    expect(commentAutomationAnalyticsService[method]).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "workspace-1",
+        automationId: "auto-1",
+        startDate: "2026-10-01",
+        endDate: "2026-10-02",
+      }),
+    )
+  })
+})
+
+describe("comment automation request validation", () => {
+  test("rejects a date-only or malformed range and an unknown timezone", async () => {
+    const { commentAutomationReplyStatsPublicRequest: schema } = await import(
+      "@/features/analytics/schema/public"
+    )
+    const ok = {
+      automationId: "12",
+      from: "2026-10-01T00:00:00+07:00",
+      to: "2026-10-02T23:59:59+07:00",
+      timezone: "Asia/Ho_Chi_Minh",
+    }
+
+    expect(schema.safeParse(ok).success).toBe(true)
+    expect(schema.safeParse({ ...ok, automationId: "abc" }).success).toBe(false)
+    expect(schema.safeParse({ ...ok, from: "2026-10-01" }).success).toBe(false)
+    expect(schema.safeParse({ ...ok, to: "garbage" }).success).toBe(false)
+    expect(schema.safeParse({ ...ok, timezone: "Asia/Hanoi" }).success).toBe(
+      false,
+    )
   })
 })
