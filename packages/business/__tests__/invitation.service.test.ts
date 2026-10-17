@@ -51,6 +51,7 @@ describe("invitationService.create", () => {
       expiresAt: new Date("2026-10-09T00:00:00.000Z"),
       workspaceId: "ws-1",
       invitedBy: "user-1",
+      email: null,
     })
   })
 })

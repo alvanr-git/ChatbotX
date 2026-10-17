@@ -157,7 +157,10 @@
     "stop": "Dừng",
     "resume": "Tiếp tục",
     "viewRuns": "Xem các lần gửi",
-    "editSchedule": "Sửa lịch"
+    "editSchedule": "Sửa lịch",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Bạn cần là super admin của workspace để thực hiện thao tác này."
@@ -638,7 +641,8 @@
         "undo": "Hoàn tác",
         "error": "Lần gửi này không thể thay đổi được nữa"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -2955,7 +2959,8 @@
       "productsSelected": "{count, plural, one {# sản phẩm} other {# sản phẩm}}",
       "noneSelected": "Chưa có sản phẩm",
       "sendFailed": "Không thể gửi sản phẩm."
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- Gốc --",
@@ -4901,7 +4906,8 @@
     "linkCopied": "Đã sao chép liên kết vào clipboard",
     "countExact": "{count} liên hệ",
     "countCapped": "{count}+ liên hệ",
-    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất."
+    "exportAllNotice": "Tất cả liên hệ khớp với bộ lọc hiện tại sẽ được xuất.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -5001,7 +5007,8 @@
     "pageWarning": "Nội dung tin nhắn chứa từ khoá cho trang có thể dẫn đến gửi tin nhắn cho khách lặp vô hạn. Hãy huỷ kích hoạt từ khoá cho trang ngay lập tức nếu bạn gặp phải trường hợp này!"
   },
   "triggers": {
-    "title": "Kích hoạt"
+    "title": "Kích hoạt",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "appointments": {
     "title": "Cuộc hẹn",
@@ -5050,7 +5057,8 @@
     "title": "Menu cố định người dùng"
   },
   "webhooks": {
-    "title": "Webhooks"
+    "title": "Webhooks",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Liên kết giới thiệu",
@@ -5459,11 +5467,13 @@
     "saturday": "Thứ Bảy",
     "sunday": "Chủ Nhật",
     "afterText": "Sau",
-    "title": "Chăm sóc"
+    "title": "Chăm sóc",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
     "title": "Công cụ",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "users": {
     "title": "Người dùng"

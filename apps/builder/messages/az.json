@@ -157,7 +157,10 @@
     "stop": "Dayandır",
     "resume": "Davam et",
     "viewRuns": "İcraları göstər",
-    "editSchedule": "Cədvəli redaktə et"
+    "editSchedule": "Cədvəli redaktə et",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Bunu etmək üçün iş sahəsinin super administratoru olmalısınız."
@@ -638,7 +641,8 @@
         "undo": "Geri al",
         "error": "Bu göndərişi artıq dəyişmək olmaz"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -3595,7 +3599,8 @@
       "productsSelected": "{count, plural, one {# məhsul} other {# məhsul}}",
       "noneSelected": "Hələ məhsul yoxdur",
       "sendFailed": "Məhsullar göndərilə bilmədi."
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- Kök --",
@@ -5458,7 +5463,8 @@
     "title": "İstifadəçinin daimi menyuları"
   },
   "webhooks": {
-    "title": "Webhook-lar"
+    "title": "Webhook-lar",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Giriş nöqtəsi keçidləri",
@@ -5878,7 +5884,8 @@
     "countCapped": "{count}+ kontakt",
     "exportAllNotice": "Cari süzgəcə uyğun bütün kontaktlar ixrac ediləcək.",
     "exportTakingLong": "İxrac gözləniləndən uzun çəkir",
-    "exportTakingLongDescription": "İxrac hələ davam edir. Bu pəncərəni bağlayıb bir neçə dəqiqədən sonra ixrac tarixçəsindən yenidən yoxlaya bilərsiniz."
+    "exportTakingLongDescription": "İxrac hələ davam edir. Bu pəncərəni bağlayıb bir neçə dəqiqədən sonra ixrac tarixçəsindən yenidən yoxlaya bilərsiniz.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -5974,7 +5981,8 @@
     "pageWarning": "Səhifə açar sözü olan mesaj məzmunu müştəriyə sonsuz dövrədə mesaj göndərilməsinə səbəb ola bilər. Bu hal baş verərsə, səhifə açar sözünü dərhal söndürün!"
   },
   "triggers": {
-    "title": "Tətikləyicilər"
+    "title": "Tətikləyicilər",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "appointments": {
     "title": "Görüşlər",
@@ -6106,11 +6114,13 @@
     "friday": "Cümə",
     "saturday": "Şənbə",
     "sunday": "Bazar",
-    "afterText": "Sonra"
+    "afterText": "Sonra",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
     "title": "Alətlər",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

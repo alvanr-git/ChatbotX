@@ -157,7 +157,10 @@
     "stop": "Stop",
     "resume": "Resume",
     "viewRuns": "Durchläufe anzeigen",
-    "editSchedule": "Zeitplan bearbeiten"
+    "editSchedule": "Zeitplan bearbeiten",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Sie müssen Super-Administrator des Arbeitsbereichs sein, um dies zu tun."
@@ -596,7 +599,8 @@
         "undo": "Rückgängig",
         "error": "Diese Sendung kann nicht mehr geändert werden"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -2767,7 +2771,8 @@
       "productsSelected": "{count, plural, one {# Produkt} other {# Produkte}}",
       "noneSelected": "Noch keine Produkte",
       "sendFailed": "Die Produkte konnten nicht gesendet werden."
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- Stammordner --",
@@ -4776,7 +4781,8 @@
     "title": "Persistente Benutzermenüs"
   },
   "webhooks": {
-    "title": "Webhooks"
+    "title": "Webhooks",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "Einstiegspunkt-Links",
@@ -5196,7 +5202,8 @@
     "countCapped": "{count}+ Kontakte",
     "exportAllNotice": "Alle Kontakte, die dem aktuellen Filter entsprechen, werden exportiert.",
     "exportTakingLong": "Der Export dauert länger als erwartet",
-    "exportTakingLongDescription": "Der Export wird noch verarbeitet. Sie können diesen Dialog schließen und in einigen Minuten im Exportverlauf erneut nachsehen."
+    "exportTakingLongDescription": "Der Export wird noch verarbeitet. Sie können diesen Dialog schließen und in einigen Minuten im Exportverlauf erneut nachsehen.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -5292,7 +5299,8 @@
     "pageWarning": "Nachrichteninhalte mit einem Seiten-Schlüsselwort können dazu führen, dass Nachrichten in einer Endlosschleife an den Kunden gesendet werden. Deaktivieren Sie das Seiten-Schlüsselwort sofort, wenn dies bei Ihnen auftritt!"
   },
   "triggers": {
-    "title": "Trigger"
+    "title": "Trigger",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "Benutzer"
@@ -5381,11 +5389,13 @@
     "friday": "Freitag",
     "saturday": "Samstag",
     "sunday": "Sonntag",
-    "afterText": "Nach"
+    "afterText": "Nach",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
     "title": "Tools",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

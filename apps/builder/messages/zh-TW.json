@@ -1938,7 +1938,10 @@
     "stop": "Stop",
     "resume": "Resume",
     "viewRuns": "查看執行記錄",
-    "editSchedule": "編輯排程"
+    "editSchedule": "編輯排程",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "您需要是工作區的超級管理員才能執行此操作。"
@@ -2377,7 +2380,8 @@
         "undo": "復原",
         "error": "此次發送已無法變更"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -3139,7 +3143,8 @@
       "productsSelected": "{count, plural, one {# 件商品} other {# 件商品}}",
       "noneSelected": "尚無商品",
       "sendFailed": "無法傳送商品。"
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- 根目錄 --",
@@ -4809,7 +4814,8 @@
     "title": "使用者常駐選單"
   },
   "webhooks": {
-    "title": "Webhook"
+    "title": "Webhook",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "入口點連結",
@@ -5229,7 +5235,8 @@
     "countCapped": "{count}+ 聯絡人",
     "exportAllNotice": "與目前過濾器相符的所有聯絡人都會被匯出。",
     "exportTakingLong": "匯出花費的時間比預期長",
-    "exportTakingLongDescription": "匯出仍在處理中。您可以關閉此對話框，並在幾分鐘後返回檢視匯出歷史記錄。"
+    "exportTakingLongDescription": "匯出仍在處理中。您可以關閉此對話框，並在幾分鐘後返回檢視匯出歷史記錄。",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -5325,7 +5332,8 @@
     "pageWarning": "訊息包含 Page 關鍵字的內容可能會導致訊息無限循環地傳送給客戶。遇到這種情況請立即停用Page關鍵字！"
   },
   "triggers": {
-    "title": "觸發器"
+    "title": "觸發器",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "使用者"
@@ -5414,11 +5422,13 @@
     "friday": "週五",
     "saturday": "星期六",
     "sunday": "週日",
-    "afterText": "之後"
+    "afterText": "之後",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
     "title": "工具",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",

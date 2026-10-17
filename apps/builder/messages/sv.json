@@ -161,7 +161,10 @@
     "stop": "Stop",
     "resume": "Resume",
     "viewRuns": "Visa körningar",
-    "editSchedule": "Redigera schema"
+    "editSchedule": "Redigera schema",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "Du måste vara superadministratör för arbetsytan för att göra detta."
@@ -755,7 +758,8 @@
         "undo": "Ångra",
         "error": "Det här utskicket kan inte längre ändras"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -1161,7 +1165,8 @@
     "exportTakingLong": "Exporten tar längre tid än väntat",
     "exportTakingLongDescription": "Exporten bearbetas fortfarande. Du kan stänga den här dialogrutan och kontrollera exporthistoriken igen om några minuter.",
     "linkCopied": "Länken har kopierats till urklipp",
-    "title": "Kontakter"
+    "title": "Kontakter",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -3690,7 +3695,8 @@
       "productsSelected": "{count, plural, one {# produkt} other {# produkter}}",
       "noneSelected": "Inga produkter ännu",
       "sendFailed": "Produkterna kunde inte skickas."
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- Rot --",
@@ -5804,7 +5810,8 @@
       "exception": "Valideringsfel",
       "nameExists": "Sekvensnamnet finns redan"
     },
-    "wednesday": "Onsdag"
+    "wednesday": "Onsdag",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "settings": {
     "agents": {
@@ -5921,7 +5928,8 @@
   },
   "tools": {
     "title": "Verktyg",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "trigger": {
     "actions": {
@@ -5988,7 +5996,8 @@
     "when": "När detta händer"
   },
   "triggers": {
-    "title": "Utlösare"
+    "title": "Utlösare",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "unsubscribePage": {
     "description": "Du kommer inte längre att få e-post från den här avsändaren.",
@@ -6061,7 +6070,8 @@
     "workspaceUnavailable": "Den här arbetsytan är inte längre tillgänglig."
   },
   "webhooks": {
-    "title": "Webhookar"
+    "title": "Webhookar",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "whatsapp": {
     "accountHealths": {

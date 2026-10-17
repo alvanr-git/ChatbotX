@@ -157,7 +157,10 @@
     "stop": "Stop",
     "resume": "Resume",
     "viewRuns": "عرض عمليات التشغيل",
-    "editSchedule": "تعديل الجدول"
+    "editSchedule": "تعديل الجدول",
+    "checkDmsAndComments": "Check for DMs & Comments",
+    "checkingDmsAndComments": "Checking for new DMs and comments...",
+    "checkDmsAndCommentsError": "Failed to check for new DMs and comments."
   },
   "errors": {
     "superAdminRequired": "يجب أن تكون مسؤولًا فائقًا لمساحة العمل للقيام بذلك."
@@ -596,7 +599,8 @@
         "undo": "تراجع",
         "error": "لم يعد بالإمكان تغيير هذا الإرسال"
       }
-    }
+    },
+    "description": "Create, manage, and schedule bulk outbound campaigns to targeted contact segments across your channels."
   },
   "commentAutomation": {
     "stats": {
@@ -2913,7 +2917,8 @@
       "productsSelected": "{count, plural, one {# منتج} other {# منتجات}}",
       "noneSelected": "لا توجد منتجات بعد",
       "sendFailed": "تعذّر إرسال المنتجات."
-    }
+    },
+    "description": "Build and manage interactive chatbot conversational flows, automated logic, and visual step sequences."
   },
   "folders": {
     "rootOption": "-- الجذر --",
@@ -4776,7 +4781,8 @@
     "title": "القوائم الدائمة للمستخدمين"
   },
   "webhooks": {
-    "title": "خطافات الويب"
+    "title": "خطافات الويب",
+    "description": "Set up HTTP webhooks to broadcast real-time workspace event payloads to external servers and third-party tools."
   },
   "reflinks": {
     "title": "روابط نقاط الدخول",
@@ -5196,7 +5202,8 @@
     "countCapped": "أكثر من {count} جهة اتصال",
     "exportAllNotice": "سيتم تصدير جميع جهات الاتصال المطابقة لعامل التصفية الحالي.",
     "exportTakingLong": "يستغرق التصدير وقتًا أطول من المتوقع",
-    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير."
+    "exportTakingLongDescription": "لا تزال عملية التصدير جارية. يمكنك إغلاق مربع الحوار هذا والتحقق مرة أخرى بعد بضع دقائق من سجل التصدير.",
+    "description": "View and manage your subscriber contacts, custom field values, assigned tags, and interaction histories."
   },
   "contactScan": {
     "menu": {
@@ -5292,7 +5299,8 @@
     "pageWarning": "قد يؤدي محتوى رسالة تحتوي على كلمة مفتاحية للصفحة إلى إرسال رسائل للعميل بشكل متكرر لا نهائي. قم بإلغاء تفعيل الكلمة المفتاحية للصفحة فورًا إذا واجهت هذه الحالة!"
   },
   "triggers": {
-    "title": "المشغّلات"
+    "title": "المشغّلات",
+    "description": "Configure event-driven automation rules to trigger flows when specific user actions or system events occur."
   },
   "users": {
     "title": "المستخدمون"
@@ -5381,11 +5389,13 @@
     "friday": "الجمعة",
     "saturday": "السبت",
     "sunday": "الأحد",
-    "afterText": "بعد"
+    "afterText": "بعد",
+    "description": "Design multi-step drip messaging series and timed follow-ups for automated subscriber onboarding and nurturing."
   },
   "tools": {
     "title": "الأدوات",
-    "beta": "Beta"
+    "beta": "Beta",
+    "description": "Access growth, acquisition, and utility tools including Reflinks, QR Code Generators, Webchat Widgets, and Magic Links."
   },
   "aiProviders": {
     "openai": "OpenAI",
