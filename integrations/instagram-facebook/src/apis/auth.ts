@@ -17,6 +17,7 @@ export const INSTAGRAM_SCOPES = [
   "instagram_manage_comments",
   "pages_manage_metadata",
   "pages_show_list",
+  "pages_messaging",
   "business_management",
 ]
 

@@ -63,10 +63,7 @@ const handleWebhookEvent = async (
     )
 
     if (!isValidSignature) {
-      logger.warn(
-        { signature },
-        "Instagram webhook signature mismatch — proceeding with webhook processing",
-      )
+      throw new InstagramWebhookException("Invalid webhook signature")
     }
 
     const parsedWebhook = instagramWebhookEventSchema.safeParse(
