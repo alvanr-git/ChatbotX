@@ -1,0 +1,11 @@
+{
+  "entries": [
+    {
+      "path": "~/.gemini/skills-vault/devops-qa-security-backend",
+      "include_only": [
+        "turborepo-caching",
+        "security-audit-suite"
+      ]
+    }
+  ]
+}
