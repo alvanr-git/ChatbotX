@@ -11,6 +11,7 @@ import type {
   SendAudioStepSchema,
   SendCardStepSchema,
   SendCarouselStepSchema,
+  SendCollectionStepSchema,
   SendFileStepSchema,
   SendGifStepSchema,
   SendImageStepSchema,
@@ -23,10 +24,12 @@ import type {
   SendViewCatalogStepSchema,
   SendWaTemplateMessageStepSchema,
   WaTemplateParams,
+  WaTemplateStatusBranch,
   WhatsappCallButtonStepSchema,
   WhatsappLocationStepSchema,
 } from "@chatbotx.io/flow-config"
 import type { CommentAnchor, MessageButtonTemplate } from "@chatbotx.io/sdk"
+import type { SendFrom } from "@chatbotx.io/utils/send-from"
 import { Queue } from "bullmq"
 import {
   defaultJobOptions,
@@ -48,7 +51,6 @@ export const ChatJobAction = {
   sendMessengerTemplateMessage: "sendMessengerTemplateMessage",
   sendTyping: "sendTyping",
   notifyExportResult: "notifyExportResult",
-  broadcastEvent: "broadcastEvent",
   deleteChannelMessage: "deleteChannelMessage",
   editChannelMessage: "editChannelMessage",
   changeChannelMessageState: "changeChannelMessageState",
@@ -67,7 +69,7 @@ export type ChatJobSendChannelMessage = {
     quickReplies?: MessageButtonTemplate[]
     metadata?: MetadataPayload
     isBulkBroadcast?: boolean
-    sendFrom?: "inbox"
+    sendFrom?: SendFrom
   }
 }
 
@@ -94,6 +96,7 @@ export type ChatJobSendFlowStep = {
       | SendMessengerTemplateMessageStepSchema
       | WhatsappCallButtonStepSchema
       | SendProductsStepSchema
+      | SendCollectionStepSchema
       | WhatsappLocationStepSchema
       | SendViewCatalogStepSchema
     trackingContext?: BotResponseTrackingContext
@@ -109,7 +112,20 @@ export type ChatJobSendFlowStep = {
       buttonPayloads: Record<string, DatabaseRichButtonPayloadEntry>
     }
     quickReplies?: ButtonStepProps[]
-    sendFrom?: "inbox"
+    /**
+     * Ready-made quick replies appended after the step's own, for a prompt
+     * whose payloads the caller encodes itself (Get User Data's Skip button).
+     */
+    presetQuickReplies?: MessageButtonTemplate[]
+    /**
+     * Set by the flow runner for a `sendWaTemplateMessage` step: the delivery
+     * statuses whose button leads somewhere (actions or a connected node), so
+     * the send records them as status branches of the message it produces.
+     */
+    statusBranches?: WaTemplateStatusBranch[]
+    sendFrom?: SendFrom
+    /** See `IntegrationJobRunFlowNode["data"]["sentByUserId"]`. */
+    sentByUserId?: string
     /** See {@link CommentAnchor}. */
     commentAnchor?: CommentAnchor
   }
@@ -158,6 +174,21 @@ export type ChatJobSendWhatsappTemplateToConversation = {
     templateId: string
     templateData?: WaTemplateParams
     metadata?: MetadataPayload
+    /**
+     * Who triggered the send. Only `user` (a workspace member in the inbox)
+     * counts as a human agent message in analytics. Absent — automations
+     * (flows, broadcasts) and jobs queued before this field — counts as a bot
+     * message, like `api`.
+     */
+    initiatedBy?: "user" | "api"
+    /** The member behind `initiatedBy: "user"`. */
+    adminId?: string
+    /**
+     * `inbox` when a member sent it from the builder's Inbox: the row is
+     * stamped and kept with its error if the send fails for good. Absent or
+     * `api` — the row is removed on a final failure.
+     */
+    sendFrom?: SendFrom
   }
 }
 
@@ -187,17 +218,18 @@ export type ChatJobSendTyping = {
   }
 }
 
-export type ChatJobBroadcastEvent = {
-  type: typeof ChatJobAction.broadcastEvent
-  data: {
-    workspaceId: string
-    event: unknown
-  }
-}
-
 export type ChatJobNotifyExportResult = {
   type: typeof ChatJobAction.notifyExportResult
   data: Record<string, unknown>
+}
+
+/**
+ * Set when a comment automation hides or deletes a comment, so the handler
+ * settles that comment's `CommentModerationLog` row once the channel answered.
+ */
+export type ChatJobCommentModeration = {
+  automationId: string
+  commentId: string
 }
 
 export type ChatJobDeleteChannelMessage = {
@@ -209,6 +241,12 @@ export type ChatJobDeleteChannelMessage = {
       id: string
       createdAt: Date
     }
+    /**
+     * Set by AI moderation: the handler also soft-deletes the message in the
+     * inbox after the channel accepted the delete (the builder's delete action
+     * does that before enqueueing).
+     */
+    moderation?: ChatJobCommentModeration
   }
 }
 
@@ -237,6 +275,7 @@ export type ChatJobChangeChannelMessageState = {
     }
     liked?: boolean
     hidden?: boolean
+    moderation?: ChatJobCommentModeration
   }
 }
 
@@ -260,7 +299,6 @@ export type ChatJobData =
   | ChatJobSendWhatsappTemplateToConversation
   | ChatJobSendMessengerTemplateMessage
   | ChatJobSendTyping
-  | ChatJobBroadcastEvent
   | ChatJobNotifyExportResult
   | ChatJobDeleteChannelMessage
   | ChatJobEditChannelMessage

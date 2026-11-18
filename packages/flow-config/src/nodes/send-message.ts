@@ -1,7 +1,11 @@
 import { type ChannelType, channelTypes } from "@chatbotx.io/utils/channel"
 import { z } from "zod"
 import { actionSteps } from "../shared"
-import { buttonStepSchema } from "../steps/button"
+import {
+  STEP_INPUT_RESOLUTION_PAYLOAD_TYPE,
+  stepInputResolutionReasons,
+} from "../step-input-resolution"
+import { buttonStepSchema, refineReplyOnlyButtons } from "../steps/button"
 import {
   chooseChannelStepDefaultFn,
   chooseChannelStepSchema,
@@ -15,6 +19,7 @@ import {
 import { sendAudioStepSchema } from "../steps/send-audio"
 import { sendCardStepSchema } from "../steps/send-card"
 import { sendCarouselStepSchema } from "../steps/send-carousel"
+import { sendCollectionStepSchema } from "../steps/send-collection"
 import { sendFileStepSchema } from "../steps/send-file"
 import { sendGifStepSchema } from "../steps/send-gif"
 import { sendImageStepSchema } from "../steps/send-image"
@@ -69,12 +74,14 @@ export const sendMessageNodeSchema = baseNodeSchema.extend({
             whatsappCallButtonStepSchema,
             whatsappFlowStepSchema,
             sendProductsStepSchema,
+            sendCollectionStepSchema,
             whatsappLocationStepSchema,
             ...actionSteps,
           ]),
         ),
         quickReplies: z
           .array(buttonStepSchema)
+          .superRefine(refineReplyOnlyButtons)
           .max(MAX_QUICK_REPLIES)
           .describe(
             `Quick-reply buttons shown after the last message (max ${MAX_QUICK_REPLIES}); use [] for none.`,
@@ -128,6 +135,13 @@ export const isBulkOutboundMetadata = (
   "type" in metadata &&
   (metadata.type === SEQUENCE_SCHEDULE_PAYLOAD_TYPE ||
     (metadata.type === BROADCAST_PAYLOAD_TYPE && isBulkBroadcast))
+
+/**
+ * Proactive sends (broadcast / sequence schedule) are not replies to the
+ * contact's last message, so they must not close the waiting-for-human window.
+ */
+export const isProactiveOutboundMetadata = (metadata: unknown): boolean =>
+  isBulkOutboundMetadata(metadata, true)
 
 export const COMMENT_AUTOMATION_PAYLOAD_TYPE = "commentAutomation"
 export const UPDATE_STATUS_PAYLOAD_TYPE = "updateStatus"
@@ -216,6 +230,18 @@ export const getUserDataWebviewSelectionPayload = baseMetadataPayload.extend({
   selectedValue: z.iso.datetime(),
 })
 
+/**
+ * Stored in the `metadata` column of a `stepInputTimeout` smart-delay row. It
+ * is never passed as flow-run metadata: run metadata propagates to every
+ * continuation and would re-resolve the step if the flow loops back to it.
+ */
+export const stepInputResolutionPayload = baseMetadataPayload.extend({
+  type: z.literal(STEP_INPUT_RESOLUTION_PAYLOAD_TYPE),
+  stepId: z.string(),
+  challengeId: z.string(),
+  reason: stepInputResolutionReasons,
+})
+
 export type BroadcastMetadataPayload = z.infer<typeof broadcastMetadataPayload>
 
 export type SequenceScheduleMetadataPayload = z.infer<
@@ -235,6 +261,7 @@ export const metadataSchema = z.discriminatedUnion("type", [
   appointmentAvailabilityRangeSelectionPayload,
   appointmentAvailabilityRangeSkippedPayload,
   getUserDataWebviewSelectionPayload,
+  stepInputResolutionPayload,
 ])
 
 export type MetadataPayload = z.infer<typeof metadataSchema>

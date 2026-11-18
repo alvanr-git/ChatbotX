@@ -1,3 +1,4 @@
+import { withCache } from "@chatbotx.io/redis"
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const mocks = vi.hoisted(() => {
@@ -9,19 +10,34 @@ const mocks = vi.hoisted(() => {
     deleteWhere,
     dispatchAuditRecord: vi.fn(),
     findFirst: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     listPermissionsByUserIds: vi.fn(),
     markOnlineBulk: vi.fn(),
+    deleteMembersForUsers: vi.fn(async () => undefined),
+    order: [] as string[],
+    txClient: { delete: () => ({ where: async () => undefined }) },
+    invalidateCacheByTags: vi.fn(async () => undefined),
   }
 })
 
 const makeClient = () => ({
   query: {
-    workspaceMemberModel: { findFirst: mocks.findFirst },
+    workspaceMemberModel: {
+      findFirst: mocks.findFirst,
+      findMany: mocks.findMany,
+    },
   },
+  $count: async () => 0,
   insert: vi.fn(() => ({
     values: vi.fn(() => ({ returning: mocks.insertReturning })),
   })),
   delete: vi.fn(() => ({ where: mocks.deleteWhere })),
+  transaction: vi.fn(async (fn: (client: unknown) => Promise<unknown>) => {
+    mocks.order.push("begin")
+    const result = await fn(mocks.txClient)
+    mocks.order.push("commit")
+    return result
+  }),
 })
 
 vi.mock("../src/audit/dispatcher", () => ({
@@ -39,6 +55,7 @@ vi.mock("@chatbotx.io/database/client", () => ({
   and: (...args: unknown[]) => ({ and: args }),
   db: makeClient(),
   eq: (...args: unknown[]) => ({ eq: args }),
+  relationsFilterToSQL: () => ({}),
 }))
 
 vi.mock("@chatbotx.io/database/partials", () => ({
@@ -52,20 +69,45 @@ vi.mock("@chatbotx.io/database/schema", () => ({
   },
 }))
 
+vi.mock("../src/working-hours/service", () => ({
+  workingHoursService: { removeMembersForUsers: mocks.deleteMembersForUsers },
+}))
+
 vi.mock("@chatbotx.io/database/repositories", () => ({
   workspaceMemberRepository: {
     listPermissionsByUserIds: mocks.listPermissionsByUserIds,
     markOnlineBulk: mocks.markOnlineBulk,
   },
 }))
+vi.mock("../src/platform/realtime-broadcast", () => ({
+  tryRevokeWorkspaceMemberRealtimeConnections: vi.fn().mockResolvedValue(true),
+}))
 
 vi.mock("@chatbotx.io/redis", () => ({
   withCache: vi.fn(),
+  invalidateCacheByTags: mocks.invalidateCacheByTags,
 }))
 
-const { workspaceMemberService } = await import(
+const { workspaceMemberDeleteCacheTags, workspaceMemberService } = await import(
   "../src/workspace-member/service"
 )
+
+describe("workspaceMemberDeleteCacheTags", () => {
+  test("lists the schedule, roster and user tags a removal makes stale", () => {
+    expect(workspaceMemberDeleteCacheTags("ws-1", "user-1")).toEqual([
+      "working-hours:ws-1",
+      "workspaces:ws-1:workspace-members",
+      "users:user-1:workspace-members",
+    ])
+  })
+
+  test("omits the user tag when the member did not exist", () => {
+    expect(workspaceMemberDeleteCacheTags("ws-1", undefined)).toEqual([
+      "working-hours:ws-1",
+      "workspaces:ws-1:workspace-members",
+    ])
+  })
+})
 
 describe("workspaceMemberService.create", () => {
   beforeEach(() => {
@@ -92,9 +134,11 @@ describe("workspaceMemberService.create", () => {
   // leaves that transaction aborted; swallowing the error would let the next
   // statement (or COMMIT) fail while this call reports success. Let the
   // transaction owner see it, roll back and compensate.
-  test("reports on the caller's tracker whether the live team-member counter took the increment", async () => {
+  test("reports on the caller's tracker how many live team-member increments took, across repeated calls with the same tracker", async () => {
     const tx = makeClient()
-    const teamMemberUsage = { liveIncremented: false }
+    const teamMemberUsage = { liveIncrementedCount: 0 }
+    mocks.increment.mockResolvedValueOnce(true as never)
+    mocks.increment.mockResolvedValueOnce(false as never)
     mocks.increment.mockResolvedValueOnce(true as never)
 
     await workspaceMemberService.create({
@@ -102,8 +146,18 @@ describe("workspaceMemberService.create", () => {
       data: { userId: "user-1", workspaceId: "ws-1", role: "owner" } as never,
       teamMemberUsage,
     })
+    await workspaceMemberService.create({
+      tx: tx as never,
+      data: { userId: "user-2", workspaceId: "ws-1", role: "agent" } as never,
+      teamMemberUsage,
+    })
+    await workspaceMemberService.create({
+      tx: tx as never,
+      data: { userId: "user-3", workspaceId: "ws-1", role: "agent" } as never,
+      teamMemberUsage,
+    })
 
-    expect(teamMemberUsage).toEqual({ liveIncremented: true })
+    expect(teamMemberUsage).toEqual({ liveIncrementedCount: 2 })
   })
 
   test("propagates a usage-increment failure when writing on the caller's tx", async () => {
@@ -144,8 +198,73 @@ describe("workspaceMemberService.delete", () => {
     mocks.decrement.mockResolvedValue(undefined)
     mocks.findFirst.mockResolvedValue({
       id: "member-1",
+      userId: "user-1",
       user: { name: "Ada", email: "ada@example.com" },
     })
+  })
+
+  test("on a caller tx, deletes the schedule row on that tx and leaves invalidation to the caller", async () => {
+    const tx = makeClient()
+
+    await workspaceMemberService.delete({
+      id: "member-1",
+      workspaceId: "workspace-1",
+      tx: tx as never,
+    })
+
+    expect(mocks.deleteMembersForUsers).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      userIds: ["user-1"],
+      tx,
+    })
+    expect(mocks.invalidateCacheByTags).not.toHaveBeenCalled()
+  })
+
+  test("without a tx, deletes member and schedule row in one transaction and invalidates after commit", async () => {
+    mocks.order.length = 0
+    mocks.invalidateCacheByTags.mockImplementationOnce(() => {
+      mocks.order.push("invalidate")
+      return Promise.resolve()
+    })
+
+    await workspaceMemberService.delete({
+      id: "member-1",
+      workspaceId: "workspace-1",
+    })
+
+    expect(mocks.deleteMembersForUsers).toHaveBeenCalledWith({
+      workspaceId: "workspace-1",
+      userIds: ["user-1"],
+      tx: mocks.txClient,
+    })
+    expect(mocks.invalidateCacheByTags).toHaveBeenCalledWith([
+      "working-hours:workspace-1",
+      "workspaces:workspace-1:workspace-members",
+      "users:user-1:workspace-members",
+    ])
+    expect(mocks.order).toEqual(["begin", "commit", "invalidate"])
+  })
+
+  test("loads the member's user without the secret column", async () => {
+    await workspaceMemberService.delete({
+      id: "member-1",
+      workspaceId: "workspace-1",
+    })
+
+    expect(mocks.findFirst.mock.calls[0]?.[0]?.with.user).toEqual({
+      columns: { connectionAuthorizations: false },
+    })
+  })
+
+  test("skips the working-hours cleanup when the member does not exist", async () => {
+    mocks.findFirst.mockResolvedValue(undefined)
+
+    await workspaceMemberService.delete({
+      id: "missing",
+      workspaceId: "workspace-1",
+    })
+
+    expect(mocks.deleteMembersForUsers).not.toHaveBeenCalled()
   })
 
   test("does not audit inside a caller-owned transaction", async () => {
@@ -214,5 +333,54 @@ describe("workspaceMemberService.markOnlineBulk", () => {
       workspaceId: "ws-1",
       userIds: ["u1", "u2"],
     })
+  })
+})
+
+describe("workspaceMemberService user relation reads", () => {
+  const projection = { columns: { connectionAuthorizations: false } }
+
+  test("the cached roster loads each member's user without the secret column", async () => {
+    const findMany = vi.fn().mockResolvedValue([])
+    vi.mocked(withCache).mockImplementationOnce((_key, load) => load())
+
+    await workspaceMemberService.listByWorkspaceId({
+      workspaceId: "workspace-1",
+      tx: { query: { workspaceMemberModel: { findMany } } } as never,
+    })
+
+    expect(findMany.mock.calls[0]?.[0]?.with.user).toEqual(projection)
+  })
+
+  test("a single membership with its user loads the user without the secret column", async () => {
+    const findFirst = vi.fn().mockResolvedValue(undefined)
+
+    await workspaceMemberService.findWithUserByWorkspaceIdAndUserId({
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      tx: { query: { workspaceMemberModel: { findFirst } } } as never,
+    })
+
+    expect(findFirst.mock.calls[0]?.[0]?.with.user).toEqual(projection)
+  })
+
+  test("the paginated list loads each member's user without the secret column", async () => {
+    await workspaceMemberService.listPaginated({
+      workspaceId: "workspace-1",
+      page: 1,
+      perPage: 10,
+    } as never)
+
+    expect(mocks.findMany.mock.calls[0]?.[0]?.with.user).toEqual(projection)
+  })
+
+  test("a member looked up by id loads the user without the secret column", async () => {
+    mocks.findFirst.mockResolvedValue(undefined)
+
+    await workspaceMemberService.findByIdWithUser({
+      id: "member-1",
+      workspaceId: "workspace-1",
+    })
+
+    expect(mocks.findFirst.mock.calls[0]?.[0]?.with.user).toEqual(projection)
   })
 })

@@ -1,29 +1,79 @@
 import { printResult } from "./commands/utils"
 import type { DynamicTool } from "./openapi-loader"
 
-function buildQueryString(params: Record<string, string>): string {
-  const qs = new URLSearchParams(params).toString()
+/** A CLI argument: one value, or the values of a repeated array flag. */
+export type CliParamValue = string | string[]
+
+/**
+ * Array members use the indexed bracket form (`channels[0]=a&channels[1]=b`),
+ * the same encoding the MCP server sends and the builder's oRPC decodes.
+ */
+function buildQueryString(params: Record<string, CliParamValue>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const [index, item] of value.entries()) {
+        search.append(`${key}[${index}]`, item)
+      }
+      continue
+    }
+    search.append(key, value)
+  }
+  const qs = search.toString()
   return qs ? `?${qs}` : ""
+}
+
+/**
+ * Every CLI flag arrives as a string; a `number`/`integer` body property must
+ * go out as a JSON number or the API rejects it. Full precision is kept.
+ */
+function parseNumberFlag(
+  key: string,
+  value: string,
+  type: "number" | "integer",
+): number {
+  const parsed = value.trim() === "" ? Number.NaN : Number(value)
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`--${key} must be a number, got "${value}"`)
+  }
+  if (type === "integer" && !Number.isInteger(parsed)) {
+    throw new Error(`--${key} must be an integer, got "${value}"`)
+  }
+  return parsed
 }
 
 const NO_BODY_METHODS = new Set(["GET", "HEAD"])
 
+type BodyPropertySchema = {
+  type?: string | string[]
+  nullable?: boolean
+  anyOf?: BodyPropertySchema[]
+  oneOf?: BodyPropertySchema[]
+}
+
+/** Whether the property takes a JSON `null` (nullable, a null union member or a type list with null). */
+const acceptsNull = (schema: BodyPropertySchema | undefined): boolean =>
+  schema?.nullable === true ||
+  schema?.type === "null" ||
+  (Array.isArray(schema?.type) && schema.type.includes("null")) ||
+  [...(schema?.anyOf ?? []), ...(schema?.oneOf ?? [])].some(acceptsNull)
+
 export async function executeDynamicCommand(
   tool: DynamicTool,
-  params: Record<string, string>,
+  params: Record<string, CliParamValue>,
   config: { apiKey: string; apiUrl: string },
 ): Promise<void> {
   let path = tool.pathTemplate
 
   for (const paramName of tool.pathParamNames) {
     const value = params[paramName]
-    if (!value) {
+    if (!value || Array.isArray(value)) {
       throw new Error(`Missing required path parameter: ${paramName}`)
     }
     path = path.replace(`{${paramName}}`, encodeURIComponent(value))
   }
 
-  const queryArgs: Record<string, string> = {}
+  const queryArgs: Record<string, CliParamValue> = {}
   for (const key of tool.queryParamNames) {
     const value = params[key]
     if (value !== undefined) {
@@ -34,16 +84,28 @@ export async function executeDynamicCommand(
   const body: Record<string, unknown> = {}
   for (const key of tool.bodyParamNames) {
     const value = params[key]
-    if (value !== undefined) {
+    if (typeof value === "string") {
       const propSchema = tool.inputSchema.properties[key] as
-        | { type?: string }
+        | BodyPropertySchema
         | undefined
-      if (propSchema?.type === "array" || propSchema?.type === "object") {
+      // Flags are always text, so `--currency null` is how a CLI user sends a
+      // JSON null (e.g. "clear it") to a property that accepts one.
+      if (value === "null" && acceptsNull(propSchema)) {
+        body[key] = null
+      } else if (
+        propSchema?.type === "array" ||
+        propSchema?.type === "object"
+      ) {
         try {
           body[key] = JSON.parse(value)
         } catch {
           body[key] = value
         }
+      } else if (
+        propSchema?.type === "number" ||
+        propSchema?.type === "integer"
+      ) {
+        body[key] = parseNumberFlag(key, value, propSchema.type)
       } else {
         body[key] = value
       }

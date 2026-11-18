@@ -35,6 +35,7 @@ import { quotaEnforcementService } from "../quota-enforcement/service"
 import { type IdLabel, selectLabelsByIds } from "../select-labels-by-ids"
 import { workspaceUsageService } from "../workspace-usage/service"
 import type {
+  AnalyticsFilterOption,
   ListAllConnectedInboxesRequest,
   ListAllConnectedInboxesResponse,
   ListInboxesRequest,
@@ -74,6 +75,7 @@ class InboxService extends BaseService {
     integrationInstagram: true,
     integrationThreads: true,
     integrationZalo: true,
+    integrationLine: true,
     integrationTelegram: true,
     integrationSmtp: true,
     integrationTiktok: true,
@@ -133,6 +135,24 @@ class InboxService extends BaseService {
     })
 
     return { data }
+  }
+
+  /**
+   * The workspace's connected inboxes as lean options for the analytics Channel
+   * and Inbox filters. Unpaginated, unlike `list`: a row is three short columns.
+   */
+  async listAnalyticsFilterOptions(
+    workspaceId: string,
+  ): Promise<AnalyticsFilterOption[]> {
+    const rows = await inboxRepository.listAnalyticsOptionsByWorkspace({
+      workspaceId,
+    })
+    // `Inbox.channel` is plain text in the database; only known channels are
+    // offered as filter options.
+    return rows.flatMap((row) => {
+      const channel = channelTypes.safeParse(row.channel)
+      return channel.success ? [{ ...row, channel: channel.data }] : []
+    })
   }
 
   async listWithIntegrationsByWorkspace(

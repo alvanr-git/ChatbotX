@@ -7,27 +7,44 @@ const mockRepositoryCreate = vi.fn()
 const mockCreateMessageRepository = vi.fn()
 const mockChatQueueAdd = vi.fn()
 const mockResolveTenantSettings = vi.fn()
-const mockBroadcastToWorkspaceParty = vi.fn()
 const mockIntegrationQueueAdd = vi.fn()
 const mockFlowExists = vi.fn()
 const mockFindOrCreate = vi.fn()
 const mockPrepareProductMessage = vi.fn()
+const mockFindMediaFilesByIds = vi.fn()
+const mockCopyObject = vi.fn()
+const mockQueueMessageCreatedEvent = vi.fn()
+const mockQueueWorkspaceRealtimeEvent = vi.fn()
+const mockUpdateSendError = vi.fn()
+const mockHardDeleteById = vi.fn()
 
 vi.mock("@chatbotx.io/database/repositories", () => ({
   createMessageRepository: mockCreateMessageRepository,
   flowRepository: { existsInWorkspace: mockFlowExists },
-  mediaLibraryFileRepository: { findByPath: vi.fn(), findById: vi.fn() },
+  mediaLibraryFileRepository: {
+    findByPath: vi.fn(),
+    findById: vi.fn(),
+    findByIds: mockFindMediaFilesByIds,
+  },
 }))
 
 vi.mock("@chatbotx.io/filesystem", () => ({
   guessFileTypeFromMimeType: vi.fn(() => "image"),
   pathJoin: (...parts: string[]) => parts.join("/"),
-  uploader: { copyObject: vi.fn(), getPresignedDownload: vi.fn() },
+  uploader: { copyObject: mockCopyObject, getPresignedDownload: vi.fn() },
   uploadMultipleFiles: vi.fn(async () => []),
 }))
 
-vi.mock("@chatbotx.io/partysocket-config", () => ({
-  RealtimeEventType: { messageCreated: "messageCreated" },
+vi.mock("@chatbotx.io/realtime-protocol", () => ({
+  RealtimeEventType: {
+    messageCreated: "messageCreated",
+    messageFailed: "messageFailed",
+    messageRemoved: "messageRemoved",
+  },
+  routeForConversation: vi.fn(() => ({
+    assignedTeamIds: [],
+    assignedUserIds: [],
+  })),
 }))
 
 vi.mock("@chatbotx.io/utils", async (importOriginal) => {
@@ -37,7 +54,6 @@ vi.mock("@chatbotx.io/utils", async (importOriginal) => {
 
 vi.mock("@chatbotx.io/worker-config", () => ({
   ChatJobAction: {
-    broadcastEvent: "broadcastEvent",
     sendChannelMessage: "sendChannelMessage",
     checkOutboundAutomatedResponse: "checkOutboundAutomatedResponse",
   },
@@ -57,6 +73,16 @@ vi.mock("../src/conversation/service", () => ({
   },
 }))
 
+vi.mock("../src/workspace/service", () => ({
+  workspaceService: { find: vi.fn() },
+}))
+
+vi.mock("../src/working-hours/service", () => ({
+  workingHoursService: { findForAgent: vi.fn() },
+}))
+
+vi.mock("@chatbotx.io/event-bus", () => ({ emit: vi.fn() }))
+
 vi.mock("../src/product-message/service", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../src/product-message/service")>()
@@ -71,8 +97,8 @@ vi.mock("../src/platform/settings", () => ({
 }))
 
 vi.mock("../src/platform/realtime-broadcast", () => ({
-  broadcastToWorkspaceParty: mockBroadcastToWorkspaceParty,
-  publishToWorkspaceParty: mockBroadcastToWorkspaceParty,
+  queueMessageCreatedEvent: mockQueueMessageCreatedEvent,
+  queueWorkspaceRealtimeEvent: mockQueueWorkspaceRealtimeEvent,
 }))
 
 vi.mock("../src/utils", () => ({
@@ -112,9 +138,13 @@ describe("messageService.createOutgoing", () => {
     mockCreateMessageRepository.mockResolvedValue({
       create: mockRepositoryCreate,
       createWithAttachments: vi.fn(),
+      updateSendError: mockUpdateSendError,
+      hardDeleteById: mockHardDeleteById,
     })
+    mockUpdateSendError.mockResolvedValue({ id: "msg-1" })
     mockChatQueueAdd.mockResolvedValue(undefined)
-    mockBroadcastToWorkspaceParty.mockResolvedValue(undefined)
+    mockQueueMessageCreatedEvent.mockResolvedValue(undefined)
+    mockQueueWorkspaceRealtimeEvent.mockResolvedValue(undefined)
   })
 
   test("uses one shared timestamp for the message and conversation agent-replied fields", async () => {
@@ -123,6 +153,7 @@ describe("messageService.createOutgoing", () => {
       contactInbox: contactInbox as never,
       input: { text: "hello", clientId: "client-1" },
       user: { id: "user-1" } as never,
+      sendFrom: "inbox",
     })
 
     const messageInput = mockRepositoryCreate.mock.calls[0]?.[0] as {
@@ -140,6 +171,7 @@ describe("messageService.createOutgoing", () => {
       conversation: conversation as never,
       contactInbox: contactInbox as never,
       input: { text: "hello" },
+      sendFrom: "api",
     })
 
     const messageInput = mockRepositoryCreate.mock.calls[0]?.[0] as {
@@ -161,15 +193,97 @@ describe("messageService.createOutgoing", () => {
       conversation: conversation as never,
       contactInbox: contactInbox as never,
       input: { text: "hello", clientId: "client-1" },
+      sendFrom: "api",
     })
 
-    expect(mockBroadcastToWorkspaceParty).toHaveBeenCalledWith(
+    expect(mockQueueMessageCreatedEvent).toHaveBeenCalledWith(
       "ws-1",
       expect.objectContaining({
-        eventType: "messageCreated",
-        data: expect.objectContaining({ clientId: "client-1", id: "msg-1" }),
+        clientId: "client-1",
+        id: "msg-1",
+      }),
+      expect.objectContaining({ id: "conv-1" }),
+    )
+  })
+
+  test("passes server-side buttons to the channel send with the button template on the row", async () => {
+    const button = {
+      id: "button-1",
+      label: "Select Date",
+      buttonType: "url" as const,
+      url: "https://app.test/booking/picker?token=t",
+    }
+    const contentAttributes = {
+      type: "template",
+      payload: { templateType: "button", buttons: [button] },
+    }
+
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: {
+        text: "Choose an appointment time",
+        contentAttributes,
+        quickReplies: [button],
+      },
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+
+    expect(mockRepositoryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        senderType: "user",
+        contentAttributes: { ...contentAttributes, sentFromInbox: true },
       }),
     )
+    expect(mockChatQueueAdd).toHaveBeenCalledWith(
+      "sendChannelMessage",
+      expect.objectContaining({
+        data: expect.objectContaining({
+          quickReplies: [button],
+          sendFrom: "inbox",
+        }),
+      }),
+    )
+  })
+
+  test("stamps an Inbox message true and an API one false, so only a row with no stamp is older than the marker", async () => {
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: { text: "from the inbox" },
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: { text: "from the api" },
+      sendFrom: "api",
+    })
+
+    const [inboxRow, apiRow] = mockRepositoryCreate.mock.calls.map(
+      ([row]) => row as { contentAttributes: unknown },
+    )
+    expect(inboxRow?.contentAttributes).toEqual({ sentFromInbox: true })
+    expect(apiRow?.contentAttributes).toEqual({ sentFromInbox: false })
+    const sendFroms = mockChatQueueAdd.mock.calls
+      .filter(([name]) => name === "sendChannelMessage")
+      .map(([, job]) => (job as { data: { sendFrom?: string } }).data.sendFrom)
+    expect(sendFroms).toEqual(["inbox", "api"])
+  })
+
+  test("sends no buttons for a plain text message", async () => {
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: { text: "hello" },
+      sendFrom: "api",
+    })
+
+    expect(
+      mockChatQueueAdd.mock.calls[0]?.[1].data.quickReplies,
+    ).toBeUndefined()
   })
 
   test("uses attempts=1 for manual Threads comment replies", async () => {
@@ -182,6 +296,7 @@ describe("messageService.createOutgoing", () => {
         replyToMessageCreatedAt: new Date("2026-08-12T00:00:00Z"),
       },
       user: { id: "user-1" } as never,
+      sendFrom: "inbox",
     })
 
     expect(mockChatQueueAdd).toHaveBeenNthCalledWith(
@@ -206,6 +321,7 @@ describe("messageService.createOutgoing", () => {
         replyToMessageCreatedAt: new Date("2026-08-12T00:00:00Z"),
       },
       user: { id: "user-1" } as never,
+      sendFrom: "inbox",
     })
 
     expect(mockChatQueueAdd).toHaveBeenNthCalledWith(
@@ -221,6 +337,161 @@ describe("messageService.createOutgoing", () => {
   })
 })
 
+describe("messageService.createOutgoing enqueue failure", () => {
+  const input = { text: "hello", clientId: "client-1" }
+
+  test("a failed channel enqueue leaves a sendError on the row and tells every tab, then still throws", async () => {
+    const failure = new Error("redis down")
+    mockChatQueueAdd.mockRejectedValueOnce(failure)
+
+    await expect(
+      createOutgoing({
+        conversation: conversation as never,
+        contactInbox: contactInbox as never,
+        input,
+        user: { id: "user-1" } as never,
+        sendFrom: "inbox",
+      }),
+    ).rejects.toBe(failure)
+
+    expect(mockUpdateSendError).toHaveBeenCalledWith(
+      "msg-1",
+      "Could not queue the message for delivery",
+      "ws-1",
+      expect.any(Date),
+    )
+    expect(mockQueueWorkspaceRealtimeEvent).toHaveBeenCalledWith("ws-1", {
+      eventType: "messageFailed",
+      data: {
+        messageId: "msg-1",
+        clientId: "client-1",
+        error: "Could not queue the message for delivery",
+      },
+      route: { assignedTeamIds: [], assignedUserIds: [] },
+    })
+  })
+
+  test("a failed channel enqueue of an API message removes the row instead, then still throws", async () => {
+    const failure = new Error("redis down")
+    mockChatQueueAdd.mockRejectedValueOnce(failure)
+    mockHardDeleteById.mockResolvedValueOnce([{ id: "msg-1" }])
+
+    await expect(
+      createOutgoing({
+        conversation: conversation as never,
+        contactInbox: contactInbox as never,
+        input,
+        sendFrom: "api",
+      }),
+    ).rejects.toBe(failure)
+
+    expect(mockUpdateSendError).not.toHaveBeenCalled()
+    expect(mockHardDeleteById).toHaveBeenCalledWith(
+      "msg-1",
+      "ws-1",
+      expect.any(Date),
+    )
+    expect(mockQueueWorkspaceRealtimeEvent).toHaveBeenCalledWith("ws-1", {
+      eventType: "messageRemoved",
+      data: { messageIds: ["msg-1"] },
+      route: { assignedTeamIds: [], assignedUserIds: [] },
+    })
+  })
+
+  test("bookkeeping that fails never replaces the enqueue error", async () => {
+    const failure = new Error("redis down")
+    mockChatQueueAdd.mockRejectedValueOnce(failure)
+    mockUpdateSendError.mockRejectedValueOnce(new Error("db down"))
+
+    await expect(
+      createOutgoing({
+        conversation: conversation as never,
+        contactInbox: contactInbox as never,
+        input,
+        user: { id: "user-1" } as never,
+        sendFrom: "inbox",
+      }),
+    ).rejects.toBe(failure)
+  })
+
+  test("a successful enqueue records nothing", async () => {
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input,
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+
+    expect(mockUpdateSendError).not.toHaveBeenCalled()
+    expect(mockQueueWorkspaceRealtimeEvent).not.toHaveBeenCalled()
+  })
+
+  test("a failure of only the automation job does not mark the message failed", async () => {
+    mockChatQueueAdd
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("automation queue down"))
+
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input,
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+
+    expect(mockUpdateSendError).not.toHaveBeenCalled()
+  })
+})
+
+describe("messageService.createOutgoing private reply target", () => {
+  test("keeps the replied-to comment's createdAt on the row so the reply can be resent", async () => {
+    mockFindOrCreate.mockResolvedValue({ id: "dm-conv", workspaceId: "ws-1" })
+    const commentCreatedAt = new Date("2026-07-01T10:00:00.000Z")
+
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: {
+        text: "hi",
+        replyToMessageId: "comment-1",
+        replyToMessageCreatedAt: commentCreatedAt,
+        isPrivateReply: true,
+      },
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+
+    const created = mockRepositoryCreate.mock.calls[0]?.[0] as {
+      contentAttributes: Record<string, unknown>
+    }
+    expect(created.contentAttributes).toEqual({
+      isPrivateReply: true,
+      replyToMessageCreatedAt: "2026-07-01T10:00:00.000Z",
+      sentFromInbox: true,
+    })
+  })
+
+  test("a public comment reply stores no reply target", async () => {
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: {
+        text: "hi",
+        replyToMessageId: "comment-1",
+        replyToMessageCreatedAt: new Date("2026-07-01T10:00:00.000Z"),
+      },
+      user: { id: "user-1" } as never,
+      sendFrom: "api",
+    })
+
+    const created = mockRepositoryCreate.mock.calls[0]?.[0] as {
+      contentAttributes: Record<string, unknown> | null
+    }
+    expect(created.contentAttributes).toEqual({ sentFromInbox: false })
+  })
+})
+
 describe("messageService.createOutgoing with a flow", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -233,6 +504,7 @@ describe("messageService.createOutgoing with a flow", () => {
       conversation: conversation as never,
       contactInbox: contactInbox as never,
       input: { flowId: "flow-1" } as never,
+      sendFrom: "api",
     })
 
     expect(mockFlowExists).toHaveBeenCalledWith({
@@ -240,6 +512,45 @@ describe("messageService.createOutgoing with a flow", () => {
       id: "flow-1",
     })
     expect(mockIntegrationQueueAdd).toHaveBeenCalledOnce()
+  })
+
+  test("records the inbox user who sent the flow on the job", async () => {
+    mockFlowExists.mockResolvedValue(true)
+
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: { flowId: "flow-1" } as never,
+      user: { id: "user-1" } as never,
+      sendFrom: "inbox",
+    })
+
+    expect(mockIntegrationQueueAdd).toHaveBeenCalledWith(
+      "sendFlow",
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sendFrom: "inbox",
+          sentByUserId: "user-1",
+        }),
+      }),
+    )
+  })
+
+  test("leaves the sender off the job when no user is attached (token API)", async () => {
+    mockFlowExists.mockResolvedValue(true)
+
+    await createOutgoing({
+      conversation: conversation as never,
+      contactInbox: contactInbox as never,
+      input: { flowId: "flow-1" } as never,
+      sendFrom: "api",
+    })
+
+    const [, job] = mockIntegrationQueueAdd.mock.calls[0] as [
+      string,
+      { data: Record<string, unknown> },
+    ]
+    expect(job.data.sentByUserId).toBeUndefined()
   })
 
   test("rejects a flow of another workspace with 404 and queues nothing", async () => {
@@ -250,6 +561,7 @@ describe("messageService.createOutgoing with a flow", () => {
         conversation: conversation as never,
         contactInbox: contactInbox as never,
         input: { flowId: "foreign-flow" } as never,
+        sendFrom: "api",
       }),
     ).rejects.toMatchObject({ code: "notFound", httpStatusCode: 404 })
 
@@ -287,6 +599,7 @@ describe("messageService.createOutgoing with products", () => {
       contactInbox: whatsappContactInbox as never,
       input: { products, ...input } as never,
       user: user as never,
+      sendFrom: "inbox",
     })
 
   beforeEach(() => {
@@ -309,13 +622,13 @@ describe("messageService.createOutgoing with products", () => {
       createWithAttachments: vi.fn(),
     })
     mockChatQueueAdd.mockResolvedValue(undefined)
-    mockBroadcastToWorkspaceParty.mockResolvedValue(undefined)
+    mockQueueMessageCreatedEvent.mockResolvedValue(undefined)
     mockPrepareProductMessage.mockResolvedValue(prepared)
   })
 
   const expectNothingCreated = () => {
     expect(mockRepositoryCreate).not.toHaveBeenCalled()
-    expect(mockBroadcastToWorkspaceParty).not.toHaveBeenCalled()
+    expect(mockQueueMessageCreatedEvent).not.toHaveBeenCalled()
     expect(mockChatQueueAdd).not.toHaveBeenCalled()
   }
 
@@ -332,10 +645,13 @@ describe("messageService.createOutgoing with products", () => {
       expect.objectContaining({
         text: "Look",
         contentType: "text",
-        contentAttributes: prepared.contentAttributes,
+        contentAttributes: {
+          ...prepared.contentAttributes,
+          sentFromInbox: true,
+        },
       }),
     )
-    expect(mockBroadcastToWorkspaceParty).toHaveBeenCalledTimes(1)
+    expect(mockQueueMessageCreatedEvent).toHaveBeenCalledTimes(1)
     expect(mockChatQueueAdd).toHaveBeenCalledWith(
       "sendChannelMessage",
       expect.objectContaining({
@@ -359,6 +675,7 @@ describe("messageService.createOutgoing with products", () => {
         contentAttributes: {
           ...prepared.contentAttributes,
           metadata: { bypassThreadControlLock: true },
+          sentFromInbox: true,
         },
       }),
     )
@@ -422,11 +739,142 @@ describe("messageService.createOutgoing with products", () => {
       contactInbox: whatsappContactInbox as never,
       input: { text: "hello" },
       user: { id: "user-1" } as never,
+      sendFrom: "inbox",
     })
 
     expect(mockPrepareProductMessage).not.toHaveBeenCalled()
     expect(mockChatQueueAdd.mock.calls.map(([name]) => name)).toContain(
       "checkOutboundAutomatedResponse",
     )
+  })
+})
+
+describe("messageService.createOutgoing image limits per channel", () => {
+  const imageFile = (id: string) => ({
+    id,
+    name: `${id}.png`,
+    path: `public/space/ws-1/media-library/${id}.png`,
+    mimeType: "image/png",
+    size: 10,
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockResolveTenantSettings.mockResolvedValue({
+      storageUrl: "https://storage.example.com",
+    })
+    mockCreateMessageRepository.mockResolvedValue({
+      create: mockRepositoryCreate,
+      createWithAttachments: vi.fn(async (input) => ({
+        id: "msg-1",
+        ...input,
+        attachments: [],
+      })),
+    })
+    mockChatQueueAdd.mockResolvedValue(undefined)
+    mockFindMediaFilesByIds.mockImplementation(({ ids }: { ids: string[] }) =>
+      Promise.resolve([...ids].reverse().map(imageFile)),
+    )
+    mockFindOrCreate.mockResolvedValue({ id: "dm-conv", workspaceId: "ws-1" })
+  })
+
+  const send = (channel: string, input: Record<string, unknown>) =>
+    createOutgoing({
+      conversation: conversation as never,
+      contactInbox: { ...contactInbox, channel } as never,
+      input: input as never,
+      sendFrom: "api",
+    })
+
+  test("refuses images on a threads conversation", async () => {
+    await expect(
+      send("threads", { text: "hi", mediaFileIds: ["f1"] }),
+    ).rejects.toMatchObject({
+      code: "imagesNotSupportedOnChannel",
+      data: { reason: "imagesNotSupported", channel: "threads", max: 0 },
+    })
+    expect(mockChatQueueAdd).not.toHaveBeenCalled()
+  })
+
+  test("refuses images on an instagram comment reply", async () => {
+    await expect(
+      send("instagram", {
+        text: "hi",
+        mediaFileIds: ["f1"],
+        replyToMessageId: "parent-1",
+      }),
+    ).rejects.toMatchObject({ code: "imagesNotSupportedOnChannel" })
+  })
+
+  test("refuses a second image on a messenger comment reply", async () => {
+    await expect(
+      send("messenger", {
+        text: "hi",
+        mediaFileIds: ["f1", "f2"],
+        replyToMessageId: "parent-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "imagesNotSupportedOnChannel",
+      data: { reason: "tooManyImages", max: 1 },
+    })
+  })
+
+  test("sends images on an instagram private reply, which lands in the DMs", async () => {
+    await expect(
+      send("instagram", {
+        text: "hi",
+        mediaFileIds: ["f1"],
+        replyToMessageId: "parent-1",
+        isPrivateReply: true,
+      }),
+    ).resolves.toMatchObject({ id: "msg-1" })
+  })
+
+  test("sends several images on a messenger private reply", async () => {
+    await expect(
+      send("messenger", {
+        text: "hi",
+        mediaFileIds: ["f1", "f2", "f3"],
+        replyToMessageId: "parent-1",
+        isPrivateReply: true,
+      }),
+    ).resolves.toMatchObject({ id: "msg-1" })
+  })
+
+  test("refuses images on a tiktok private reply", async () => {
+    await expect(
+      send("tiktok", {
+        text: "hi",
+        mediaFileIds: ["f1"],
+        replyToMessageId: "parent-1",
+        isPrivateReply: true,
+      }),
+    ).rejects.toMatchObject({ code: "imagesNotSupportedOnChannel" })
+  })
+
+  test("loads every media file in one query and keeps the caller's order", async () => {
+    await send("messenger", { text: "hi", mediaFileIds: ["f1", "f2", "f3"] })
+
+    expect(mockFindMediaFilesByIds).toHaveBeenCalledTimes(1)
+    expect(mockCopyObject.mock.calls.map((call) => call[0])).toEqual([
+      "public/space/ws-1/media-library/f1.png",
+      "public/space/ws-1/media-library/f2.png",
+      "public/space/ws-1/media-library/f3.png",
+    ])
+  })
+
+  test("fails when one media file is missing", async () => {
+    mockFindMediaFilesByIds.mockResolvedValue([imageFile("f1")])
+
+    await expect(
+      send("messenger", { text: "hi", mediaFileIds: ["f1", "f2"] }),
+    ).rejects.toThrow("Media library file not found")
+  })
+
+  test("sends images in a messenger message thread", async () => {
+    await expect(
+      send("messenger", { text: "hi", mediaFileIds: ["f1", "f2"] }),
+    ).resolves.toMatchObject({ id: "msg-1" })
+    expect(mockChatQueueAdd).toHaveBeenCalled()
   })
 })

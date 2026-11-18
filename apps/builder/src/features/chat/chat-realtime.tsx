@@ -12,6 +12,7 @@ import { useConversationIdParam } from "../conversations/hooks/use-conversation-
 import { outboundCallModeQueryKeys } from "../integration-whatsapp/calling/voip/outbound-call-mode-query-key"
 import { useWhatsappVoipCallStore } from "../integration-whatsapp/calling/voip/voip-call-store"
 import type { MessageResourceWithRelations } from "../messages/schema/resource"
+import { useResponseSlaEnabled } from "../response-sla/provider/response-sla-hook"
 import { useChatStore } from "./store/chat-store-provider"
 
 /** Cap for the bubble-to-top dedupe set below. */
@@ -38,7 +39,10 @@ export function ChatRealtime() {
     markMessageFailed,
     openConversation,
     patchContactInboxThreadControl,
+    removeMessages,
     resumeConversationHeadRefresh,
+    scheduleConversationHeadRefresh,
+    settleSendResult,
     updateContact,
     updateConversations,
     updateMessageContentAttributes,
@@ -53,7 +57,10 @@ export function ChatRealtime() {
       markMessageFailed: state.markMessageFailed,
       openConversation: state.openConversation,
       patchContactInboxThreadControl: state.patchContactInboxThreadControl,
+      removeMessages: state.removeMessages,
       resumeConversationHeadRefresh: state.resumeConversationHeadRefresh,
+      scheduleConversationHeadRefresh: state.scheduleConversationHeadRefresh,
+      settleSendResult: state.settleSendResult,
       updateContact: state.updateContact,
       updateConversations: state.updateConversations,
       updateMessageContentAttributes: state.updateMessageContentAttributes,
@@ -61,6 +68,7 @@ export function ChatRealtime() {
     })),
   )
   const conversationIdParam = useConversationIdParam()
+  const responseSlaEnabled = useResponseSlaEnabled()
 
   const pendingCreatedMessagesRef = useRef<MessageResourceWithRelations[]>([])
   const isMessageFlushQueuedRef = useRef(false)
@@ -73,6 +81,15 @@ export function ChatRealtime() {
     pendingCreatedMessagesRef.current = []
     isMessageFlushQueuedRef.current = false
     handleNewMessages(messages)
+    // A customer message can open an SLA window whose deadline only the server
+    // computes: a loaded row picks it up with the next (throttled) head fetch.
+    // Skipped while the SLA is off so ordinary traffic costs nothing extra.
+    if (
+      responseSlaEnabled &&
+      messages.some((message) => message.messageType === "incoming")
+    ) {
+      scheduleConversationHeadRefresh(workspaceId)
+    }
     for (const createdMessage of messages) {
       if (getWhatsappCallPermissionReply(createdMessage.contentAttributes)) {
         invalidateOutboundCallMode(createdMessage.conversationId)
@@ -203,6 +220,10 @@ export function ChatRealtime() {
       flushPendingCreatedMessages()
       markMessagesDeleted(event.data.messageIds)
     },
+    messageRemoved: (event) => {
+      flushPendingCreatedMessages()
+      removeMessages(event.data.messageIds)
+    },
     messageIdAssigned: (event) => {
       flushPendingCreatedMessages()
       assignMessageCommentId(event.data.messageId, event.data.commentId)
@@ -214,6 +235,8 @@ export function ChatRealtime() {
         event.data.clientId,
         event.data.error,
       )
+      // The same event is the composer queue's answer for the message it sent.
+      settleSendResult(event.data)
     },
     messageUpdated: (event) => {
       flushPendingCreatedMessages()
@@ -248,6 +271,11 @@ export function ChatRealtime() {
         assignedUser: null,
         assignedInboxTeam: null,
       })
+      // A new assignee can move the response-SLA deadline, which only the
+      // server computes.
+      if (responseSlaEnabled) {
+        scheduleConversationHeadRefresh(workspaceId)
+      }
     },
     contactInboxThreadControlUpdated: (event) => {
       const { conversationId, ...snapshot } = event.data

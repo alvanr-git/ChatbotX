@@ -17,11 +17,7 @@ export const listConversationsRequest = z.object({
   keyword: z.string().optional(),
   botEnabled: z.boolean().nullish(),
   source: z.string().optional(),
-  tags: z
-    .array(
-      z.enum(["noAdminReply", "unread", "followUp", "archived", "blocked"]),
-    )
-    .optional(),
+  tags: z.array(conversationStatuses).optional(),
   contactFilter: contactFilterRequest.shape.contactFilter.optional(),
   ...cursorPaginationRequest.shape,
 })

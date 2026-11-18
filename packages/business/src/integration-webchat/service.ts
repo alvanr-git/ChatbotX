@@ -4,13 +4,30 @@ import {
   db,
   eq,
   findOrFail,
+  inArray,
   relationsFilterToSQL,
 } from "@chatbotx.io/database/client"
-import { integrationWebchatModel } from "@chatbotx.io/database/schema"
-import type { IntegrationWebchatModel } from "@chatbotx.io/database/types"
+import {
+  contactSources,
+  type WebchatPersistentMenu,
+} from "@chatbotx.io/database/partials"
+import { connectionRepository } from "@chatbotx.io/database/repositories"
+import {
+  contactInboxModel,
+  contactModel,
+  conversationModel,
+  integrationWebchatModel,
+} from "@chatbotx.io/database/schema"
+import type {
+  ConnectionModel,
+  IntegrationWebchatModel,
+  WorkspaceModel,
+} from "@chatbotx.io/database/types"
 import { parsePagination } from "@chatbotx.io/database/utils"
+import { emitContactCreated } from "@chatbotx.io/events"
 import type { AuthValue } from "@chatbotx.io/sdk"
 import { createId } from "@chatbotx.io/utils"
+import { randomString } from "remeda"
 import { dispatchAuditRecord } from "../audit/dispatcher"
 import { BaseService } from "../base.service"
 import {
@@ -20,19 +37,29 @@ import {
   withQuotaCompensation,
 } from "../connection"
 import { connectionStateService } from "../connection/state-service"
+import { finalizeContactProfile } from "../contact-locale"
 import { channelLimitReachedException, notFoundException } from "../errors"
 import { flowService } from "../flow/service"
 import { inboxService } from "../inbox/service"
+import { messageCleanupService } from "../message-cleanup/service"
 import { quotaEnforcementService } from "../quota-enforcement/service"
-import { assertDeletable } from "../template/installed-resource.service"
+import { dispatchStagedInstalls } from "../template/installation-dispatch"
+import {
+  assertReferencable,
+  assertResourceEditable,
+  changedKeysOf,
+  withDeleteGuard,
+} from "../template/installed-resource.service"
+import { withTemplateLockedTransaction } from "../template/template-resource-locks"
 import { type WorkspaceQuotaConsumption, workspaceService } from "../workspace"
+import { brandWebchatMenus } from "./branding"
 
 export type UpdateWebchatData = Partial<{
   name: string
   enable: boolean
   authorizedDomains: string[]
   conversationStarters: unknown[]
-  persistentMenus: unknown[]
+  persistentMenus: WebchatPersistentMenu[]
   brandColor: string
   hideHeader: boolean
   showLogo: boolean
@@ -47,7 +74,7 @@ export type CreateWebchatRequest = {
   enable: boolean
   authorizedDomains: string[]
   conversationStarters: unknown[]
-  persistentMenus: unknown[]
+  persistentMenus: WebchatPersistentMenu[]
   brandColor: string
   hideHeader: boolean
   showLogo: boolean
@@ -128,8 +155,19 @@ class IntegrationWebchatService extends BaseService {
       quotaConsumption?: ConnectionQuotaConsumption
     },
     tx: DatabaseClient,
-  ): Promise<IntegrationWebchatModel> {
+  ): Promise<{
+    integration: IntegrationWebchatModel
+    connection: ConnectionModel
+  }> {
     const { workspaceId, ownerId, data } = props
+    if (data.welcomeFlowId) {
+      // `tx` is the caller's: its lock on the welcome flow lasts until commit.
+      await assertReferencable({
+        workspaceId,
+        parents: [{ kind: "flow", resourceId: data.welcomeFlowId }],
+        tx,
+      })
+    }
 
     // Guard against inserting an Inbox + IntegrationWebchat + disconnected
     // Connection row for a webchat the owner can never actually use: without
@@ -173,10 +211,15 @@ class IntegrationWebchatService extends BaseService {
         workspaceUsageIncremented: false,
       }
 
+    const persistentMenus = await brandWebchatMenus({
+      persistentMenus: data.persistentMenus,
+      workspaceId,
+      tx,
+    })
     // `id === inboxId === sourceId` — the webchat binding's
     // `identityColumn: "id"` (`store-bindings.ts`) sets `IntegrationWebchat
     // .id` to this same `webchatId` on insert.
-    await upsertConnectionRow({
+    const connection = await upsertConnectionRow({
       tx,
       workspaceId,
       provider: "webchat",
@@ -187,7 +230,7 @@ class IntegrationWebchatService extends BaseService {
         enable: data.enable,
         authorizedDomains: data.authorizedDomains,
         conversationStarters: data.conversationStarters,
-        persistentMenus: data.persistentMenus,
+        persistentMenus,
         brandColor: data.brandColor,
         hideHeader: data.hideHeader,
         showLogo: data.showLogo,
@@ -213,7 +256,7 @@ class IntegrationWebchatService extends BaseService {
       )
     }
 
-    return created
+    return { integration: created, connection }
   }
 
   async delete(input: { workspaceId: string; id: string }): Promise<void> {
@@ -226,24 +269,27 @@ class IntegrationWebchatService extends BaseService {
       workspaceService.findById({ id: input.workspaceId }),
     ])
 
-    await assertDeletable({
-      workspaceId: input.workspaceId,
-      resourceKind: "integrationWebchat",
-      resourceIds: [input.id],
-    })
-
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(integrationWebchatModel)
-        .where(eq(integrationWebchatModel.id, integrationWebchat.id))
-
-      await connectionStateService.disconnectInbox({
-        inboxId: integrationWebchat.inboxId,
-        ownerId: workspace.ownerId,
+    await withDeleteGuard(
+      {
         workspaceId: input.workspaceId,
-        tx,
-      })
-    })
+        targets: [
+          { resourceKind: "integrationWebchat", resourceIds: [input.id] },
+        ],
+      },
+      async (tx) => {
+        await this.deleteInTx(tx, {
+          workspaceId: input.workspaceId,
+          ids: [integrationWebchat.id],
+        })
+
+        await connectionStateService.disconnectInbox({
+          inboxId: integrationWebchat.inboxId,
+          ownerId: workspace.ownerId,
+          workspaceId: input.workspaceId,
+          tx,
+        })
+      },
+    )
 
     await this.audit(
       "disconnect",
@@ -252,29 +298,58 @@ class IntegrationWebchatService extends BaseService {
   }
 
   /**
+   * The delete core (the webchat row only), shared with the template uninstall
+   * so there is one implementation. The inbox disconnect stays with the
+   * caller: inline in the public delete, a recorded post-commit effect in the
+   * uninstall. Returns the ids actually deleted.
+   */
+  async deleteInTx(
+    tx: DatabaseClient,
+    input: { workspaceId: string; ids: string[] },
+  ): Promise<string[]> {
+    const rows = await tx
+      .delete(integrationWebchatModel)
+      .where(
+        and(
+          eq(integrationWebchatModel.workspaceId, input.workspaceId),
+          inArray(integrationWebchatModel.id, input.ids),
+        ),
+      )
+      .returning({ id: integrationWebchatModel.id })
+    return rows.map((row) => String(row.id))
+  }
+
+  /**
    * Optionally provisions a workspace, then reuses `create` (above) inside
    * the same transaction to insert the Inbox + IntegrationWebchat row.
    */
   async createWithWorkspace(input: {
     workspaceId?: string
+    ownerId?: string
     createdBy: string
+    actorUserId?: string
     workspaceName: string
     data: CreateWebchatRequest
+    /** Server-resolved tenant of the request host; see `workspaceService.resolveWorkspaceTenant`. */
+    hostTenantId?: string
   }): Promise<{
     workspaceId: string
     createdWorkspace: boolean
     webchatId: string
+    connection: ConnectionModel
   }> {
     const { createdBy, workspaceName, data } = input
     // Resolved up front: `withQuotaCompensation` needs the quota owner to
     // hand the channel slot back if the transaction below rolls back.
-    const ownerId = input.workspaceId
-      ? (
-          await workspaceService.findOrFail({
-            where: { id: input.workspaceId },
-          })
-        ).ownerId
-      : createdBy
+    const ownerId =
+      input.ownerId ??
+      (input.workspaceId
+        ? (
+            await workspaceService.findOrFail({
+              where: { id: input.workspaceId },
+            })
+          ).ownerId
+        : createdBy)
 
     // Both seats are taken outside SQL (Redis + UserQuota), so a rollback of
     // the transaction cannot hand them back on its own — same pattern as the
@@ -308,6 +383,7 @@ class IntegrationWebchatService extends BaseService {
                 ownerId,
               },
               quotaConsumption: workspaceQuotaConsumption,
+              hostTenantId: input.hostTenantId,
             })
             workspaceId = newWorkspace.id
             createdWorkspace = true
@@ -318,18 +394,28 @@ class IntegrationWebchatService extends BaseService {
             tx,
           )
 
-          return { workspaceId, createdWorkspace, webchatId: created.id }
+          return {
+            workspaceId,
+            createdWorkspace,
+            webchatId: created.integration.id,
+            connection: created.connection,
+          }
         }),
     )
 
+    if (result.createdWorkspace) {
+      await dispatchStagedInstalls(result.workspaceId)
+    }
+
     // Sanctioned exception: `createWithWorkspace` is reachable from
     // `authActionClient` (create-webchat.action.ts), which never puts
-    // `workspaceId` into the ALS actor — only workspace-scoped action
-    // clients do. `this.audit()` would silently no-op here, so bypass it
-    // with an explicit override, same pattern as
-    // `integrationApiService.connect`.
+    // `workspaceId` into the ALS actor, so `this.audit()` would no-op. That
+    // session caller passes its user explicitly; workspace-token callers
+    // (`POST /v1/webchats`, `connections.create`) omit it so
+    // `auditService.record` falls back to the token middleware's audit actor
+    // instead of claiming the workspace owner acted.
     await dispatchAuditRecord({
-      userId: createdBy,
+      userId: input.actorUserId,
       workspaceId: result.workspaceId,
       action: "connect",
       detail: `connected a new Webchat channel (#${result.webchatId})`,
@@ -356,6 +442,104 @@ class IntegrationWebchatService extends BaseService {
       where: { id: props.id, workspaceId: props.workspaceId },
       message: "Webchat integration not found",
     })
+  }
+
+  async findOrCreateGuestConversation(input: {
+    guestConversationId: string
+    integration: Pick<IntegrationWebchatModel, "inboxId">
+    locale?: string | null
+    parentUrl?: string | null
+    timezone?: string | null
+    workspace: Pick<WorkspaceModel, "ownerId">
+    workspaceId: string
+  }) {
+    const { integration, workspace } = input
+
+    const result = await quotaEnforcementService.createNewContactWithMac({
+      ownerId: workspace.ownerId,
+      workspaceId: input.workspaceId,
+      create: async (tx) => {
+        const finalizedProfile = finalizeContactProfile({
+          locale: input.locale,
+          timezone: input.timezone,
+        })
+        const contact = await tx
+          .insert(contactModel)
+          .values({
+            id: createId(),
+            workspaceId: input.workspaceId,
+            email: input.guestConversationId,
+            gender: "unknown",
+            firstName: "Guest",
+            lastName: randomString(10),
+            locale: finalizedProfile.locale,
+            timezone: finalizedProfile.timezone,
+          })
+          .returning()
+          .then((rows) => rows[0])
+        if (!contact) {
+          throw notFoundException("Contact not found")
+        }
+
+        const contactInbox = await tx
+          .insert(contactInboxModel)
+          .values({
+            id: createId(),
+            inboxId: integration.inboxId,
+            contactId: contact.id,
+            originalContactId: contact.id,
+            source: contactSources.enum.webchat,
+            sourceId: input.guestConversationId,
+            channel: "webchat",
+            language: finalizedProfile.language,
+            webchatParentUrl: input.parentUrl,
+          })
+          .returning()
+          .then((rows) => rows[0])
+        if (!contactInbox) {
+          throw notFoundException("Contact inbox not found")
+        }
+
+        await messageCleanupService.cancelByInboxSource({
+          inboxId: integration.inboxId,
+          sourceIds: [contactInbox.sourceId],
+          tx,
+        })
+
+        const conversation = await tx
+          .insert(conversationModel)
+          .values({
+            id: createId(),
+            workspaceId: input.workspaceId,
+            contactId: contact.id,
+          })
+          .returning()
+          .then((rows) => rows[0])
+        if (!conversation) {
+          throw notFoundException("Conversation not found")
+        }
+
+        return {
+          value: { contact, contactInbox, conversation },
+          contactId: contact.id,
+          contactInboxId: contactInbox.id,
+          inboxId: integration.inboxId,
+        }
+      },
+    })
+    if (!result.ok) {
+      return null
+    }
+
+    await emitContactCreated(
+      input.workspaceId,
+      result.value.contact.id,
+      result.value.contact.firstName || undefined,
+      result.value.contact.phoneNumber || undefined,
+      result.value.contact.email || undefined,
+      result.value.contactInbox.id,
+    )
+    return result.value
   }
 
   async list(input: {
@@ -396,7 +580,50 @@ class IntegrationWebchatService extends BaseService {
     data: UpdateWebchatData
     tx?: DatabaseClient
   }): Promise<void> {
-    const { workspaceId, id, data, tx = db } = input
+    if (!input.tx) {
+      // The webchat and its welcome flow are locked before the stored row is
+      // read, so the diff that decides the guard is computed under the lock.
+      await withTemplateLockedTransaction(
+        async (tx) => {
+          await this.update({ ...input, tx })
+        },
+        {
+          workspaceId: input.workspaceId,
+          initialKeys: [
+            { kind: "integrationWebchat", resourceId: input.id },
+            ...(input.data.welcomeFlowId
+              ? [
+                  {
+                    kind: "flow" as const,
+                    resourceId: input.data.welcomeFlowId,
+                  },
+                ]
+              : []),
+          ],
+        },
+      )
+      return
+    }
+
+    const { workspaceId, id, data, tx } = input
+
+    // Diffed against the stored row: the builder form submits every field, and
+    // enabling the widget or editing its domains is the installer's.
+    const existingWebchat = await tx.query.integrationWebchatModel.findFirst({
+      where: { id, workspaceId },
+    })
+    if (existingWebchat) {
+      await assertResourceEditable({
+        workspaceId,
+        resourceKind: "integrationWebchat",
+        resourceIds: [id],
+        changedKeys: changedKeysOf(existingWebchat, data),
+        referencedParents: data.welcomeFlowId
+          ? [{ kind: "flow", resourceId: data.welcomeFlowId }]
+          : [],
+        tx,
+      })
+    }
 
     // `welcomeFlowId` is normalized (falsy -> null) and validated as
     // workspace-owned here — not by callers — so the public API and the
@@ -409,6 +636,15 @@ class IntegrationWebchatService extends BaseService {
         ? await this.resolveWelcomeFlowId(data.welcomeFlowId, workspaceId, tx)
         : undefined
 
+    const persistentMenus =
+      "persistentMenus" in data
+        ? await brandWebchatMenus({
+            persistentMenus: data.persistentMenus,
+            workspaceId,
+            tx,
+          })
+        : undefined
+
     // `workspaceId` scopes the row, it is never written: assigning it in `set`
     // would silently move the webchat to another workspace on a mismatched
     // (id, workspaceId) pair. Callers pre-check via `findByIdForWorkspace`, but
@@ -418,7 +654,7 @@ class IntegrationWebchatService extends BaseService {
       .set({
         ...data,
         conversationStarters: data.conversationStarters as never,
-        persistentMenus: data.persistentMenus as never,
+        persistentMenus,
         ...("welcomeFlowId" in data ? { welcomeFlowId } : {}),
       })
       .where(
@@ -427,6 +663,29 @@ class IntegrationWebchatService extends BaseService {
           eq(integrationWebchatModel.workspaceId, workspaceId),
         ),
       )
+
+    if (data.name === undefined) {
+      return
+    }
+
+    const connection = await connectionRepository.findByProviderSourceId(
+      {
+        workspaceId,
+        provider: "webchat",
+        sourceId: id,
+      },
+      tx,
+    )
+    if (!connection) {
+      return
+    }
+
+    await connectionStateService.updateDisplayName({
+      id: connection.id,
+      workspaceId,
+      displayName: data.name,
+      tx,
+    })
   }
 }
 

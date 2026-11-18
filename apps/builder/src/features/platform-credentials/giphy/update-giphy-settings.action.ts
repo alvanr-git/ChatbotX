@@ -31,10 +31,12 @@ export const updateGiphySettingsAction = authActionClient
   .bindArgsSchemas([credentialScopeSchema])
   .inputSchema(giphyCredentialUpdateSchema)
   .action(async ({ ctx, bindArgsParsedInputs: [scope], parsedInput }) => {
-    const scopedUserId = resolveCredentialScopedUserId(ctx.user, scope)
+    const scopedUserId = await resolveCredentialScopedUserId(ctx.user, scope)
+    // `strict`: an unreadable stored key must stop the save, not read as none.
     const existing = await platformCredentialService.findDecrypted({
       userId: scopedUserId,
       type: "giphy",
+      strict: true,
     })
 
     if (parsedInput.apiKey) {

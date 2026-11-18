@@ -7,14 +7,18 @@ import { withAuditContext } from "@chatbotx.io/business/audit"
 import { ORPCError } from "@orpc/server"
 import { auth } from "@/lib/auth/auth"
 import { getGuestClientIp } from "@/lib/rate-limit/guest-rate-limit"
+import {
+  canOpenWorkspaceOnHost,
+  resolveRequestTenantId,
+} from "@/lib/tenant/request-tenant"
 import { assertWorkspaceOwnerAccessForMethod } from "@/lib/workspace/authorize-workspace-access"
 import { base } from "./context"
 
 export const authMiddleware = base.middleware(async ({ context, next }) => {
+  const requestIssuedAtMs = Date.now()
   const sessionData = await auth.api.getSession({
     headers: context.headers,
   })
-
   if (!(sessionData?.session && sessionData?.user)) {
     throw new ORPCError("UNAUTHORIZED")
   }
@@ -32,6 +36,7 @@ export const authMiddleware = base.middleware(async ({ context, next }) => {
   // Adds session and user to the context
   return next({
     context: {
+      requestIssuedAtMs,
       session: sessionData.session,
       user: {
         ...sessionData.user,
@@ -67,6 +72,17 @@ export const workspaceAuthorizedMidddleware = base.middleware(
 
     const { workspace } = access
 
+    // 404, not 403: a workspace of another tenant's host must not reveal it exists.
+    if (
+      !canOpenWorkspaceOnHost({
+        workspaceTenantId: workspace.tenantId,
+        hostTenantId: await resolveRequestTenantId(),
+        isSupportSession: access.isSupportSession,
+      })
+    ) {
+      throw new ORPCError("NOT_FOUND")
+    }
+
     if (isWorkspaceScheduledForDeletion(workspace)) {
       throw new ORPCError("FORBIDDEN", {
         message: "Workspace deletion scheduled",
@@ -97,6 +113,7 @@ export const workspaceAuthorizedMidddleware = base.middleware(
           context: {
             workspace,
             workspaceMember: access.member,
+            isSupportSession: access.isSupportSession,
           },
         }),
     )

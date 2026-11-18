@@ -1,4 +1,5 @@
 import type {
+  AgentResponseSeriesRow,
   BotMessageStats,
   CommentAutomationTimeseriesRow,
   ContactCountsSchema,
@@ -14,6 +15,7 @@ import type {
   ListFlowNodeContactsResponse,
   MessagesByAdminStats,
   MessagesBySenderStats,
+  NormalizedAnalyticsFilter,
   RefLinkTimeseriesRow,
   UniqueConversationsByAdminStats,
 } from "@chatbotx.io/analytics"
@@ -50,6 +52,12 @@ export type AnalysisState = {
   }
   from: Date
   to: Date
+  // Channel / inbox filters of the Contacts and Conversations dashboards.
+  // Empty = "All". Kept apart from `defaultSearchParams` on purpose: reflinks,
+  // magic links and comment automation spread that object into their requests
+  // and must never advertise a filter they cannot honor.
+  channels: NormalizedAnalyticsFilter["channels"]
+  inboxIds: NormalizedAnalyticsFilter["inboxIds"]
 
   // stats
   contactCounts: ContactCountsSchema[]
@@ -62,7 +70,7 @@ export type AnalysisState = {
   messagesBySender: MessagesBySenderStats[]
   contactsByChannel: ContactsByDimension[]
   allContactsByChannel: ContactsByDimension[]
-  contactsByCountry: ContactsByDimension[]
+  contactsByLanguage: ContactsByDimension[]
   contactsBySource: ContactsByDimension[]
   conversationHandoffs: ConversationHandoffStats[]
   conversationFollowUps: ConversationFollowUpStats[]
@@ -72,6 +80,7 @@ export type AnalysisState = {
   uniqueConversationsByAdmin: UniqueConversationsByAdminStats[]
   messagesByAdmin: MessagesByAdminStats[]
   humanAgentStats: HumanAgentStats[]
+  agentResponseSeries: AgentResponseSeriesRow[]
 
   // reflink stats
   refLinkStats: RefLinkTimeseriesRow[]
@@ -111,6 +120,8 @@ export type AnalysisActions = {
   handleError: (action: string, error: unknown) => void
   initialize: () => Promise<void>
   setRange: (props: { from: Date; to: Date }) => Promise<void>
+  /** Commits the channel and inbox selection in one step, then reloads once. */
+  setFilters: (props: NormalizedAnalyticsFilter) => Promise<void>
   loadAnalysisData: () => Promise<void>
 
   getContactCounts: () => Promise<void>
@@ -123,7 +134,7 @@ export type AnalysisActions = {
   getMessagesBySender: () => Promise<void>
   getContactsByChannel: () => Promise<void>
   getAllContactsByChannel: () => Promise<void>
-  getContactsByCountry: () => Promise<void>
+  getContactsByLanguage: () => Promise<void>
   getContactsBySource: () => Promise<void>
   getConversationHandoffs: () => Promise<void>
   getConversationFollowUps: () => Promise<void>
@@ -133,6 +144,7 @@ export type AnalysisActions = {
   getUniqueConversationsByAdmin: () => Promise<void>
   getMessagesByAdmin: () => Promise<void>
   getHumanAgentStats: () => Promise<void>
+  getAgentResponseSeries: () => Promise<void>
 
   getRefLinkStats: () => Promise<void>
   getReflinkContacts: () => Promise<void>
@@ -178,7 +190,7 @@ const DASHBOARD_LOAD_ACTIONS = {
     "getContactsByChannel",
     "getAllContactsByChannel",
     "getContactsBySource",
-    "getContactsByCountry",
+    "getContactsByLanguage",
     "getBlockedContactCounts",
   ],
   conversations: [
@@ -186,6 +198,7 @@ const DASHBOARD_LOAD_ACTIONS = {
     "getMessagesBySender",
     "getConversationHandoffs",
     "getHumanAgentStats",
+    "getAgentResponseSeries",
     "getUniqueConversationsByAdmin",
     "getMessagesByAdmin",
     "getConversationAssignedByAdmin",
@@ -213,12 +226,16 @@ export const createAnalysisStore = (
   let dashboardLoadGeneration = 0
 
   return createStore<AnalysisStore>((set, get) => {
+    // Request params of the Contacts / Conversations actions. Empty filters are
+    // omitted so an unfiltered request stays byte-identical to before.
     const rangeParams = () => {
-      const { defaultSearchParams, from, to } = get()
+      const { defaultSearchParams, from, to, channels, inboxIds } = get()
       return {
         ...defaultSearchParams,
         from: from.toISOString(),
         to: to.toISOString(),
+        ...(channels.length > 0 ? { channels } : {}),
+        ...(inboxIds.length > 0 ? { inboxIds } : {}),
       }
     }
 
@@ -257,6 +274,8 @@ export const createAnalysisStore = (
       // Default option is last 7 days
       from: subDays(startOfToday(), 7),
       to: endOfToday(),
+      channels: [],
+      inboxIds: [],
       ...props,
 
       // Default stats
@@ -270,7 +289,7 @@ export const createAnalysisStore = (
       messagesBySender: [],
       contactsByChannel: [],
       allContactsByChannel: [],
-      contactsByCountry: [],
+      contactsByLanguage: [],
       contactsBySource: [],
       conversationHandoffs: [],
       conversationFollowUps: [],
@@ -280,6 +299,7 @@ export const createAnalysisStore = (
       uniqueConversationsByAdmin: [],
       messagesByAdmin: [],
       humanAgentStats: [],
+      agentResponseSeries: [],
 
       // Default reflink stats
       refLinkStats: [],
@@ -438,6 +458,13 @@ export const createAnalysisStore = (
         await loadAnalysisData()
       },
 
+      setFilters: async ({ channels, inboxIds }) => {
+        // The new selection replaces the old one atomically, so no request ever
+        // pairs a channel set with inboxes of a different channel set.
+        set({ channels, inboxIds })
+        await get().loadAnalysisData()
+      },
+
       getContactCounts: () =>
         runGuarded(
           "getContactCounts",
@@ -524,15 +551,15 @@ export const createAnalysisStore = (
           ({ data: allContactsByChannel }) => ({ allContactsByChannel }),
         ),
 
-      getContactsByCountry: () =>
+      getContactsByLanguage: () =>
         runGuarded(
-          "getContactsByCountry",
+          "getContactsByLanguage",
           () =>
             get().api.contactsByDimensionAnalyticsAPI({
               ...rangeParams(),
-              dimension: "country",
+              dimension: "language",
             }),
-          ({ data: contactsByCountry }) => ({ contactsByCountry }),
+          ({ data: contactsByLanguage }) => ({ contactsByLanguage }),
         ),
 
       getContactsBySource: () =>
@@ -605,6 +632,13 @@ export const createAnalysisStore = (
           "getHumanAgentStats",
           () => get().api.humanAgentStatsAnalyticsAPI(rangeParams()),
           ({ data: humanAgentStats }) => ({ humanAgentStats }),
+        ),
+
+      getAgentResponseSeries: () =>
+        runGuarded(
+          "getAgentResponseSeries",
+          () => get().api.agentResponseSeriesAnalyticsAPI(rangeParams()),
+          ({ data: agentResponseSeries }) => ({ agentResponseSeries }),
         ),
 
       // `linkId`/`timezone` are only present in `defaultSearchParams` when the

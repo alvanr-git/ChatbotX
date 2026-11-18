@@ -1,6 +1,5 @@
 import {
   automatedResponseService,
-  contactService,
   conversationService,
   messageService,
 } from "@chatbotx.io/business"
@@ -18,6 +17,11 @@ import {
   possibleErrorsOnSendingMessage,
 } from "@/lib/orpc/orpc-error-helper"
 import { publicContactIdentifier } from "@/lib/public-api/contact-identifier"
+import {
+  assertMemberMayStartFlow,
+  contactIdFor,
+  resolveSenderForCaller,
+} from "@/lib/public-api/member-scope"
 import { workspaceTokenAuthAPIForScope } from "@/orpc"
 
 // Sending/reading messages, auto-replies, and flows for a contact are
@@ -34,7 +38,7 @@ export const contactsMessagesPublicRouter = {
       path: "/v1/contacts/{identifier}/messages",
       summary: "Send message to contact",
       description:
-        "Delivers a text, media or catalog product message (`products`, on channels with product messages such as WhatsApp; ids from `products.listSendable`) in the contact's existing conversation (404 when the contact has none, e.g. it was never reached on a channel). Use `contacts.get` to confirm the recipient first, and `contacts.listMessages` to inspect the conversation afterward.",
+        "Delivers a text, media or catalog product message (`products`, on channels with product messages such as WhatsApp; ids from `products.listSendable`) in the contact's existing conversation (404 when the contact has none, e.g. it was never reached on a channel). Use `contacts.get` to confirm the recipient first, and `contacts.listMessages` to inspect the conversation afterward. Delivery is asynchronous: if the channel finally rejects the message (after any retries), it is removed from the conversation — reading it by id then returns 404 — and the error is written to the workspace Error Log (`errorLogs.list`). Only messages a member sends from the Inbox are kept with their error.",
       successStatus: 204,
       tags: ["Contacts"],
       spec: mcpSpec({ visibility: "default" }),
@@ -48,21 +52,24 @@ export const contactsMessagesPublicRouter = {
     )
     .errors(possibleErrorsOnSendingMessage)
     .handler(async ({ context, input }) => {
-      const contactId = await contactService.resolveIdByIdentifier({
-        identifier: input.identifier,
-        workspaceId: context.workspace.id,
-      })
+      const contactId = await contactIdFor(context, input.identifier)
       const { conversation, contactInbox } =
         await conversationService.resolveContactInboxForSend({
           contactId,
           workspaceId: context.workspace.id,
           inboxId: input.inboxId,
         })
-
+      await assertMemberMayStartFlow(
+        context,
+        "flowId" in input ? input.flowId : undefined,
+      )
+      const user = resolveSenderForCaller(context)
       await messageService.createOutgoing({
         conversation,
         contactInbox,
         input,
+        ...(user && { user }),
+        sendFrom: "api",
       })
     }),
 
@@ -100,10 +107,7 @@ export const contactsMessagesPublicRouter = {
     .output(listMessagesResponse)
     .errors(possibleErrorsOnFindingResource)
     .handler(async ({ context, input }) => {
-      const contactId = await contactService.resolveIdByIdentifier({
-        identifier: input.identifier,
-        workspaceId: context.workspace.id,
-      })
+      const contactId = await contactIdFor(context, input.identifier)
       const conversation = await conversationService.findByContactWithInboxes({
         contactId,
         workspaceId: context.workspace.id,
@@ -138,10 +142,7 @@ export const contactsMessagesPublicRouter = {
     .output(messageResourceWithRelations)
     .errors(possibleErrorsOnFindingResource)
     .handler(async ({ context, input }) => {
-      const contactId = await contactService.resolveIdByIdentifier({
-        identifier: input.identifier,
-        workspaceId: context.workspace.id,
-      })
+      const contactId = await contactIdFor(context, input.identifier)
       const conversation = await conversationService.findByContactWithInboxes({
         contactId,
         workspaceId: context.workspace.id,
@@ -184,10 +185,7 @@ export const contactsMessagesPublicRouter = {
     )
     .errors(possibleErrorsOnMutatingResource)
     .handler(async ({ context, input }) => {
-      const contactId = await contactService.resolveIdByIdentifier({
-        identifier: input.identifier,
-        workspaceId: context.workspace.id,
-      })
+      const contactId = await contactIdFor(context, input.identifier)
       const autoReply = await automatedResponseService.findByInboundKeyword(
         context.workspace.id,
         input.keyword,
@@ -211,6 +209,7 @@ export const contactsMessagesPublicRouter = {
         conversation,
         contactInbox,
         input: parsedInput,
+        sendFrom: "api",
       })
     }),
 
@@ -240,10 +239,7 @@ export const contactsMessagesPublicRouter = {
     )
     .errors(possibleErrorsOnMutatingResource)
     .handler(async ({ context, input }) => {
-      const contactId = await contactService.resolveIdByIdentifier({
-        identifier: input.identifier,
-        workspaceId: context.workspace.id,
-      })
+      const contactId = await contactIdFor(context, input.identifier)
       const { conversation, contactInbox } =
         await conversationService.resolveContactInboxForSend({
           contactId,
@@ -251,10 +247,15 @@ export const contactsMessagesPublicRouter = {
           inboxId: input.inboxId,
         })
 
+      await assertMemberMayStartFlow(context, input.flowId)
+      const user = resolveSenderForCaller(context)
+
       await messageService.createOutgoing({
         conversation,
         contactInbox,
         input: { flowId: input.flowId, inboxId: input.inboxId },
+        ...(user && { user }),
+        sendFrom: "api",
       })
     }),
 }

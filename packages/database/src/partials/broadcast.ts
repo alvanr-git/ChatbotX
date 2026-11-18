@@ -33,6 +33,20 @@ export const broadcastStatuses = z.enum([
 export type BroadcastStatus = z.infer<typeof broadcastStatuses>
 
 /**
+ * Why the system (not the customer) changed a broadcast's status. Set together
+ * with `statusErrorMessage` and `statusInboxId`; cleared when the customer
+ * resumes or moves the broadcast back to draft.
+ */
+export const broadcastStatusReasons = z.enum([
+  "accountPolicyBlocked",
+  "accountSendRestricted",
+])
+export type BroadcastStatusReason = z.infer<typeof broadcastStatusReasons>
+
+/** Longest provider error text kept in `Broadcast.statusErrorMessage`. */
+export const BROADCAST_STATUS_ERROR_MESSAGE_MAX_LENGTH = 500
+
+/**
  * What happened to one slot of a repeating broadcast. `created` means a run
  * (child broadcast) exists — not that it was delivered; `skipped` is an
  * intentional non-send; `missed` is a slot an outage swallowed.
@@ -118,6 +132,7 @@ export const broadcastSubactionAudienceRules: Record<
   whatsappWithin24Hours: { requiresRecentInteractionWindow: true },
   instagramActiveContacts: { requiresRecentInteractionWindow: true },
   telegramAllContacts: { requiresRecentInteractionWindow: false },
+  lineAllContacts: { requiresRecentInteractionWindow: false },
   tiktokActiveContacts: { requiresRecentInteractionWindow: true },
 }
 
@@ -173,6 +188,12 @@ export const broadcastChannelCapabilities: readonly BroadcastChannelCapability[]
       channel: "telegram",
       subactions: ["telegramAllContacts"],
       defaultSubaction: "telegramAllContacts",
+      supportsTemplateBroadcast: false,
+    },
+    {
+      channel: "line",
+      subactions: ["lineAllContacts"],
+      defaultSubaction: "lineAllContacts",
       supportsTemplateBroadcast: false,
     },
     {
@@ -532,6 +553,25 @@ export const clampAudienceCountToRange = (
   }
   const remaining = Math.max(0, total - range.offset)
   return range.size == null ? remaining : Math.min(remaining, range.size)
+}
+
+/**
+ * Clamps a (possibly capped) audience count to the range. A capped `total` is
+ * only a lower bound, so the clamped value is exact only when the window ends
+ * inside the counted rows; otherwise `capped` stays true and the caller must
+ * show "at least" (never treat a 0 as "empty window").
+ */
+export const clampCappedAudienceCount = (
+  counted: { total: number; capped: boolean },
+  range: BroadcastAudienceRange | null,
+): { total: number; capped: boolean } => {
+  const total = clampAudienceCountToRange(counted.total, range)
+  if (!counted.capped) {
+    return { total, capped: false }
+  }
+  const windowEnd =
+    range && range.size != null ? range.offset + range.size : null
+  return { total, capped: windowEnd == null || windowEnd > counted.total }
 }
 
 /** Page window inside the range for the preview dialog; null when the page lies past the range. */

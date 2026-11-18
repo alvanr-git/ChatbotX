@@ -42,6 +42,11 @@ export const router = {
       default: m.aiAgentsAPI,
     })),
   ),
+  decisionConnectionsAPI: lazy(() =>
+    import("@/features/decision-connections/api").then((m) => ({
+      default: m.decisionConnectionsAPI,
+    })),
+  ),
   decisionProfilesAPI: lazy(() =>
     import("@/features/decision-profiles/api").then((m) => ({
       default: m.decisionProfilesAPI,
@@ -57,8 +62,26 @@ export const router = {
       default: m.conversationsAPI,
     })),
   ),
+  miniAppsAPI: lazy(() =>
+    import("@/features/mini-apps/api").then((m) => ({
+      default: m.miniAppsAPI,
+    })),
+  ),
   couponsAPI: lazy(() =>
     import("@/features/coupons/api").then((m) => ({ default: m.couponsAPI })),
+  ),
+  pipelinesAPI: lazy(() =>
+    import("@/features/pipelines/api").then((m) => ({
+      default: m.pipelinesAPI,
+    })),
+  ),
+  pollsAPI: lazy(() =>
+    import("@/features/polls/api").then((m) => ({ default: m.pollsAPI })),
+  ),
+  placesNearMeAPI: lazy(() =>
+    import("@/features/places-near-me/api").then((m) => ({
+      default: m.placesNearMeAPI,
+    })),
   ),
   leaderboardsAPI: lazy(() =>
     import("@/features/leaderboards/api").then((m) => ({
@@ -259,6 +282,16 @@ export const router = {
   facebookMarketingMessagesAPI: lazy(() =>
     import("@/features/facebook-marketing-messages/api").then((m) => ({
       default: m.facebookMarketingMessagesAPI,
+    })),
+  ),
+  responseSlaAPI: lazy(() =>
+    import("@/features/response-sla/api/private").then((m) => ({
+      default: m.responseSlaAPI,
+    })),
+  ),
+  workingHoursAPI: lazy(() =>
+    import("@/features/working-hours/api/private").then((m) => ({
+      default: m.workingHoursAPI,
     })),
   ),
   sequencesAPI: lazy(() =>

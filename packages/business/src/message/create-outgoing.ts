@@ -1,4 +1,8 @@
 import {
+  REPLY_TARGET_CREATED_AT_KEY,
+  SENT_FROM_INBOX_KEY,
+} from "@chatbotx.io/database/partials"
+import {
   createMessageRepository,
   flowRepository,
   mediaLibraryFileRepository,
@@ -6,6 +10,7 @@ import {
 import type {
   ContactInboxModel,
   ConversationModel,
+  MessageModel,
   UserModel,
 } from "@chatbotx.io/database/types"
 import {
@@ -16,8 +21,20 @@ import {
   uploadMultipleFiles,
 } from "@chatbotx.io/filesystem"
 import type { SendProductsContent } from "@chatbotx.io/flow-config"
-import { RealtimeEventType } from "@chatbotx.io/partysocket-config"
+import {
+  RealtimeEventType,
+  routeForConversation,
+} from "@chatbotx.io/realtime-protocol"
+import type { MessageButtonTemplate } from "@chatbotx.io/sdk"
 import { createId } from "@chatbotx.io/utils"
+import { channelTypes } from "@chatbotx.io/utils/channel"
+import {
+  checkInboxImages,
+  type InboxReplyKind,
+  isImageMimeType,
+  resolveInboxReplyKind,
+} from "@chatbotx.io/utils/inbox-image-support"
+import type { SendFrom } from "@chatbotx.io/utils/send-from"
 import {
   ChatJobAction,
   chatQueue,
@@ -28,14 +45,19 @@ import { contactInboxService } from "../contact-inbox/service"
 import { conversationService } from "../conversation/service"
 import {
   ChatbotXException,
+  ImagesNotSupportedOnChannelError,
   notFoundException,
   validationException,
 } from "../errors"
 import { logger } from "../logger"
-import { publishToWorkspaceParty } from "../platform/realtime-broadcast"
+import {
+  queueMessageCreatedEvent,
+  queueWorkspaceRealtimeEvent,
+} from "../platform/realtime-broadcast"
 import { resolveTenantSettings } from "../platform/settings"
 import { productMessageService } from "../product-message/service"
 import { getPublicFileUrl } from "../utils"
+import { recordAgentReply } from "../working-hours/agent-reply-metric"
 
 type CreateOutgoingInput = (
   | { flowId: string; nodeId?: string }
@@ -70,6 +92,13 @@ type CreateOutgoingInput = (
    * handler). Overrides the `isPrivateReply`-derived default when set.
    */
   contentAttributes?: Record<string, unknown> | null
+  /**
+   * Buttons sent with the text, the same shape a flow's button message uses.
+   * Pair them with a `contentAttributes` button template so the row (inbox
+   * bubble, Messenger button template) shows them too. Server-side only — not
+   * accepted from `messages.create` input.
+   */
+  quickReplies?: MessageButtonTemplate[]
 }
 
 /**
@@ -107,6 +136,92 @@ const copyMediaLibraryFileToConversationAttachment = async (props: {
   }
 }
 
+/**
+ * Loads the Media Library rows a send refers to (by path, id or ids), each
+ * scoped to the workspace so a caller can't reference another workspace's
+ * storage object.
+ */
+const resolveMediaLibraryFiles = async (
+  workspaceId: string,
+  input: CreateOutgoingInput,
+): Promise<CopyableMediaLibraryFile[]> => {
+  if ("mediaFile" in input && input.mediaFile) {
+    // Legacy path-based selection, still used by public oRPC APIs.
+    const mediaLibraryFile = await mediaLibraryFileRepository.findByPath({
+      workspaceId,
+      path: input.mediaFile.path,
+    })
+    if (!mediaLibraryFile) {
+      throw new ChatbotXException("Media library file not found")
+    }
+    return [mediaLibraryFile]
+  }
+
+  let mediaFileIds: string[] = []
+  if ("mediaFileId" in input && input.mediaFileId) {
+    mediaFileIds = [input.mediaFileId]
+  } else if ("mediaFileIds" in input && input.mediaFileIds) {
+    mediaFileIds = input.mediaFileIds
+  }
+  if (mediaFileIds.length === 0) {
+    return []
+  }
+
+  const files = await mediaLibraryFileRepository.findByIds({
+    workspaceId,
+    ids: mediaFileIds,
+  })
+  const filesById = new Map(files.map((file) => [file.id, file]))
+  // Kept in the caller's order — it is the order the attachments are sent.
+  return mediaFileIds.map((mediaFileId) => {
+    const mediaLibraryFile = filesById.get(mediaFileId)
+    if (!mediaLibraryFile) {
+      throw new ChatbotXException("Media library file not found")
+    }
+    return mediaLibraryFile
+  })
+}
+
+const hasDeviceFiles = (input: CreateOutgoingInput): boolean =>
+  "files" in input && Boolean(input.files) && (input.files?.length ?? 0) > 0
+
+const countImages = (
+  input: CreateOutgoingInput,
+  mediaLibraryFiles: CopyableMediaLibraryFile[],
+): number => {
+  if ("files" in input && input.files && input.files.length > 0) {
+    return input.files.filter((file) => isImageMimeType(file.type)).length
+  }
+  return mediaLibraryFiles.filter((file) => isImageMimeType(file.mimeType))
+    .length
+}
+
+/**
+ * Refuses images where the channel can't deliver them (Threads, Instagram
+ * and TikTok comment replies) or more than it can carry (one on a Messenger
+ * comment reply), instead of letting the send handler drop them silently.
+ */
+const assertChannelAcceptsImages = (props: {
+  channel: string
+  kind: InboxReplyKind
+  imageCount: number
+}) => {
+  const channel = channelTypes.safeParse(props.channel)
+  // A channel string outside the enum has no known limits — let the send
+  // handler decide, as before.
+  if (!channel.success) {
+    return
+  }
+  const result = checkInboxImages({ ...props, channel: channel.data })
+  if (!result.ok) {
+    throw new ImagesNotSupportedOnChannelError({
+      reason: result.reason,
+      channel: props.channel,
+      max: result.max,
+    })
+  }
+}
+
 /** Carries the bypass flag to the send worker via `metadata`. */
 const withBypassThreadControlLock = (
   contentAttributes: Record<string, unknown> | null,
@@ -125,13 +240,114 @@ const withBypassThreadControlLock = (
   }
 }
 
+const ENQUEUE_FAILED_SEND_ERROR = "Could not queue the message for delivery"
+
+/**
+ * The row exists and `messageCreated` has already gone to every open tab, so a
+ * failed enqueue must settle the row and tell those tabs, or they would show a
+ * message that is neither sent nor marked failed. A member's Inbox message
+ * keeps the failed state (it can be resent); any other (`api`) is removed for
+ * good — its caller gets the enqueue error back directly. Bookkeeping only: it
+ * never replaces the enqueue error.
+ */
+const recordEnqueueFailure = async (input: {
+  repository: Awaited<ReturnType<typeof createMessageRepository>>
+  message: Pick<MessageModel, "id" | "createdAt" | "workspaceId">
+  conversation: ConversationModel
+  clientId: string | undefined
+  sendFrom: SendFrom
+}): Promise<void> => {
+  const { repository, message, conversation, clientId } = input
+  try {
+    if (input.sendFrom !== "inbox") {
+      await repository.hardDeleteById(
+        message.id,
+        message.workspaceId,
+        message.createdAt,
+      )
+      await queueWorkspaceRealtimeEvent(message.workspaceId, {
+        eventType: RealtimeEventType.messageRemoved,
+        data: { messageIds: [message.id] },
+        route: routeForConversation(conversation),
+      })
+      return
+    }
+    await repository.updateSendError(
+      message.id,
+      ENQUEUE_FAILED_SEND_ERROR,
+      message.workspaceId,
+      message.createdAt,
+    )
+    await queueWorkspaceRealtimeEvent(message.workspaceId, {
+      eventType: RealtimeEventType.messageFailed,
+      data: {
+        messageId: message.id,
+        clientId,
+        error: ENQUEUE_FAILED_SEND_ERROR,
+      },
+      route: routeForConversation(conversation),
+    })
+  } catch (err) {
+    logger.error(
+      { err, messageId: message.id, workspaceId: message.workspaceId },
+      "Failed to record an enqueue failure on the outgoing message",
+    )
+  }
+}
+
+/**
+ * Stamps where a message was sent from: `true` for a member's Inbox message, so
+ * a failed send keeps it (see `isSentFromInbox`), `false` for the API. A row
+ * with no stamp at all is older than the marker (see `isLegacyMemberMessage`).
+ */
+const withSentFromInbox = (
+  contentAttributes: Record<string, unknown> | null,
+  sendFrom: SendFrom,
+): Record<string, unknown> | null => ({
+  ...contentAttributes,
+  [SENT_FROM_INBOX_KEY]: sendFrom === "inbox",
+})
+
+/**
+ * A private reply answers a comment stored in the commenter's own conversation,
+ * and the row keeps only that comment's id. Its createdAt (the shard key needed
+ * to find it again) is kept here so a failed private reply can be resent.
+ */
+const withReplyTargetCreatedAt = (
+  contentAttributes: Record<string, unknown> | null,
+  isPrivateReply: boolean | undefined,
+  replyToMessageCreatedAt: Date | undefined,
+): Record<string, unknown> | null =>
+  isPrivateReply && replyToMessageCreatedAt
+    ? {
+        ...contentAttributes,
+        [REPLY_TARGET_CREATED_AT_KEY]: replyToMessageCreatedAt.toISOString(),
+      }
+    : contentAttributes
+
 export const createOutgoing = async (props: {
   conversation: ConversationModel
   contactInbox: ContactInboxModel
   input: CreateOutgoingInput
-  user?: UserModel
+  user?: Pick<UserModel, "id">
+  /**
+   * `inbox` — a member in the builder's Inbox: a failed send keeps the
+   * message with its error. `api` — the Public API/CLI/MCP or a system send
+   * (order notifications): a failed message is removed and its error goes to
+   * the Error Log.
+   */
+  sendFrom: SendFrom
 }) => {
-  const { conversation, input: parsedInput, user, contactInbox } = props
+  const {
+    conversation,
+    input: parsedInput,
+    user,
+    contactInbox,
+    sendFrom,
+  } = props
+  const sender = user
+    ? ({ kind: "agent", userId: user.id } as const)
+    : ({ kind: "other" } as const)
 
   if ("flowId" in parsedInput) {
     // The worker resolves the flow inside the conversation's workspace and
@@ -152,8 +368,19 @@ export const createOutgoing = async (props: {
         contactInboxId: contactInbox,
         flowId: parsedInput.flowId,
         nodeId: parsedInput.nodeId,
-        sendFrom: "inbox",
+        sendFrom,
+        sentByUserId: user?.id,
       },
+    })
+    // Claimed only after a successful enqueue so a failed send keeps the
+    // window open. An inbox "send flow" counts as a human reply.
+    await recordAgentReply({
+      conversationId: conversation.id,
+      workspaceId: conversation.workspaceId,
+      contactInbox,
+      at: new Date(),
+      sender,
+      eventId: `reply:flow:${createId()}`,
     })
     return null
   }
@@ -182,6 +409,22 @@ export const createOutgoing = async (props: {
         })
       : undefined
 
+  // Resolved and checked before any row or object exists, so a send the
+  // channel cannot deliver is refused instead of silently losing its images.
+  // Device files win over media library ids (as the upload branch below
+  // does), so ids sent alongside files are never looked up.
+  const mediaLibraryFiles = hasDeviceFiles(parsedInput)
+    ? []
+    : await resolveMediaLibraryFiles(conversation.workspaceId, parsedInput)
+  assertChannelAcceptsImages({
+    channel: contactInbox.channel,
+    kind: resolveInboxReplyKind({
+      hasReplyTarget: Boolean(parsedInput.replyToMessageId),
+      isPrivateReply: Boolean(parsedInput.isPrivateReply),
+    }),
+    imageCount: countImages(parsedInput, mediaLibraryFiles),
+  })
+
   const { storageUrl } = await resolveTenantSettings({
     workspaceId: conversation.workspaceId,
   })
@@ -209,56 +452,15 @@ export const createOutgoing = async (props: {
       parsedInput.files,
       `public/space/${conversation.workspaceId}/conversations/${targetConversation.id}`,
     )
-  } else if ("mediaFile" in parsedInput && parsedInput.mediaFile) {
-    // Legacy path-based selection, still used by public oRPC APIs.
-    const mediaLibraryFile = await mediaLibraryFileRepository.findByPath({
-      workspaceId: conversation.workspaceId,
-      path: parsedInput.mediaFile.path,
-    })
-    if (!mediaLibraryFile) {
-      throw new ChatbotXException("Media library file not found")
-    }
-
-    uploadedFiles = [
-      await copyMediaLibraryFileToConversationAttachment({
-        mediaLibraryFile,
-        workspaceId: conversation.workspaceId,
-        conversationId: targetConversation.id,
-      }),
-    ]
-  } else if ("mediaFileId" in parsedInput && parsedInput.mediaFileId) {
-    const mediaLibraryFile = await mediaLibraryFileRepository.findById({
-      workspaceId: conversation.workspaceId,
-      id: parsedInput.mediaFileId,
-    })
-    if (!mediaLibraryFile) {
-      throw new ChatbotXException("Media library file not found")
-    }
-
-    uploadedFiles = [
-      await copyMediaLibraryFileToConversationAttachment({
-        mediaLibraryFile,
-        workspaceId: conversation.workspaceId,
-        conversationId: targetConversation.id,
-      }),
-    ]
-  } else if ("mediaFileIds" in parsedInput && parsedInput.mediaFileIds) {
+  } else if (mediaLibraryFiles.length > 0) {
     uploadedFiles = await Promise.all(
-      parsedInput.mediaFileIds.map(async (mediaFileId) => {
-        const mediaLibraryFile = await mediaLibraryFileRepository.findById({
-          workspaceId: conversation.workspaceId,
-          id: mediaFileId,
-        })
-        if (!mediaLibraryFile) {
-          throw new ChatbotXException("Media library file not found")
-        }
-
-        return copyMediaLibraryFileToConversationAttachment({
+      mediaLibraryFiles.map((mediaLibraryFile) =>
+        copyMediaLibraryFileToConversationAttachment({
           mediaLibraryFile,
           workspaceId: conversation.workspaceId,
           conversationId: targetConversation.id,
-        })
-      }),
+        }),
+      ),
     )
   }
 
@@ -283,11 +485,18 @@ export const createOutgoing = async (props: {
       ? ("comment" as const)
       : ("message" as const),
     parentId,
-    contentAttributes: withBypassThreadControlLock(
-      productMessage?.contentAttributes ??
-        parsedInput.contentAttributes ??
-        (parsedInput.isPrivateReply ? { isPrivateReply: true } : null),
-      parsedInput.bypassThreadControlLock,
+    contentAttributes: withSentFromInbox(
+      withReplyTargetCreatedAt(
+        withBypassThreadControlLock(
+          productMessage?.contentAttributes ??
+            parsedInput.contentAttributes ??
+            (parsedInput.isPrivateReply ? { isPrivateReply: true } : null),
+          parsedInput.bypassThreadControlLock,
+        ),
+        parsedInput.isPrivateReply,
+        parsedInput.replyToMessageCreatedAt,
+      ),
+      sendFrom,
     ),
   }
 
@@ -301,12 +510,6 @@ export const createOutgoing = async (props: {
     attachmentInputs.length > 0
       ? await repository.createWithAttachments(messageInput, attachmentInputs)
       : await repository.create(messageInput)
-
-  await conversationService.markAgentReplied({
-    id: targetConversation.id,
-    workspaceId: conversation.workspaceId,
-    at: now,
-  })
 
   await contactInboxService.updateTracking({
     contactInboxId: contactInbox.id,
@@ -330,13 +533,14 @@ export const createOutgoing = async (props: {
     })),
   }
 
-  publishToWorkspaceParty(messageWithAttachments.workspaceId, {
-    eventType: RealtimeEventType.messageCreated,
-    data: {
+  await queueMessageCreatedEvent(
+    messageWithAttachments.workspaceId,
+    {
       ...messageWithAttachments,
       clientId: parsedInput.clientId,
     },
-  })
+    targetConversation,
+  )
 
   const jobs: {
     jobType: (typeof ChatJobAction)[keyof typeof ChatJobAction]
@@ -356,7 +560,8 @@ export const createOutgoing = async (props: {
               clientId: parsedInput.clientId,
               parentCreatedAt: parsedInput.replyToMessageCreatedAt ?? null,
             },
-            sendFrom: "inbox",
+            quickReplies: parsedInput.quickReplies,
+            sendFrom,
           },
         },
         ...(contactInbox.channel === "threads" && message.type === "comment"
@@ -410,8 +615,24 @@ export const createOutgoing = async (props: {
   // actually delivers it to the channel failed, the caller must see an
   // error instead of a false "sent" success — the row stays for retry.
   if (sendChannelMessageError !== undefined) {
+    await recordEnqueueFailure({
+      repository,
+      message,
+      conversation: targetConversation,
+      clientId: parsedInput.clientId,
+      sendFrom,
+    })
     throw sendChannelMessageError
   }
+
+  await recordAgentReply({
+    conversationId: targetConversation.id,
+    workspaceId: conversation.workspaceId,
+    contactInbox,
+    at: now,
+    sender,
+    eventId: `reply:${message.id}`,
+  })
 
   return messageWithAttachments
 }

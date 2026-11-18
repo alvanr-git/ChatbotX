@@ -1,9 +1,8 @@
-import { db } from "@chatbotx.io/database/client"
 import { distributedStore } from "@chatbotx.io/redis"
 import { logger } from "../lib/logger"
 import { calcEndOfDayTtl, workspaceMacCacheKey } from "../lib/mac-period"
 import { macRepository } from "../repositories/postgres/mac.repository"
-import type { ReconcilePeriodInput } from "../schemas/mac"
+import type { AnalyticsFilter } from "../schemas/common"
 
 async function readOrPopulate(
   cacheKey: string,
@@ -47,11 +46,13 @@ export class MacAnalyticsService {
     )
   }
 
-  getActiveContactsByWorkspaceForRange(input: {
-    workspaceId: string
-    from: Date
-    to: Date
-  }): Promise<number> {
+  getActiveContactsByWorkspaceForRange(
+    input: {
+      workspaceId: string
+      from: Date
+      to: Date
+    } & AnalyticsFilter,
+  ): Promise<number> {
     return macRepository.countActiveContactsByWorkspace(input)
   }
 
@@ -62,10 +63,6 @@ export class MacAnalyticsService {
     contactInboxIds: string[]
   }): Promise<Set<string>> {
     return macRepository.getActiveContactInboxIds(input)
-  }
-
-  reconcilePeriod(input: ReconcilePeriodInput): Promise<void> {
-    return db.transaction((tx) => macRepository.reconcilePeriod(input, tx))
   }
 }
 

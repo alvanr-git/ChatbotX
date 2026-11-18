@@ -49,6 +49,7 @@ export default async function MiniAppPublicPage(props: MiniAppPageProps) {
   const contactId = await resolveVisitorContactId({
     token,
     workspaceId: miniApp.workspaceId,
+    miniAppId: miniApp.id,
   })
   const definition = await resolveContactVariables({
     definition: miniApp.definition,
@@ -62,6 +63,7 @@ export default async function MiniAppPublicPage(props: MiniAppPageProps) {
         <PublicMiniApp
           definition={definition}
           miniAppId={miniApp.id}
+          resume={getParam(searchParams.resume)}
           token={token}
         />
       </div>

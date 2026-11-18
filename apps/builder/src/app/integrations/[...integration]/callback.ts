@@ -2,8 +2,11 @@ import {
   appointmentExternalCalendarService,
   hasWorkspaceAccess,
   integrationFacebookAdsService,
+  integrationService,
   integrationThreadsService,
   platformCredentialService,
+  templateInstallIntentService,
+  userService,
   workspaceService,
 } from "@chatbotx.io/business"
 import { auditService, withAuditContext } from "@chatbotx.io/business/audit"
@@ -14,15 +17,10 @@ import {
   connectionService,
   failSession,
 } from "@chatbotx.io/connections"
-import { db } from "@chatbotx.io/database/client"
 import {
   type IntegrationType,
   messagingAdChannelTypes,
 } from "@chatbotx.io/database/partials"
-import {
-  integrationGoogleSheetsModel,
-  integrationModel,
-} from "@chatbotx.io/database/schema"
 import type { ConnectSessionModel } from "@chatbotx.io/database/types"
 import { exchangeCodeForToken as exchangeInstagramCode } from "@chatbotx.io/integration-instagram"
 import { exchangeCodeForToken as exchangeInstagramFacebookCode } from "@chatbotx.io/integration-instagram-facebook"
@@ -33,11 +31,7 @@ import {
 } from "@chatbotx.io/integration-threads"
 import { TiktokMissingScopesError } from "@chatbotx.io/integration-tiktok"
 import type { AuthValue, Oauth2AuthValue } from "@chatbotx.io/sdk"
-import {
-  createId,
-  getPublicUrlFromRequest,
-  zodBigintAsString,
-} from "@chatbotx.io/utils"
+import { getPublicUrlFromRequest, zodBigintAsString } from "@chatbotx.io/utils"
 import {
   appendConnectError,
   type ConnectErrorQueryCode,
@@ -73,10 +67,14 @@ import {
 } from "@/lib/channel-reconnect"
 import { logger } from "@/lib/log"
 import { resolveRelayTarget, sanitizeReferer } from "@/lib/oauth-referer"
+import { decodeOAuthState } from "@/lib/oauth-state"
 import { resolveOwnerForWorkspace } from "@/lib/platform-credential-owner"
 import { buildProviderCallbackUrl } from "@/lib/provider-origin"
 import { getGuestClientIp } from "@/lib/rate-limit/guest-rate-limit"
-import { createFirstWorkspace } from "@/lib/workspace/create-first-workspace"
+import {
+  createChannelPath,
+  createFirstWorkspace,
+} from "@/lib/workspace/create-first-workspace"
 import { completeMetaCapiConnect } from "./callback-meta-capi"
 import {
   messagingAdsIntegrationBelongsToWorkspace,
@@ -460,7 +458,7 @@ export const handleCallback = async (
   // New Connection-domain sessions (`POST /v1/connections`, `POST
   // /v1/connections/{id}/reconnect`) carry a raw "{sessionId}.{nonce}"
   // state — never JSON/base64-encoded — dispatched here before the legacy
-  // parse below, which would otherwise throw trying to atob/JSON.parse it.
+  // parse below, which would otherwise throw trying to decode/JSON.parse it.
   // Once every legacy JSON-state caller (builder pickers, ads/lead-ads/
   // meta-catalog connect flows) moves onto sessions, this early branch
   // becomes the only path and the switch below can be deleted.
@@ -474,7 +472,7 @@ export const handleCallback = async (
 
   let rawState: unknown
   try {
-    rawState = JSON.parse(atob(decodeURIComponent(rawStateParam)))
+    rawState = decodeOAuthState(rawStateParam)
   } catch {
     logger.debug(
       { url: url.toString() },
@@ -516,6 +514,10 @@ export const handleCallback = async (
 
   // Facebook returns ?error=access_denied when the user cancels
   if (url.searchParams.get("error")) {
+    const cancelledBy = await getCurrentUser()
+    if (cancelledBy) {
+      await templateInstallIntentService.clear(cancelledBy.id)
+    }
     const cancelReferer = await sanitizeReferer(stateParams.referer)
     // A cancelled reconnect must still surface a toast on the settings page,
     // like every other reconnect outcome.
@@ -625,6 +627,7 @@ export const handleCallback = async (
               code,
               callbackUrl,
               workspaceId: workspace.id,
+              userId,
             }),
         )
         return redirect(safeReferer)
@@ -748,6 +751,7 @@ export const handleCallback = async (
           credentialConfig: messengerCredential.config,
           workspaceId: workspace.id,
           integrationId: stateParams.reconnectIntegrationId,
+          userId,
           code,
           callbackUrl,
         })
@@ -776,7 +780,12 @@ export const handleCallback = async (
         { workspaceId: workspace.id, integrationType },
         "legacy messenger OAuth callback state matched no known flow",
       )
-      return redirect("/channels/create?error=sessionExpired")
+      return redirect(
+        createChannelPath({
+          error: "sessionExpired",
+          workspaceId: stateParams.workspaceId,
+        }),
+      )
     }
 
     case "instagram": {
@@ -805,7 +814,12 @@ export const handleCallback = async (
           { workspaceId: workspace.id, integrationType },
           "legacy instagram OAuth callback state has no reconnectIntegrationId",
         )
-        return redirect("/channels/create?error=sessionExpired")
+        return redirect(
+          createChannelPath({
+            error: "sessionExpired",
+            workspaceId: stateParams.workspaceId,
+          }),
+        )
       }
 
       const { accessToken: userToken } = await exchangeInstagramCode(
@@ -818,6 +832,7 @@ export const handleCallback = async (
         credentialConfig: instagramCredential.config,
         workspaceId: workspace.id,
         integrationId: stateParams.reconnectIntegrationId,
+        userId,
         userToken,
       })
       if (result.status === "success") {
@@ -880,7 +895,12 @@ export const handleCallback = async (
           { workspaceId: workspace.id, integrationType },
           "legacy instagramFacebook OAuth callback state has no reconnectIntegrationId",
         )
-        return redirect("/channels/create?error=sessionExpired")
+        return redirect(
+          createChannelPath({
+            error: "sessionExpired",
+            workspaceId: stateParams.workspaceId,
+          }),
+        )
       }
 
       const userToken = await exchangeInstagramFacebookCode(
@@ -892,6 +912,7 @@ export const handleCallback = async (
         credentialConfig: instagramFacebookCredential.config,
         workspaceId: workspace.id,
         integrationId: stateParams.reconnectIntegrationId,
+        userId,
         userToken,
       })
       if (result.status === "success") {
@@ -936,6 +957,7 @@ export const handleCallback = async (
           callbackUrl,
           workspaceId: workspace.id,
           integrationId: stateParams.reconnectIntegrationId,
+          userId,
           accessToken: token.accessToken,
           expiresAt: token.expiresAt,
         })
@@ -965,6 +987,14 @@ export const handleCallback = async (
         expiresAt: token.expiresAt,
         threadsUserId: profile.id,
         username: profile.username,
+      })
+
+      await userService.recordConnectionAuthorization({
+        userId,
+        provider: "threads",
+        auth,
+        phase: "authorizationObtained",
+        workspaceId: workspace.id,
       })
 
       let threadsIntegrationId: string
@@ -1080,6 +1110,7 @@ export const handleCallback = async (
           zaloSettings: zaloCredential.config,
           workspaceId: workspace.id,
           integrationId: stateParams.reconnectIntegrationId,
+          userId,
           req,
           callbackUrl: zaloRedirectUrl,
         })
@@ -1144,6 +1175,7 @@ export const handleCallback = async (
             code,
             callbackUrl,
             workspaceId: workspace.id,
+            userId,
           }),
       )
 
@@ -1192,6 +1224,14 @@ export const handleCallback = async (
           credentialConfig: googleCredential.config,
           req,
           callbackUrl,
+          workspaceId: workspace.id,
+        })
+
+        await userService.recordConnectionAuthorization({
+          userId,
+          provider: "googleCalendar",
+          auth: connection.auth,
+          phase: "authorizationObtained",
           workspaceId: workspace.id,
         })
 
@@ -1260,6 +1300,17 @@ export const handleCallback = async (
         req,
       })) as unknown as Oauth2AuthValue
       googleSheetsAuth = authResult
+      // Only an obtained authorization is recorded; an empty result falls
+      // through to the `notFound()` guard below.
+      if (authResult) {
+        await userService.recordConnectionAuthorization({
+          userId,
+          provider: "googleSheets",
+          auth: authResult,
+          phase: "authorizationObtained",
+          workspaceId: workspace.id,
+        })
+      }
       break
     }
 
@@ -1271,22 +1322,12 @@ export const handleCallback = async (
     return notFound()
   }
 
-  await db.transaction(async (tx) => {
-    const integrationId = createId()
-
-    await tx.insert(integrationModel).values({
-      id: integrationId,
-      workspaceId: workspace.id,
-      integrationType,
-    })
-
-    if (integrationType === "googleSheets" && googleSheetsAuth) {
-      await tx.insert(integrationGoogleSheetsModel).values({
-        workspaceId: workspace.id,
-        integrationId,
-        auth: googleSheetsAuth,
-      })
-    }
+  await integrationService.create({
+    workspaceId: workspace.id,
+    integrationType,
+    ...(integrationType === "googleSheets" && googleSheetsAuth
+      ? { googleSheetsAuth }
+      : {}),
   })
 
   if (integrationType === "googleSheets") {

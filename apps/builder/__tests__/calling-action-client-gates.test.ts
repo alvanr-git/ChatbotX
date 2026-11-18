@@ -13,6 +13,12 @@ const mocks = vi.hoisted(() => ({
   checkWorkspaceOwnerAccess: vi.fn().mockResolvedValue(null),
 }))
 
+vi.mock("@/lib/tenant/request-tenant", () => ({
+  resolveRequestTenantId: async () => "root-tenant",
+  canOpenWorkspaceOnHost: () => true,
+  filterWorkspacesForHost: <T>(items: T[]) => items,
+}))
+
 vi.mock("@chatbotx.io/business", () => ({
   isPlatformAdmin: mocks.isPlatformAdmin,
   isSuperAdmin: mocks.isSuperAdmin,
@@ -105,7 +111,7 @@ async function callProbeAction(client: ProbeClient, workspaceId: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.isPlatformAdmin.mockResolvedValue(false)
-  mocks.isSuperAdmin.mockReturnValue(false)
+  mocks.isSuperAdmin.mockResolvedValue(false)
   mocks.isWorkspaceScheduledForDeletion.mockReturnValue(false)
   mocks.isDatabaseError.mockReturnValue(false)
   mocks.getCurrentUserId.mockResolvedValue("user-1")

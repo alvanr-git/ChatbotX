@@ -30,6 +30,8 @@ import { useTranslations } from "next-intl"
 import { useEffect, useState } from "react"
 import { useFieldArray } from "react-hook-form"
 import { toast } from "sonner"
+import { LockedDialogFieldset } from "@/components/locked-dialog-fieldset"
+import { useIsLocked } from "@/features/templates/components/lock-context"
 import CustomFieldField from "../custom-fields/components/custom-field-field"
 import { useFlowSelectOptions } from "../flows/provider/flow-hook"
 import { createAIFunctionAction } from "./actions/create-ai-function.action"
@@ -55,6 +57,7 @@ export function AIFunctionsCreate({
   onOpenChange: setControlledOpen,
 }: AIFunctionsCreateProps) {
   const t = useTranslations()
+  const isLocked = useIsLocked(mode === "edit" ? initialData?.id : undefined)
 
   const [internalOpen, setInternalOpen] = useState(false)
   const isOpen = controlledOpen ?? internalOpen
@@ -206,122 +209,125 @@ export function AIFunctionsCreate({
             className="flex flex-col space-y-6 py-4"
             onSubmit={handleSubmitWithAction}
           >
-            <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-semibold text-primary text-sm">
-                  <SparklesIcon className="h-4 w-4 animate-pulse text-amber-500" />
-                  <span>Generate Function Parameters with Gemini AI</span>
+            <LockedDialogFieldset
+              resourceId={mode === "edit" ? initialData?.id : undefined}
+            >
+              <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-primary text-sm">
+                    <SparklesIcon className="h-4 w-4 animate-pulse text-amber-500" />
+                    <span>Generate Function Parameters with Gemini AI</span>
+                  </div>
+                  <span className="font-mono text-muted-foreground text-xs">
+                    Gemini 3.6 Flash
+                  </span>
                 </div>
-                <span className="font-mono text-muted-foreground text-xs">
-                  Gemini 3.6 Flash
-                </span>
-              </div>
-              <p className="text-muted-foreground text-xs">
-                Instruct Gemini to build this tool function for you (e.g.
-                &quot;Collect customer email and order ID to check shipment
-                status&quot;):
-              </p>
-              <div className="flex gap-2">
-                <Textarea
-                  className="min-h-[60px] bg-background text-xs"
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  placeholder="Type your instructions for Gemini AI..."
-                  value={aiPrompt}
-                />
-                <Button
-                  className="gap-1.5 self-end whitespace-nowrap"
-                  disabled={isGeneratingAi || !aiPrompt.trim()}
-                  onClick={handleGenerateAi}
-                  type="button"
-                  variant="default"
-                >
-                  {isGeneratingAi ? (
-                    <Loader2Icon className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SparklesIcon className="h-4 w-4 text-amber-300" />
-                  )}
-                  Build with AI
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                <span className="self-center text-[11px] text-muted-foreground">
-                  Presets:
-                </span>
-                {[
-                  "Book an appointment with customer name & date",
-                  "Check order shipment status with order ID & email",
-                  "Collect lead info (name, phone number, company)",
-                ].map((preset) => (
-                  <button
-                    className="rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                    key={preset}
-                    onClick={() => setAiPrompt(preset)}
-                    type="button"
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <InputField
-              label={t("fields.name.label")}
-              name="name"
-              placeholder={t("fields.name.placeholder")}
-              required
-            />
-            <TextareaField
-              label={t("fields.purpose.label")}
-              name="purpose"
-              placeholder={t("fields.purpose.placeholder")}
-            />
-            <div className="space-y-2">
-              <div className="font-medium text-sm">
-                {t("fields.dataCollect.label")}
-              </div>
-              {fields.map((field, index) => (
-                <div className="mt-2 flex items-start gap-2" key={field.id}>
-                  <InputField
-                    name={`dataCollect.${index}.from`}
-                    placeholder="Attribute"
-                  />
-                  <MoveRightIcon className="size-10" />
-                  <CustomFieldField
-                    emptyText={t("actions.noRecordFound")}
-                    name={`dataCollect.${index}.to`}
-                    placeholder={t("actions.pleaseSelect")}
+                <p className="text-muted-foreground text-xs">
+                  Instruct Gemini to build this tool function for you (e.g.
+                  &quot;Collect customer email and order ID to check shipment
+                  status&quot;):
+                </p>
+                <div className="flex gap-2">
+                  <Textarea
+                    className="min-h-[60px] bg-background text-xs"
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="Type your instructions for Gemini AI..."
+                    value={aiPrompt}
                   />
                   <Button
-                    onClick={() => remove(index)}
+                    className="gap-1.5 self-end whitespace-nowrap"
+                    disabled={isGeneratingAi || !aiPrompt.trim()}
+                    onClick={handleGenerateAi}
                     type="button"
-                    variant="outline"
+                    variant="default"
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    {isGeneratingAi ? (
+                      <Loader2Icon className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <SparklesIcon className="h-4 w-4 text-amber-300" />
+                    )}
+                    Build with AI
                   </Button>
                 </div>
-              ))}
-              <Button
-                onClick={() => append({ from: "", to: "" })}
-                type="button"
-                variant="outline"
-              >
-                <PlusIcon className="h-4 w-4" />
-                {t("actions.addMore")}
-              </Button>
-            </div>
-            <TextareaField
-              label={t("fields.outputMessage.label")}
-              name="outputMessage"
-              placeholder={t("fields.outputMessage.placeholder")}
-            />
-            <ComboboxField
-              emptyText={t("actions.noRecordFound")}
-              label={t("fields.triggerFlowId.label")}
-              name="triggerFlowId"
-              options={flowOptions}
-              placeholder={t("fields.triggerFlowId.placeholder")}
-            />
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="self-center text-[11px] text-muted-foreground">
+                    Presets:
+                  </span>
+                  {[
+                    "Book an appointment with customer name & date",
+                    "Check order shipment status with order ID & email",
+                    "Collect lead info (name, phone number, company)",
+                  ].map((preset) => (
+                    <button
+                      className="rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                      key={preset}
+                      onClick={() => setAiPrompt(preset)}
+                      type="button"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
+              <InputField
+                label={t("fields.name.label")}
+                name="name"
+                placeholder={t("fields.name.placeholder")}
+                required
+              />
+              <TextareaField
+                label={t("fields.purpose.label")}
+                name="purpose"
+                placeholder={t("fields.purpose.placeholder")}
+              />
+              <div className="space-y-2">
+                <div className="font-medium text-sm">
+                  {t("fields.dataCollect.label")}
+                </div>
+                {fields.map((field, index) => (
+                  <div className="mt-2 flex items-start gap-2" key={field.id}>
+                    <InputField
+                      name={`dataCollect.${index}.from`}
+                      placeholder="Attribute"
+                    />
+                    <MoveRightIcon className="size-10" />
+                    <CustomFieldField
+                      emptyText={t("actions.noRecordFound")}
+                      name={`dataCollect.${index}.to`}
+                      placeholder={t("actions.pleaseSelect")}
+                    />
+                    <Button
+                      onClick={() => remove(index)}
+                      type="button"
+                      variant="outline"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  onClick={() => append({ from: "", to: "" })}
+                  type="button"
+                  variant="outline"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  {t("actions.addMore")}
+                </Button>
+              </div>
+              <TextareaField
+                label={t("fields.outputMessage.label")}
+                name="outputMessage"
+                placeholder={t("fields.outputMessage.placeholder")}
+              />
+              <ComboboxField
+                emptyText={t("actions.noRecordFound")}
+                label={t("fields.triggerFlowId.label")}
+                name="triggerFlowId"
+                options={flowOptions}
+                placeholder={t("fields.triggerFlowId.placeholder")}
+              />
+            </LockedDialogFieldset>
             <DialogFooter className="gap-2 sm:space-x-0">
               <DialogClose
                 render={<Button variant="ghost">{t("actions.cancel")}</Button>}
@@ -329,7 +335,9 @@ export function AIFunctionsCreate({
 
               <Button
                 disabled={
-                  !form.formState.isValid || form.formState.isSubmitting
+                  isLocked ||
+                  !form.formState.isValid ||
+                  form.formState.isSubmitting
                 }
                 type="submit"
               >

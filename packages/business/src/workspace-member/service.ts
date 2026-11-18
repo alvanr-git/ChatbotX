@@ -10,6 +10,7 @@ import {
   type WorkspaceMemberPermissionsRow,
   workspaceMemberRepository,
 } from "@chatbotx.io/database/repositories"
+import { userColumnsWithoutSecrets } from "@chatbotx.io/database/repositories/user-columns"
 import { workspaceMemberModel } from "@chatbotx.io/database/schema"
 import type {
   UserModel,
@@ -24,6 +25,9 @@ import { withCache } from "@chatbotx.io/redis"
 import { BaseService } from "../base.service"
 import { notFoundException } from "../errors"
 import { logger } from "../logger"
+import { tryRevokeWorkspaceMemberRealtimeConnections } from "../platform/realtime-broadcast"
+import { workingHoursCacheTag } from "../working-hours/cache-tag"
+import { workingHoursService } from "../working-hours/service"
 import { workspaceUsageService } from "../workspace-usage/service"
 
 type ListWorkspaceMembersInput = {
@@ -47,12 +51,36 @@ type WorkspaceMemberWithWorkspace = WorkspaceMemberModel & {
 export const workspaceMemberCacheTag = (userId: string) =>
   `users:${userId}:workspace-members`
 
+/** Tag of the cached workspace roster (`listByWorkspaceId` and the owner lookup). */
+export const workspaceRosterCacheTag = (workspaceId: string) =>
+  `workspaces:${workspaceId}:workspace-members`
+
+/**
+ * Every cache tag a member removal makes stale. `delete()` invalidates them
+ * after its own commit; a caller that passes its own `tx` must invalidate this
+ * same set after ITS commit (invalidating earlier would race the commit).
+ */
+export const workspaceMemberDeleteCacheTags = (
+  workspaceId: string,
+  userId: string | undefined,
+): string[] => [
+  workingHoursCacheTag(workspaceId),
+  workspaceRosterCacheTag(workspaceId),
+  ...(userId ? [workspaceMemberCacheTag(userId)] : []),
+]
+
 export class WorkspaceMemberService extends BaseService {
   async create(props: {
     tx?: DatabaseClient
     data: typeof workspaceMemberModel.$inferInsert
-    /** Set to whether the live `teamMembers` counter took the +1, for a caller that may have to undo it after its `tx` rolls back. */
-    teamMemberUsage?: { liveIncremented: boolean }
+    /**
+     * Count of `create` calls on this `tx` whose live `teamMembers` increment
+     * actually landed — a caller inserting more than one member on the same
+     * transaction (owner + N invited members) passes the same tracker object
+     * to every call so `compensateWorkspaceQuotaConsumption` can roll back
+     * the live counter by the right number if the transaction later fails.
+     */
+    teamMemberUsage?: { liveIncrementedCount: number }
   }): Promise<WorkspaceMemberModel> {
     const { tx = db, data } = props
     const [workspaceMember] = await tx
@@ -60,14 +88,6 @@ export class WorkspaceMemberService extends BaseService {
       .values(data)
       .returning()
 
-    // Same transaction as the member insert: `workspaceService.create` wraps
-    // its writes in one, and a global-db write here cannot see the new
-    // Workspace row (WorkspaceUsage FK). On a supplied tx the error must
-    // propagate — a failed statement leaves that Postgres transaction
-    // aborted, so swallowing it would only move the failure to the next
-    // statement or COMMIT while this call reports success; the owner rolls
-    // back and compensates. Without a tx (autocommit) the display-only
-    // counter stays best-effort and the nightly reconcile re-grounds it.
     if (props.tx) {
       const liveIncremented = await workspaceUsageService.increment(
         data.workspaceId,
@@ -75,8 +95,8 @@ export class WorkspaceMemberService extends BaseService {
         1,
         props.tx,
       )
-      if (props.teamMemberUsage) {
-        props.teamMemberUsage.liveIncremented = liveIncremented
+      if (props.teamMemberUsage && liveIncremented) {
+        props.teamMemberUsage.liveIncrementedCount += 1
       }
     } else {
       await workspaceUsageService
@@ -96,23 +116,41 @@ export class WorkspaceMemberService extends BaseService {
     id: string
     workspaceId: string
     tx?: DatabaseClient
-  }): Promise<void> {
+  }): Promise<{ revokeWarning: boolean }> {
     const { id, workspaceId, tx = db } = props
-
     const member = await tx.query.workspaceMemberModel.findFirst({
       where: { id, workspaceId },
-      with: { user: true },
+      with: { user: { columns: userColumnsWithoutSecrets } },
     })
+    const removeMember = async (client: DatabaseClient) => {
+      await client
+        .delete(workspaceMemberModel)
+        .where(
+          and(
+            eq(workspaceMemberModel.id, id),
+            eq(workspaceMemberModel.workspaceId, workspaceId),
+          ),
+        )
+      if (member) {
+        await workingHoursService.removeMembersForUsers({
+          workspaceId,
+          userIds: [member.userId],
+          tx: client,
+        })
+      }
+    }
+    if (props.tx) {
+      await removeMember(props.tx)
+      return { revokeWarning: false }
+    }
 
-    await tx
-      .delete(workspaceMemberModel)
-      .where(
-        and(
-          eq(workspaceMemberModel.id, id),
-          eq(workspaceMemberModel.workspaceId, workspaceId),
-        ),
-      )
-
+    await db.transaction(removeMember)
+    await this.invalidateCacheTags(
+      workspaceMemberDeleteCacheTags(workspaceId, member?.userId),
+    )
+    if (!member) {
+      return { revokeWarning: false }
+    }
     await workspaceUsageService
       .decrement(workspaceId, "teamMembers")
       .catch((err) => {
@@ -122,11 +160,79 @@ export class WorkspaceMemberService extends BaseService {
         )
       })
 
-    if (!props.tx && member) {
-      await this.audit(
-        "delete",
-        `removed ${member.user.name ?? member.user.email} from workspace`,
+    await this.audit(
+      "delete",
+      `removed ${member.user.name ?? member.user.email} from workspace`,
+    )
+    const revokeWarning = !(await tryRevokeWorkspaceMemberRealtimeConnections({
+      workspaceId,
+      userId: member.userId,
+      reason: "deleted",
+      errorMessage: "Failed to revoke removed member realtime connections",
+    }))
+    return { revokeWarning }
+  }
+
+  /**
+   * Removes every membership of a user whose account is being deleted. The
+   * caller owns the transaction and must invoke the returned post-commit work
+   * only after that transaction succeeds.
+   */
+  async removeForAccountDeletion(props: {
+    tx: DatabaseClient
+    userId: string
+  }): Promise<Pick<WorkspaceMemberModel, "userId" | "workspaceId">[]> {
+    const members = await workspaceMemberRepository.deleteAllForUser(
+      props.userId,
+      props.tx,
+    )
+    for (const workspaceId of new Set(
+      members.map((member) => member.workspaceId),
+    )) {
+      await workingHoursService.removeMembersForUsers({
+        workspaceId,
+        userIds: [props.userId],
+        tx: props.tx,
+      })
+    }
+    return members
+  }
+
+  async finalizeAccountDeletionMembershipRemovals(
+    members: Pick<WorkspaceMemberModel, "userId" | "workspaceId">[],
+  ): Promise<void> {
+    const concurrency = 10
+    for (let index = 0; index < members.length; index += concurrency) {
+      const settled = await Promise.allSettled(
+        members.slice(index, index + concurrency).map(async (member) => {
+          await this.invalidateCacheTags(
+            workspaceMemberDeleteCacheTags(member.workspaceId, member.userId),
+          )
+          await workspaceUsageService
+            .decrement(member.workspaceId, "teamMembers")
+            .catch((err) => {
+              logger.warn(
+                { err, workspaceId: member.workspaceId },
+                "workspace usage team member decrement failed",
+              )
+            })
+          await tryRevokeWorkspaceMemberRealtimeConnections({
+            workspaceId: member.workspaceId,
+            userId: member.userId,
+            reason: "deleted",
+            errorMessage:
+              "Failed to revoke deleted account realtime connections",
+          })
+        }),
       )
+      for (const result of settled) {
+        if (result.status === "rejected") {
+          logger.error(
+            { err: result.reason },
+            "account-deletion: membership cleanup failed",
+          )
+        }
+      }
     }
   }
 
@@ -186,7 +292,7 @@ export class WorkspaceMemberService extends BaseService {
       {
         tags: [
           `workspaces:${workspaceId}`,
-          `workspaces:${workspaceId}:workspace-members`,
+          workspaceRosterCacheTag(workspaceId),
         ],
       },
     )
@@ -249,7 +355,7 @@ export class WorkspaceMemberService extends BaseService {
     workspaceId: string
   }): Promise<(WorkspaceMemberModel & { user: UserModel })[]> {
     const { tx = db, workspaceId } = props
-    const key = `workspaces:${workspaceId}:workspace-members`
+    const key = workspaceRosterCacheTag(workspaceId)
 
     return await withCache(
       key,
@@ -257,14 +363,14 @@ export class WorkspaceMemberService extends BaseService {
         await tx.query.workspaceMemberModel.findMany({
           where: { workspaceId },
           with: {
-            user: true,
+            user: { columns: userColumnsWithoutSecrets },
           },
           orderBy: { createdAt: "asc" },
         }),
       {
         tags: [
           `workspaces:${workspaceId}`,
-          `workspaces:${workspaceId}:workspace-members`,
+          workspaceRosterCacheTag(workspaceId),
         ],
       },
     )
@@ -327,7 +433,7 @@ export class WorkspaceMemberService extends BaseService {
         userId,
       },
       with: {
-        user: true,
+        user: { columns: userColumnsWithoutSecrets },
       },
     })
   }
@@ -369,11 +475,11 @@ export class WorkspaceMemberService extends BaseService {
   async update(input: {
     tx?: DatabaseClient
     id: string
+    revokeRealtime?: boolean
     workspaceId: string
     data: Partial<typeof workspaceMemberModel.$inferInsert>
-  }): Promise<{ id: string } | undefined> {
+  }): Promise<{ id: string; revokeWarning: boolean } | undefined> {
     const { tx = db, id, workspaceId, data } = input
-
     const updated = await tx
       .update(workspaceMemberModel)
       .set(data)
@@ -387,17 +493,30 @@ export class WorkspaceMemberService extends BaseService {
         id: workspaceMemberModel.id,
         userId: workspaceMemberModel.userId,
       })
-
     const [row] = updated
     if (!row) {
       return
     }
 
-    // The member's permissions/nav are served from the cached
-    // `listByUserId` result; bust it so the change takes effect immediately.
-    await this.invalidateCacheTags(workspaceMemberCacheTag(row.userId))
+    if (input.tx) {
+      return { id: row.id, revokeWarning: false }
+    }
 
-    return { id: row.id }
+    await this.invalidateCacheTags([
+      workspaceMemberCacheTag(row.userId),
+      workspaceRosterCacheTag(workspaceId),
+    ])
+    if (!input.revokeRealtime) {
+      return { id: row.id, revokeWarning: false }
+    }
+
+    const revokeWarning = !(await tryRevokeWorkspaceMemberRealtimeConnections({
+      workspaceId,
+      userId: row.userId,
+      reason: "reauth",
+      errorMessage: "Failed to revoke workspace member realtime connections",
+    }))
+    return { id: row.id, revokeWarning }
   }
 
   async listPaginated(
@@ -421,7 +540,7 @@ export class WorkspaceMemberService extends BaseService {
         ...pagination,
         where,
         with: {
-          user: true,
+          user: { columns: userColumnsWithoutSecrets },
         },
       }),
       db.$count(
@@ -444,7 +563,7 @@ export class WorkspaceMemberService extends BaseService {
         workspaceId: input.workspaceId,
       },
       with: {
-        user: true,
+        user: { columns: userColumnsWithoutSecrets },
       },
     })
   }

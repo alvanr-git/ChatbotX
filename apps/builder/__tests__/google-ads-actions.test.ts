@@ -31,6 +31,12 @@ const mocks = vi.hoisted(() => ({
   getOriginUrlFromHeader: vi.fn(),
 }))
 
+vi.mock("@/lib/tenant/request-tenant", () => ({
+  resolveRequestTenantId: async () => "root-tenant",
+  canOpenWorkspaceOnHost: () => true,
+  filterWorkspacesForHost: <T>(items: T[]) => items,
+}))
+
 vi.mock("next/cache", () => ({ revalidateTag: vi.fn() }))
 vi.mock("next/headers", () => ({ headers: vi.fn(async () => new Headers()) }))
 vi.mock("next-intl/server", () => ({
@@ -72,7 +78,7 @@ vi.mock("@chatbotx.io/business/errors", () => ({
 }))
 vi.mock("@chatbotx.io/business", () => ({
   isPlatformAdmin: vi.fn(async () => false),
-  isSuperAdmin: vi.fn(() => true),
+  isSuperAdmin: vi.fn(async () => true),
   isWorkspaceScheduledForDeletion: vi.fn(() => false),
   resolveWorkspaceAccess: vi.fn(({ realMember, workspaceId }) =>
     realMember

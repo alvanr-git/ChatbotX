@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { z } from "zod"
 import { webchatsAdapter } from "../src/template/adapters/webchats"
 
 // The broadcast policy import reaches quota/workspace modules these narrow mocks omit.
@@ -8,22 +9,31 @@ vi.mock("../src/broadcast/plan-policy.service", () => ({
 }))
 
 const {
+  mockIsCommunity,
   mockCount,
   mockCreateId,
+  mockConnectionFindByProviderSourceId,
+  mockConnectionUpdateDisplayName,
+  mockCreateNewContactWithMac,
   mockDispatchAuditRecord,
+  mockEmitContactCreated,
   mockFindActiveFlowById,
   mockFindFirst,
   mockFindMany,
   mockInboxCreate,
   mockIsAtLimit,
+  mockInsert,
+  mockMessageCleanup,
   mockParsePagination,
   mockRelationsFilterToSQL,
+  mockResolveWorkspaceAppUrl,
   mockTransaction,
   mockUpdate,
   mockUpdateSet,
   mockUpdateWhere,
   mockUpsertConnectionRow,
   mockWorkspaceCreate,
+  mockWorkspaceFindById,
   mockWorkspaceFindOrFail,
 } = vi.hoisted(() => {
   let createIdCallCount = 0
@@ -31,17 +41,22 @@ const {
   const mockUpdateSet = vi.fn(() => ({ where: mockUpdateWhere }))
   const mockUpdate = vi.fn(() => ({ set: mockUpdateSet }))
   const mockFindFirst = vi.fn()
+  const mockInsertReturning = vi.fn()
+  const mockInsertValues = vi.fn(() => ({ returning: mockInsertReturning }))
+  const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 
   return {
+    mockConnectionFindByProviderSourceId: vi.fn(),
+    mockConnectionUpdateDisplayName: vi.fn(),
     mockUpdate,
     mockUpdateSet,
     mockUpdateWhere,
+    mockIsCommunity: vi.fn(() => true),
     mockCount: vi.fn(async () => 25),
     mockCreateId: vi.fn(() => `id-${++createIdCallCount}`),
+    mockCreateNewContactWithMac: vi.fn(),
     mockDispatchAuditRecord: vi.fn(),
-    // `welcomeFlowId: null` in every existing fixture short-circuits before
-    // this is ever called; kept so a future test exercising a non-null id
-    // has something to mock against.
+    mockEmitContactCreated: vi.fn(),
     mockFindActiveFlowById: vi.fn(async () => ({ id: "flow-1" })),
     mockFindFirst,
     mockFindMany: vi.fn(async () => []),
@@ -50,10 +65,14 @@ const {
       wasCreated: true,
     })),
     mockIsAtLimit: vi.fn(async () => false),
+    mockInsert,
+    mockMessageCleanup: vi.fn(),
     mockParsePagination: vi.fn(),
     mockRelationsFilterToSQL: vi.fn(),
+    mockResolveWorkspaceAppUrl: vi.fn(async () => "https://app.example.com"),
     mockTransaction: vi.fn(async (callback: (tx: unknown) => unknown) =>
       callback({
+        update: mockUpdate,
         query: { integrationWebchatModel: { findFirst: mockFindFirst } },
       }),
     ),
@@ -62,6 +81,7 @@ const {
       id: "ws-new",
       ownerId: "user-1",
     })),
+    mockWorkspaceFindById: vi.fn(),
     mockWorkspaceFindOrFail: vi.fn(async () => ({
       id: "ws-1",
       ownerId: "owner-1",
@@ -80,6 +100,7 @@ vi.mock("@chatbotx.io/database/client", () => ({
       },
     },
     transaction: mockTransaction,
+    insert: mockInsert,
     update: mockUpdate,
   },
   eq: vi.fn((field: unknown, value: unknown) => ({ field, value })),
@@ -93,7 +114,16 @@ vi.mock("@chatbotx.io/database/client", () => ({
   relationsFilterToSQL: mockRelationsFilterToSQL,
 }))
 
+vi.mock("@chatbotx.io/database/repositories", () => ({
+  connectionRepository: {
+    findByProviderSourceId: mockConnectionFindByProviderSourceId,
+  },
+}))
+
 vi.mock("@chatbotx.io/database/schema", () => ({
+  contactInboxModel: {},
+  contactModel: {},
+  conversationModel: {},
   integrationWebchatModel: { id: "id", workspaceId: "workspaceId" },
 }))
 
@@ -101,8 +131,18 @@ vi.mock("@chatbotx.io/database/utils", () => ({
   parsePagination: mockParsePagination,
 }))
 
-vi.mock("@chatbotx.io/utils", () => ({
+vi.mock("@chatbotx.io/utils", async (importOriginal) => ({
+  ...(await importOriginal()),
   createId: mockCreateId,
+  zodBigintAsString: () => z.string(),
+}))
+
+vi.mock("../src/keys", () => ({
+  isCommunity: mockIsCommunity,
+}))
+
+vi.mock("../src/platform/settings", () => ({
+  resolveWorkspaceAppUrl: mockResolveWorkspaceAppUrl,
 }))
 
 // Records the trackers handed to `withQuotaCompensation` on the failure
@@ -130,30 +170,71 @@ vi.mock("../src/inbox/service", () => ({
 }))
 
 vi.mock("../src/connection/state-service", () => ({
-  connectionStateService: { disconnectInbox: vi.fn() },
+  connectionStateService: {
+    disconnectInbox: vi.fn(),
+    updateDisplayName: mockConnectionUpdateDisplayName,
+  },
 }))
 
 vi.mock("../src/quota-enforcement/service", () => ({
-  quotaEnforcementService: { isAtLimit: mockIsAtLimit },
+  quotaEnforcementService: {
+    createNewContactWithMac: mockCreateNewContactWithMac,
+    isAtLimit: mockIsAtLimit,
+  },
 }))
 
 vi.mock("../src/audit/dispatcher", () => ({
   dispatchAuditRecord: mockDispatchAuditRecord,
 }))
 
+const { mockDispatchStagedInstalls } = vi.hoisted(() => ({
+  mockDispatchStagedInstalls: vi.fn(async (_workspaceId: string) => undefined),
+}))
+vi.mock("../src/template/installation-dispatch", () => ({
+  dispatchStagedInstalls: mockDispatchStagedInstalls,
+}))
+
 vi.mock("../src/flow/service", () => ({
   flowService: { findActiveById: mockFindActiveFlowById },
 }))
 
-vi.mock("../src/template/installed-resource.service", () => ({
-  assertDeletable: vi.fn(async () => undefined),
+// Runs through the mocked `db.transaction` and records the initial lock keys.
+const { lockOptionsSpy } = vi.hoisted(() => ({ lockOptionsSpy: vi.fn() }))
+vi.mock("../src/template/template-resource-locks", async () => {
+  const { db } = await import("@chatbotx.io/database/client")
+  return {
+    withTemplateLockedTransaction: (
+      run: (tx: unknown) => unknown,
+      options?: unknown,
+    ) => {
+      lockOptionsSpy(options)
+      return db.transaction(run as never)
+    },
+  }
+})
+
+vi.mock("../src/template/installed-resource.service", async () => ({
+  ...(await import("./helpers/template-guard-mocks")).templateGuardMocks({
+    useTransaction: true,
+    assertDeletable: vi.fn(async () => undefined),
+    assertResourceEditable: vi.fn(),
+  }),
 }))
 
 vi.mock("../src/workspace", () => ({
   workspaceService: {
     create: mockWorkspaceCreate,
+    findById: mockWorkspaceFindById,
     findOrFail: mockWorkspaceFindOrFail,
   },
+}))
+
+vi.mock("../src/message-cleanup/service", () => ({
+  messageCleanupService: { cancelByInboxSource: mockMessageCleanup },
+}))
+
+vi.mock("@chatbotx.io/events", () => ({
+  emitContactCreated: mockEmitContactCreated,
 }))
 
 const { integrationWebchatService } = await import(
@@ -182,6 +263,7 @@ describe("integrationWebchatService.createWithWorkspace", () => {
     mockTransaction.mockImplementation(
       async (callback: (tx: unknown) => unknown) =>
         callback({
+          update: mockUpdate,
           query: { integrationWebchatModel: { findFirst: mockFindFirst } },
         }),
     )
@@ -271,10 +353,61 @@ describe("integrationWebchatService.createWithWorkspace", () => {
     })
   })
 
+  test("dispatches the staged installs once, after the transaction, only for a workspace it created", async () => {
+    const order: string[] = []
+    mockTransaction.mockImplementation(
+      async (callback: (tx: unknown) => Promise<unknown>) => {
+        const result = await callback({
+          update: mockUpdate,
+          query: { integrationWebchatModel: { findFirst: mockFindFirst } },
+        })
+        order.push("commit")
+        return result
+      },
+    )
+    mockDispatchStagedInstalls.mockImplementation(() => {
+      order.push("dispatch")
+      return Promise.resolve(undefined)
+    })
+
+    await integrationWebchatService.createWithWorkspace({
+      createdBy: "user-1",
+      workspaceName: "My Chatbot",
+      data: baseData,
+    })
+    expect(order).toEqual(["commit", "dispatch"])
+    expect(mockDispatchStagedInstalls).toHaveBeenCalledTimes(1)
+    expect(mockDispatchStagedInstalls).toHaveBeenCalledWith("ws-new")
+
+    mockDispatchStagedInstalls.mockClear()
+    await integrationWebchatService.createWithWorkspace({
+      workspaceId: "ws-1",
+      createdBy: "user-1",
+      workspaceName: "My Chatbot",
+      data: baseData,
+    })
+    expect(mockDispatchStagedInstalls).not.toHaveBeenCalled()
+  })
+
+  test("does not dispatch when the transaction fails", async () => {
+    mockUpsertConnectionRow.mockRejectedValueOnce(new Error("insert failed"))
+
+    await expect(
+      integrationWebchatService.createWithWorkspace({
+        createdBy: "user-1",
+        workspaceName: "My Chatbot",
+        data: baseData,
+      }),
+    ).rejects.toThrow("insert failed")
+
+    expect(mockDispatchStagedInstalls).not.toHaveBeenCalled()
+  })
+
   test("creates a workspace only when workspaceId is absent and reports createdWorkspace correctly", async () => {
     const withWorkspace = await integrationWebchatService.createWithWorkspace({
       workspaceId: "ws-1",
       createdBy: "user-1",
+      actorUserId: "user-1",
       workspaceName: "My Chatbot",
       data: baseData,
     })
@@ -309,6 +442,7 @@ describe("integrationWebchatService.createWithWorkspace", () => {
     const withoutWorkspace =
       await integrationWebchatService.createWithWorkspace({
         createdBy: "user-1",
+        actorUserId: "user-1",
         workspaceName: "My Chatbot",
         data: baseData,
       })
@@ -318,6 +452,21 @@ describe("integrationWebchatService.createWithWorkspace", () => {
     expect(mockDispatchAuditRecord).toHaveBeenCalledWith({
       userId: "user-1",
       workspaceId: "ws-new",
+      action: "connect",
+      detail: "connected a new Webchat channel (#webchat-1)",
+    })
+  })
+
+  test("lets workspace-token audit context identify a token-created webchat", async () => {
+    await integrationWebchatService.createWithWorkspace({
+      workspaceId: "ws-1",
+      createdBy: "owner-1",
+      workspaceName: "My Chatbot",
+      data: baseData,
+    })
+
+    expect(mockDispatchAuditRecord).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
       action: "connect",
       detail: "connected a new Webchat channel (#webchat-1)",
     })
@@ -338,6 +487,7 @@ describe("integrationWebchatService.create — quota gate", () => {
     } as never)
     mockUpsertConnectionRow.mockResolvedValue({ id: "conn-1" } as never)
     mockFindFirst.mockResolvedValue({ id: "webchat-1" } as never)
+    mockIsCommunity.mockReturnValue(true)
   })
 
   test("throws channelLimitReached and creates no Inbox/Connection row when the owner's channel quota is already full", async () => {
@@ -354,7 +504,7 @@ describe("integrationWebchatService.create — quota gate", () => {
     expect(mockUpsertConnectionRow).not.toHaveBeenCalled()
   })
 
-  test("proceeds to create the Inbox + Connection row when quota has capacity", async () => {
+  test("creates the Inbox + Connection row when quota has capacity", async () => {
     mockIsAtLimit.mockResolvedValue(false)
 
     const created = await integrationWebchatService.create(
@@ -362,9 +512,75 @@ describe("integrationWebchatService.create — quota gate", () => {
       tx,
     )
 
-    expect(created).toEqual({ id: "webchat-1" })
+    expect(created).toEqual({
+      integration: { id: "webchat-1" },
+      connection: { id: "conn-1" },
+    })
     expect(mockInboxCreate).toHaveBeenCalledTimes(1)
-    expect(mockUpsertConnectionRow).toHaveBeenCalledTimes(1)
+    expect(mockUpsertConnectionRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extraConfig: expect.objectContaining({
+          persistentMenus: [
+            {
+              label: "⚡ Built with chatbotx.io",
+              type: "url",
+              url: "https://app.example.com/?ref=selfhosted&channel=webchat",
+            },
+          ],
+        }),
+      }),
+    )
+    expect(mockResolveWorkspaceAppUrl).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      tx,
+    })
+  })
+
+  test("replaces a foreign-host branding entry instead of duplicating it", async () => {
+    await integrationWebchatService.create(
+      {
+        workspaceId: "ws-1",
+        ownerId: "owner-1",
+        data: {
+          ...baseData,
+          persistentMenus: [
+            {
+              label: "⚡ Built with chatbotx.io",
+              type: "url",
+              url: "https://old.example.com/?ref=selfhosted&channel=webchat",
+            },
+            { label: "Docs", type: "url", url: "https://docs.example.com" },
+          ],
+        },
+      },
+      tx,
+    )
+
+    expect(mockUpsertConnectionRow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extraConfig: expect.objectContaining({
+          persistentMenus: [
+            { label: "Docs", type: "url", url: "https://docs.example.com" },
+            {
+              label: "⚡ Built with chatbotx.io",
+              type: "url",
+              url: "https://app.example.com/?ref=selfhosted&channel=webchat",
+            },
+          ],
+        }),
+      }),
+    )
+  })
+
+  test("does not resolve the workspace app URL when community branding is disabled", async () => {
+    mockIsCommunity.mockReturnValue(false)
+
+    await integrationWebchatService.create(
+      { workspaceId: "ws-1", ownerId: "owner-1", data: baseData },
+      tx,
+    )
+
+    expect(mockResolveWorkspaceAppUrl).not.toHaveBeenCalled()
   })
 })
 
@@ -420,6 +636,7 @@ describe("integrationWebchatService.findByIdForWorkspaceOrNull", () => {
 describe("integrationWebchatService.update", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockIsCommunity.mockReturnValue(true)
   })
 
   // The action layer pre-checks ownership, but the method takes a
@@ -455,6 +672,23 @@ describe("integrationWebchatService.update", () => {
     expect(mockUpdateSet).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Support" }),
     )
+  })
+
+  test("synchronizes the connection display name when the webchat is renamed", async () => {
+    mockConnectionFindByProviderSourceId.mockResolvedValue({ id: "conn-1" })
+
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: { name: "Support" },
+    })
+
+    expect(mockConnectionUpdateDisplayName).toHaveBeenCalledWith({
+      id: "conn-1",
+      workspaceId: "ws-1",
+      displayName: "Support",
+      tx: expect.anything(),
+    })
   })
 
   // The public API handler spreads a partial update straight through, so an
@@ -506,6 +740,37 @@ describe("integrationWebchatService.update", () => {
     )
   })
 
+  test("locks the webchat and its welcome flow before the stored row is read", async () => {
+    mockFindActiveFlowById.mockResolvedValueOnce({ id: "flow-1" })
+
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: { welcomeFlowId: "flow-1" },
+    })
+
+    expect(lockOptionsSpy).toHaveBeenCalledWith({
+      workspaceId: expect.any(String),
+      initialKeys: [
+        { kind: "integrationWebchat", resourceId: "webchat-1" },
+        { kind: "flow", resourceId: "flow-1" },
+      ],
+    })
+  })
+
+  test("locks only the webchat when no welcome flow is written", async () => {
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: {},
+    })
+
+    expect(lockOptionsSpy).toHaveBeenCalledWith({
+      workspaceId: expect.any(String),
+      initialKeys: [{ kind: "integrationWebchat", resourceId: "webchat-1" }],
+    })
+  })
+
   // Prevents a caller from pointing welcomeFlowId at another workspace's
   // flow — findActiveById is itself workspace-scoped, so a foreign or
   // nonexistent id resolves to undefined and must reject rather than write.
@@ -521,6 +786,57 @@ describe("integrationWebchatService.update", () => {
     ).rejects.toThrow("Welcome flow not found")
 
     expect(mockUpdateSet).not.toHaveBeenCalled()
+  })
+
+  test("adds branding to updated persistent menus in community deployments", async () => {
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: { persistentMenus: [] },
+    })
+
+    expect(mockUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        persistentMenus: [
+          {
+            label: "⚡ Built with chatbotx.io",
+            type: "url",
+            url: "https://app.example.com/?ref=selfhosted&channel=webchat",
+          },
+        ],
+      }),
+    )
+  })
+
+  test("leaves updated persistent menus unchanged outside community deployments", async () => {
+    mockIsCommunity.mockReturnValue(false)
+    const persistentMenus = [
+      { label: "Docs", type: "url" as const, url: "https://docs.example.com" },
+    ]
+
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: { persistentMenus },
+    })
+
+    expect(mockResolveWorkspaceAppUrl).not.toHaveBeenCalled()
+    expect(mockUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ persistentMenus }),
+    )
+  })
+
+  test("leaves persistent menus untouched when absent from an update", async () => {
+    await integrationWebchatService.update({
+      workspaceId: "ws-1",
+      id: "webchat-1",
+      data: { name: "Support" },
+    })
+
+    expect(mockResolveWorkspaceAppUrl).not.toHaveBeenCalled()
+    expect(mockUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ persistentMenus: undefined }),
+    )
   })
 })
 
@@ -599,6 +915,123 @@ describe("webchatsAdapter.insert — quota exhausted during template install", (
         sourceResourceId: "src-2",
         resourceId: "webchat-2",
       }),
+    )
+  })
+})
+
+describe("integrationWebchatService.findOrCreateGuestConversation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFindFirst.mockResolvedValue({ id: "webchat-1", inboxId: "inbox-1" })
+    mockWorkspaceFindById.mockResolvedValue({
+      id: "ws-1",
+      ownerId: "owner-1",
+    })
+  })
+
+  test("returns null when the atomic contact quota denies creation", async () => {
+    mockCreateNewContactWithMac.mockResolvedValue({ ok: false, level: "user" })
+
+    await expect(
+      integrationWebchatService.findOrCreateGuestConversation({
+        guestConversationId: "guest-1",
+        integration: { inboxId: "inbox-1" },
+        workspace: { ownerId: "owner-1" },
+        workspaceId: "ws-1",
+      }),
+    ).resolves.toBeNull()
+
+    expect(mockCreateNewContactWithMac).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: "owner-1",
+        workspaceId: "ws-1",
+      }),
+    )
+    expect(mockEmitContactCreated).not.toHaveBeenCalled()
+  })
+
+  test("creates a normalized guest profile transactionally and emits after commit", async () => {
+    const contact = {
+      id: "contact-1",
+      firstName: "Guest",
+      email: "guest-1",
+      phoneNumber: null,
+    }
+    const contactInbox = {
+      id: "contact-inbox-1",
+      inboxId: "inbox-1",
+      contactId: contact.id,
+      sourceId: "guest-1",
+    }
+    const conversation = {
+      id: "conversation-1",
+      contactId: contact.id,
+      workspaceId: "ws-1",
+    }
+    const createdRows = [contact, contactInbox, conversation]
+    const fakeTx = {
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          returning: vi.fn(async () => [createdRows.shift()]),
+        })),
+      })),
+    }
+
+    mockCreateNewContactWithMac.mockImplementation(
+      async (input: {
+        create: (tx: typeof fakeTx) => Promise<{
+          contactId: string
+          contactInboxId: string
+          inboxId: string
+          value: {
+            contact: typeof contact
+            contactInbox: typeof contactInbox
+            conversation: typeof conversation
+          }
+        }>
+      }) => ({
+        ok: true,
+        ...(await input.create(fakeTx)),
+      }),
+    )
+
+    await expect(
+      integrationWebchatService.findOrCreateGuestConversation({
+        guestConversationId: "guest-1",
+        integration: { inboxId: "inbox-1" },
+        locale: "vi-VN",
+        parentUrl: "https://example.com/chat",
+        timezone: "Asia/Ho_Chi_Minh",
+        workspace: { ownerId: "owner-1" },
+        workspaceId: "ws-1",
+      }),
+    ).resolves.toEqual({ contact, contactInbox, conversation })
+
+    expect(fakeTx.insert).toHaveBeenCalledTimes(3)
+    expect(fakeTx.insert.mock.results[0]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locale: "vi_VN",
+        timezone: "Asia/Ho_Chi_Minh",
+      }),
+    )
+    expect(fakeTx.insert.mock.results[1]?.value.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        language: "vi",
+        webchatParentUrl: "https://example.com/chat",
+      }),
+    )
+    expect(mockMessageCleanup).toHaveBeenCalledWith({
+      inboxId: "inbox-1",
+      sourceIds: ["guest-1"],
+      tx: fakeTx,
+    })
+    expect(mockEmitContactCreated).toHaveBeenCalledWith(
+      "ws-1",
+      "contact-1",
+      "Guest",
+      undefined,
+      "guest-1",
+      "contact-inbox-1",
     )
   })
 })

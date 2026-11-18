@@ -4,7 +4,10 @@ import {
   resolveTemplateParams,
 } from "@chatbotx.io/business"
 import { notFoundException } from "@chatbotx.io/business/errors"
-import { PRODUCT_MESSAGE_UNRESOLVABLE_CODE } from "@chatbotx.io/database/partials"
+import {
+  IMAGES_NOT_SUPPORTED_ON_CHANNEL_CODE,
+  PRODUCT_MESSAGE_UNRESOLVABLE_CODE,
+} from "@chatbotx.io/database/partials"
 import { z } from "zod"
 import {
   ENGLISH_CALL_PERMISSION_MESSAGES,
@@ -26,12 +29,19 @@ import { listMessagesResponse } from "@/features/messages/schema/query"
 import { messageResourceWithRelations } from "@/features/messages/schema/resource"
 import { mcpSpec } from "@/lib/orpc/mcp-annotations"
 import {
+  imagesNotSupportedOnChannel,
   possibleErrorsOnCreatingResource,
   possibleErrorsOnDeletingResource,
   possibleErrorsOnFindingResource,
   possibleErrorsOnMutatingResource,
+  possibleErrorsOnResendingMessage,
   productMessageUnresolvable,
 } from "@/lib/orpc/orpc-error-helper"
+import {
+  assertConversationAccessForCaller,
+  assertMemberMayStartFlow,
+  resolveSenderForCaller,
+} from "@/lib/public-api/member-scope"
 import { workspaceTokenAuthAPIForScope } from "@/orpc"
 import {
   changeMessageAttributesPublicResponse,
@@ -41,6 +51,7 @@ import {
   messageIdPathParam,
   messageIdWithCreatedAtParam,
   requestCallPermissionPublicRequest,
+  resendMessagePublicResponse,
   sendWhatsappTemplatePublicRequest,
 } from "../schema/public"
 
@@ -76,6 +87,7 @@ export const messagesPublicRouter = {
     .errors(possibleErrorsOnMutatingResource)
     .handler(async ({ context, input }) => {
       const workspaceId = context.workspace.id
+      await assertConversationAccessForCaller(context, input.conversationId)
       const conversation = await conversationService.findByOrFail({
         where: { id: input.conversationId, workspaceId },
       })
@@ -86,6 +98,7 @@ export const messagesPublicRouter = {
         inboxId: input.inboxId,
         requireRequestedInbox: true,
         messages: ENGLISH_CALL_PERMISSION_MESSAGES,
+        sendFrom: "api",
       })
       return { queued: true as const }
     }),
@@ -96,7 +109,7 @@ export const messagesPublicRouter = {
       path: "/v1/conversations/{conversationId}/whatsapp-template",
       summary: "Send WhatsApp template to conversation",
       description:
-        "Queues one approved WhatsApp template into the conversation, bypassing the 24-hour window, so you can reach a customer who has not written recently. Pick the template with `whatsappTemplates.list` (status APPROVED, on the number you send from) and fill its parameters with `templateParams` (keys from `whatsappTemplates.get` `parameters`; omit for a template with none). `inboxId` chooses which WhatsApp number of the contact to send from; omit it to use the most recent. Delivery is asynchronous: a template that is not approved or belongs to another number fails in the worker and is not sent. This messages a real customer and may be billed by Meta.",
+        "Queues one approved WhatsApp template into the conversation, bypassing the 24-hour window, so you can reach a customer who has not written recently. Pick the template with `whatsappTemplates.list` (status APPROVED, on the number you send from) and fill its parameters with `templateParams` (keys from `whatsappTemplates.get` `parameters`; omit for a template with none). `inboxId` chooses which WhatsApp number of the contact to send from; omit it to use the most recent. Delivery is asynchronous: a template that is not approved or belongs to another number fails in the worker and is not sent. The same holds for a payment-request template (Pix, Boleto, payment link, one-click) whose payment values are missing, malformed or do not match the template's payment buttons: the request is accepted (202) and the failure is reported as a `message:failed` event; nothing is sent to the customer and it is not retried. A template that fails for good is removed from the conversation and its error written to the workspace Error Log (`errorLogs.list`). This messages a real customer and may be billed by Meta.",
       successStatus: 202,
       tags: ["Messages"],
     })
@@ -105,6 +118,7 @@ export const messagesPublicRouter = {
     .errors(possibleErrorsOnMutatingResource)
     .handler(async ({ context, input }) => {
       const { conversationId, templateParams, ...request } = input
+      await assertConversationAccessForCaller(context, conversationId)
       const templateData = templateParams
         ? await resolveTemplateParams({
             workspaceId: context.workspace.id,
@@ -118,6 +132,8 @@ export const messagesPublicRouter = {
         workspaceId: context.workspace.id,
         conversationId,
         request: { ...request, templateData },
+        sender: { initiatedBy: "api" },
+        sendFrom: "api",
       })
       return { queued: true as const }
     }),
@@ -137,6 +153,7 @@ export const messagesPublicRouter = {
     .errors(possibleErrorsOnFindingResource)
     .handler(async ({ context, input }) => {
       const workspaceId = context.workspace.id
+      await assertConversationAccessForCaller(context, input.conversationId)
       // `listForConversation` silently returns an empty page for an unknown
       // conversation id instead of throwing — validate existence explicitly
       // so this GET-by-id-shaped route can 404, per
@@ -165,6 +182,7 @@ export const messagesPublicRouter = {
     .output(messageResourceWithRelations)
     .errors(possibleErrorsOnFindingResource)
     .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
       const message = await messageService.findByIdWithUrls({
         workspaceId: context.workspace.id,
         id: input.messageId,
@@ -185,21 +203,21 @@ export const messagesPublicRouter = {
       path: "/v1/conversations/{conversationId}/messages/{messageId}/flow-response",
       summary: "Get WhatsApp Flow response",
       description:
-        "Returns the answers of a WhatsApp Flow response message (`contentAttributes.type` = `whatsapp_flow_response`), each paired with the question as the Flow labels it, in the Flow's order. Take `messageId`/`createdAt` from `messages.list`. Labels come from the Flow JSON on Meta; when the Flow cannot be identified (e.g. it was sent by another app) `labelSource` is `fallback` and labels are humanized keys. 404 when the message is not a Flow response.",
+        "Returns the answers of a WhatsApp Flow response message (`contentAttributes.type` = `whatsapp_flow_response`), each paired with the question as the Flow labels it, in the Flow's order. Take `messageId`/`createdAt` from `messages.list`. Labels come from the Flow JSON on Meta; when the Flow cannot be identified (e.g. it was sent by another app) `labelSource` is `fallback` and labels are humanized keys. File answers (PhotoPicker / DocumentPicker) have `kind` = `files`, one entry per file: `status` `stored` (with `url` and `size`), `failed` (with `failureReason`) or `unprocessed` (no stored copy to open: a response received before files were kept, or a kept file whose stored copy is gone; only `fileName`, `mimeType`, `mediaId`, and nothing more will arrive). 404 when the message is not a Flow response.",
       tags: ["Messages"],
     })
     .input(messageIdWithCreatedAtParam)
     .output(whatsappFlowResponseSchema)
     .errors(possibleErrorsOnFindingResource)
-    .handler(
-      async ({ context, input }) =>
-        await getWhatsappFlowResponseView({
-          workspaceId: context.workspace.id,
-          conversationId: input.conversationId,
-          messageId: input.messageId,
-          createdAt: input.createdAt,
-        }),
-    ),
+    .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
+      return await getWhatsappFlowResponseView({
+        workspaceId: context.workspace.id,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        createdAt: input.createdAt,
+      })
+    }),
 
   // `user` is omitted from `createOutgoing` — a workspace token has no user;
   // same as the already-public `contacts.sendMessage`
@@ -211,7 +229,7 @@ export const messagesPublicRouter = {
       path: "/v1/conversations/{conversationId}/messages",
       summary: "Send message on conversation",
       description:
-        "Use this to reply in an existing conversation by conversationId. Sends an outgoing text, media or catalog product message (`products`, on channels with product messages such as WhatsApp; ids from `products.listSendable`) on an existing conversation. To message a contact without first resolving their conversation id, use `contacts.sendMessage` instead.",
+        "Use this to reply in an existing conversation by conversationId. Sends an outgoing text, media or catalog product message (`products`, on channels with product messages such as WhatsApp; ids from `products.listSendable`) on an existing conversation. To message a contact without first resolving their conversation id, use `contacts.sendMessage` instead. Images are refused with `imagesNotSupportedOnChannel` (422, `data.reason`/`data.max`) where the channel can't carry them: Threads, Instagram and TikTok comment replies, or more than one image on a Messenger comment reply. To send a saved reply, pass its `text` and its `images[].mediaLibraryFileId` as `mediaFileIds` (from `savedReplies.list`). Delivery is asynchronous: if the channel finally rejects the message (after any retries), it is removed from the conversation — reading it by id then returns 404 — and the error is written to the workspace Error Log (`errorLogs.list`). Only messages a member sends from the Inbox are kept with their error.",
       successStatus: 201,
       tags: ["Messages"],
     })
@@ -220,13 +238,15 @@ export const messagesPublicRouter = {
     .errors({
       ...possibleErrorsOnCreatingResource,
       [PRODUCT_MESSAGE_UNRESOLVABLE_CODE]: productMessageUnresolvable,
+      [IMAGES_NOT_SUPPORTED_ON_CHANNEL_CODE]: imagesNotSupportedOnChannel,
     })
     .handler(async ({ context, input }) => {
       const workspaceId = context.workspace.id
 
-      const conversation = await conversationService.findByOrFail({
-        where: { id: input.conversationId, workspaceId },
-      })
+      const conversation = await assertConversationAccessForCaller(
+        context,
+        input.conversationId,
+      )
 
       const inboxId =
         "inboxId" in input && input.inboxId ? input.inboxId : undefined
@@ -236,11 +256,21 @@ export const messagesPublicRouter = {
           workspaceId,
           inboxId,
         })
+      await assertMemberMayStartFlow(
+        context,
+        "flowId" in input ? input.flowId : undefined,
+      )
+
+      // A member's message is attributed to them (like the web inbox); a
+      // workspace token has no user and sends unattributed, as before.
+      const user = resolveSenderForCaller(context)
 
       return messageService.createOutgoing({
         conversation,
         contactInbox,
         input,
+        ...(user && { user }),
+        sendFrom: "api",
       })
     }),
 
@@ -256,13 +286,14 @@ export const messagesPublicRouter = {
     .input(editMessageRequest.omit({ messageId: true }).and(messageIdPathParam))
     .output(editMessagePublicResponse)
     .errors(possibleErrorsOnMutatingResource)
-    .handler(async ({ context, input }) =>
-      editMessage({
+    .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
+      return editMessage({
         workspaceId: context.workspace.id,
         conversationId: input.conversationId,
         parsedInput: input,
-      }),
-    ),
+      })
+    }),
 
   delete: workspaceTokenAuthAPI
     .route({
@@ -277,10 +308,35 @@ export const messagesPublicRouter = {
     .input(messageIdWithCreatedAtParam)
     .errors(possibleErrorsOnDeletingResource)
     .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
       await deleteMessage({
         workspaceId: context.workspace.id,
         conversationId: input.conversationId,
         parsedInput: { id: input.messageId, createdAt: input.createdAt },
+      })
+    }),
+
+  resend: workspaceTokenAuthAPI
+    .route({
+      method: "POST",
+      path: "/v1/conversations/{conversationId}/messages/{messageId}/resend",
+      summary: "Resend failed message",
+      description:
+        "Queues a message that failed to send for delivery again, whole (a message with several parts or files is resent in full). Only an outgoing message sent by a person or the API that failed and never reached the channel qualifies; a bot or flow message, a message that was delivered, and a public comment reply are refused with 409 `messageNotResendable`, as is a second resend while the first is queued. A private reply is resent as a DM. Use `messages.list` to find a failed message (its `sendError` is set) and its `messageId`/`createdAt`; the result shows up on the message as it is sent or fails again. Only messages sent from the Inbox stay in the conversation after failing (an API-sent message that fails is removed and logged to `errorLogs.list`), and a resend through this API of one that was not sent from the Inbox is removed if it fails again.",
+      successStatus: 202,
+      tags: ["Messages"],
+    })
+    .input(messageIdWithCreatedAtParam)
+    .output(resendMessagePublicResponse)
+    .errors(possibleErrorsOnResendingMessage)
+    .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
+      return await messageService.resendOutgoing({
+        workspaceId: context.workspace.id,
+        conversationId: input.conversationId,
+        messageId: input.messageId,
+        createdAt: input.createdAt,
+        sendFrom: "api",
       })
     }),
 
@@ -300,11 +356,12 @@ export const messagesPublicRouter = {
     )
     .output(changeMessageAttributesPublicResponse)
     .errors(possibleErrorsOnMutatingResource)
-    .handler(async ({ context, input }) =>
-      changeMessageAttributes({
+    .handler(async ({ context, input }) => {
+      await assertConversationAccessForCaller(context, input.conversationId)
+      return changeMessageAttributes({
         workspaceId: context.workspace.id,
         conversationId: input.conversationId,
         parsedInput: input,
-      }),
-    ),
+      })
+    }),
 }

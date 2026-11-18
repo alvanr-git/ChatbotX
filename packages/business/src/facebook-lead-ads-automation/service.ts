@@ -172,6 +172,9 @@ class FacebookLeadAdsLeadService extends BaseService {
   async claim(props: {
     automationId: string
     leadgenId: string
+    formId: string
+    formName?: string | null
+    adgroupId?: string | null
   }): Promise<{ id: string } | null> {
     const [row] = await db
       .insert(facebookLeadAdsLeadModel)
@@ -179,6 +182,9 @@ class FacebookLeadAdsLeadService extends BaseService {
         id: createId(),
         automationId: props.automationId,
         leadgenId: props.leadgenId,
+        formId: props.formId,
+        formName: props.formName ?? null,
+        adgroupId: props.adgroupId ?? null,
       })
       .onConflictDoNothing()
       .returning({ id: facebookLeadAdsLeadModel.id })
@@ -201,6 +207,68 @@ class FacebookLeadAdsLeadService extends BaseService {
       .update(facebookLeadAdsLeadModel)
       .set({ contactId: props.contactId })
       .where(eq(facebookLeadAdsLeadModel.id, props.id))
+  }
+
+  async setFormName(props: { id: string; formName: string }) {
+    await db
+      .update(facebookLeadAdsLeadModel)
+      .set({ formName: props.formName })
+      .where(eq(facebookLeadAdsLeadModel.id, props.id))
+  }
+
+  /**
+   * Store the ad, ad set and campaign of a claimed lead (`{{last_ad_name}}`,
+   * `{{last_campaign_name}}`, …). Only provided values are written, so a lead
+   * whose Graph read lacks a name keeps what it already had.
+   */
+  async setAdAttribution(props: {
+    id: string
+    adId?: string | null
+    adName?: string | null
+    adsetId?: string | null
+    adsetName?: string | null
+    campaignId?: string | null
+    campaignName?: string | null
+  }) {
+    const { id, ...attribution } = props
+    const values = Object.fromEntries(
+      Object.entries(attribution).filter(([, value]) => Boolean(value)),
+    ) as Partial<typeof attribution>
+    if (Object.keys(values).length === 0) {
+      return
+    }
+    await db
+      .update(facebookLeadAdsLeadModel)
+      .set(values)
+      .where(eq(facebookLeadAdsLeadModel.id, id))
+  }
+
+  /**
+   * The contact's newest lead, scoped to the workspace through its automation.
+   * Backs the `{{last_lead_id}}`-style variables: one indexed `LIMIT 1` read
+   * (FacebookLeadAdsLead_contactId_createdAt_idx).
+   */
+  async findLatestByContact(props: { workspaceId: string; contactId: string }) {
+    return await db.query.facebookLeadAdsLeadModel.findFirst({
+      where: {
+        contactId: props.contactId,
+        automation: { workspaceId: props.workspaceId },
+      },
+      orderBy: { createdAt: "desc" },
+      columns: {
+        leadgenId: true,
+        formId: true,
+        formName: true,
+        adgroupId: true,
+        adId: true,
+        adName: true,
+        adsetId: true,
+        adsetName: true,
+        campaignId: true,
+        campaignName: true,
+        createdAt: true,
+      },
+    })
   }
 }
 

@@ -10,8 +10,11 @@ import { Loader2Icon } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { useEffect } from "react"
 import { toast } from "sonner"
+import { LockedDialogFieldset } from "@/components/locked-dialog-fieldset"
+import { useIsLocked } from "@/features/templates/components/lock-context"
 import { editSavedReplyAction } from "./actions/edit-saved-reply.action"
-import { editSavedReplyRequest } from "./schema/mutation"
+import { SavedReplyImagesField } from "./saved-reply-images-field"
+import { buildSavedReplyFormSchema } from "./schema/mutation"
 import type { SavedReplyResource } from "./schema/resource"
 
 type SavedReplyEditFormProps = {
@@ -28,6 +31,7 @@ const SavedReplyEditForm = ({
   onSaved,
 }: SavedReplyEditFormProps) => {
   const t = useTranslations()
+  const isLocked = useIsLocked(editingSavedReply.id)
 
   const {
     form,
@@ -35,16 +39,14 @@ const SavedReplyEditForm = ({
     resetFormAndAction: resetForm,
   } = useHookFormAction(
     editSavedReplyAction.bind(null, workspaceId, editingSavedReply.id),
-    zodResolver(editSavedReplyRequest),
+    zodResolver(
+      buildSavedReplyFormSchema(t("messages.savedReplyTextOrImageRequired")),
+    ),
     {
       actionProps: {
         onSuccess: ({ data }) => {
           if (data) {
-            onSaved({
-              ...editingSavedReply,
-              shortcut: data.shortcut,
-              text: data.text,
-            })
+            onSaved(data)
           }
 
           toast.success(t("messages.savedSuccessfully"))
@@ -62,6 +64,7 @@ const SavedReplyEditForm = ({
         defaultValues: {
           shortcut: "",
           text: "",
+          imageFileIds: [],
         },
       },
       errorMapProps: {},
@@ -72,32 +75,43 @@ const SavedReplyEditForm = ({
     form.reset({
       shortcut: editingSavedReply.shortcut,
       text: editingSavedReply.text,
+      imageFileIds: editingSavedReply.images.map(
+        (image) => image.mediaLibraryFileId,
+      ),
     })
   }, [editingSavedReply, form])
 
   return (
     <Form {...form}>
       <form className="space-y-4 p-4" onSubmit={handleSubmitWithAction}>
-        <InputField
-          label={t("fields.shortcut.label")}
-          name="shortcut"
-          placeholder="/hello"
-          required
-        />
+        <LockedDialogFieldset resourceId={editingSavedReply.id}>
+          <InputField
+            label={t("fields.shortcut.label")}
+            name="shortcut"
+            placeholder="/hello"
+            required
+          />
 
-        <TextareaField
-          label={t("fields.messages.label")}
-          name="text"
-          placeholder="..."
-          required
-        />
+          <TextareaField
+            label={t("fields.messages.label")}
+            name="text"
+            placeholder="..."
+          />
+
+          <SavedReplyImagesField
+            initialImages={editingSavedReply.images}
+            workspaceId={workspaceId}
+          />
+        </LockedDialogFieldset>
 
         <div className="flex items-center justify-between pt-2">
           <Button onClick={onCancel} type="button" variant="outline">
             {t("actions.cancel")}
           </Button>
           <Button
-            disabled={!form.formState.isValid || form.formState.isSubmitting}
+            disabled={
+              isLocked || !form.formState.isValid || form.formState.isSubmitting
+            }
             type="submit"
           >
             {form.formState.isSubmitting ? (

@@ -18,5 +18,3 @@ export const keys = () =>
     emptyStringAsUndefined: true,
     skipValidation: process.env.SKIP_ENV_CHECK === "true",
   })
-
-export const mailEnv = keys()

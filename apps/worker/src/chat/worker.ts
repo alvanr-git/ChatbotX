@@ -1,26 +1,21 @@
-import {
-  broadcastToWorkspaceParty,
-  flushAllPendingWorkspaceBroadcasts,
-} from "@chatbotx.io/business"
-import type { RealtimeEventData } from "@chatbotx.io/partysocket-config"
 import { SdkException } from "@chatbotx.io/sdk"
 import {
   ChatJobAction,
   type ChatJobData,
-  defaultWorkerOptions,
-  getQueueConnection,
   queueNames,
 } from "@chatbotx.io/worker-config"
-import { type Job, Worker } from "bullmq"
+import type { Job } from "bullmq"
 import { env } from "../env"
-import { ensureBootstrapped } from "../lib/bootstrap"
+import { createQueueWorker } from "../lib/create-queue-worker"
 import { isBlockedWorkspace } from "../lib/is-blocked-workspace"
 import { isBotMessageQuotaReached } from "../lib/is-bot-message-quota-reached"
 import { isFinalAttempt } from "../lib/job-attempts"
 import { logger } from "../lib/logger"
 import { resolveWorkspaceId } from "../lib/resolve-workspace-id"
 import { runJobWithAuditContext } from "../lib/run-job-with-audit-context"
+import { runWorker } from "../lib/shutdown"
 import { checkOutboundAutomatedResponse } from "./handlers/outbound-automated-response"
+import { recordQuotaSkippedSend } from "./handlers/record-quota-skipped-send"
 import { sendChatMessage, sendFlowStep } from "./handlers/send-flow-step"
 import {
   changeMessageStateOnChannel,
@@ -34,6 +29,7 @@ import {
   sendWhatsappTemplateMessage,
   sendWhatsappTemplateToConversation,
 } from "./handlers/send-whatsapp-template"
+import { deferSendWhileAccountReconnecting } from "./utils/connection-send-gate"
 
 const botSendActions = new Set<ChatJobData["type"]>([
   ChatJobAction.sendFlowMessage,
@@ -44,6 +40,16 @@ const botSendActions = new Set<ChatJobData["type"]>([
 ])
 
 function isBotSendJob(data: ChatJobData): boolean {
+  // A template a workspace member sends from the inbox is recorded as a human
+  // message, so it neither counts toward nor is blocked by the bot quota.
+  if (
+    data.type === ChatJobAction.sendWhatsappTemplateToConversation &&
+    data.data.initiatedBy === "user" &&
+    data.data.adminId
+  ) {
+    return false
+  }
+
   if (botSendActions.has(data.type)) {
     return true
   }
@@ -54,18 +60,10 @@ function isBotSendJob(data: ChatJobData): boolean {
   )
 }
 
-async function startChatWorker() {
-  try {
-    await ensureBootstrapped()
-    logger.info("Chat worker bootstrapped successfully")
-  } catch (err) {
-    logger.error(err, "Failed to bootstrap chat worker")
-    process.exit(1)
-  }
-
-  const worker = new Worker(
+function startChatWorker() {
+  createQueueWorker(
     queueNames.enum.chat,
-    async (job: Job<ChatJobData>) => {
+    async (job: Job<ChatJobData>, token?: string) => {
       const workspaceId = await resolveWorkspaceId(job.data.data)
       if (await isBlockedWorkspace(workspaceId)) {
         return
@@ -79,8 +77,12 @@ async function startChatWorker() {
           { jobId: job.id, workspaceId },
           "Skipping bot send — quota reached",
         )
+        await recordQuotaSkippedSend(job.data)
         return
       }
+
+      // Before any handler runs, so a deferred send creates no Message.
+      await deferSendWhileAccountReconnecting(job, token)
 
       await runJobWithAuditContext(
         { workspaceId, source: `chat:${job.data.type}` },
@@ -97,7 +99,7 @@ async function startChatWorker() {
               await sendFlowStep(job.data.data)
               return
             case ChatJobAction.sendChatMessage:
-              await sendChatMessage(job.data.data, !isFinalAttempt(job))
+              await sendChatMessage(job.data.data)
               return
             case ChatJobAction.sendWhatsappTemplateMessage:
               await sendWhatsappTemplateMessage(
@@ -135,15 +137,14 @@ async function startChatWorker() {
                 "notifyExportResult job received but no handler is implemented",
               )
               return
-            // TODO: Remove after the rolling-deploy queue drain completes.
-            case ChatJobAction.broadcastEvent:
-              await broadcastToWorkspaceParty(
-                job.data.data.workspaceId,
-                job.data.data.event as RealtimeEventData,
-              )
-              return
             case ChatJobAction.checkOutboundAutomatedResponse:
               await checkOutboundAutomatedResponse(job.data.data)
+              return
+            case "broadcastEvent" as never:
+              logger.info(
+                { jobId: job.id },
+                "Ignoring legacy broadcastEvent job during realtime v2 rollout",
+              )
               return
             default:
               throw new SdkException("ChatJobAction action is not defined")
@@ -151,38 +152,8 @@ async function startChatWorker() {
         },
       )
     },
-    {
-      connection: getQueueConnection(queueNames.enum.chat),
-      ...defaultWorkerOptions,
-      concurrency: env.CHAT_WORKER_CONCURRENCY,
-    },
+    { concurrency: env.CHAT_WORKER_CONCURRENCY },
   )
-
-  worker.on("failed", (job, err) => {
-    if (job) {
-      logger.error(err, `Job ${job.id} has failed`)
-    }
-  })
-
-  let isShuttingDown = false
-  async function shutdown() {
-    if (isShuttingDown) {
-      return
-    }
-    isShuttingDown = true
-    try {
-      await worker.close()
-      // After close(): drains events published by jobs that finished during
-      // the close drain, whose coalesce timers would never fire past exit.
-      await flushAllPendingWorkspaceBroadcasts()
-      process.exit(0)
-    } catch (err) {
-      logger.error(err, "[ChatWorker] Error during shutdown")
-      process.exit(1)
-    }
-  }
-  process.once("SIGINT", shutdown)
-  process.once("SIGTERM", shutdown)
 }
 
-startChatWorker()
+runWorker("chat", startChatWorker)

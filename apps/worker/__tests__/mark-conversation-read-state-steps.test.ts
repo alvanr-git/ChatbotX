@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
+  disableBotState: vi.fn().mockResolvedValue(undefined),
   updateReadStatus: vi.fn().mockResolvedValue(undefined),
   markUnread: vi.fn().mockResolvedValue({ agentLastReadAt: null }),
   findLastIncomingMessageSourceId: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@chatbotx.io/business", () => ({
   conversationService: {
     updateReadStatus: mocks.updateReadStatus,
+    disableBotState: mocks.disableBotState,
     markUnread: mocks.markUnread,
     findLastIncomingMessageSourceId: mocks.findLastIncomingMessageSourceId,
   },
@@ -26,6 +28,11 @@ vi.mock("@chatbotx.io/database/client", () => ({ gte: vi.fn() }))
 vi.mock("@chatbotx.io/database/schema", () => ({ conversationModel: {} }))
 // step-handlers also hosts the thread-control step; its registry-aware action
 // is out of scope here and would otherwise load the real channel registry.
+// step-handlers also resolves `{{variables}}` for the thread-control step; the
+// real package would load database query modules this suite does not mock.
+vi.mock("@chatbotx.io/variables", () => ({
+  resolveContactVariablesDeep: vi.fn(),
+}))
 vi.mock("@chatbotx.io/channel-registry/thread-control", () => ({
   requestThreadControlAction: vi.fn(),
 }))
@@ -101,6 +108,7 @@ describe("stepMarkConversationAsUnread", () => {
     expect(mocks.markUnread).toHaveBeenCalledWith({
       workspaceId: "ws-1",
       id: "conv-1",
+      silent: false,
     })
   })
 })
@@ -226,5 +234,74 @@ describe("stepMarkConversationAsRead", () => {
 
     await expect(stepMarkConversationAsRead(props())).rejects.toThrow("db down")
     expect(mocks.runChannelHandler).not.toHaveBeenCalled()
+  })
+})
+
+describe("stepDisableBot", () => {
+  const conversation = { id: "conv-1", workspaceId: "ws-1", contactId: "c-1" }
+  const run = async (extra: Record<string, unknown>) => {
+    const { stepDisableBot } = await import(
+      "../src/integration/handlers/step-handlers"
+    )
+    await stepDisableBot({
+      conversation,
+      ...extra,
+    } as Parameters<typeof stepDisableBot>[0])
+  }
+
+  beforeEach(() => {
+    mocks.disableBotState.mockClear()
+  })
+
+  test("opts into reopening the window for a message-driven run", async () => {
+    await run({ startedByContactMessage: true })
+
+    expect(mocks.disableBotState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: "ws-1",
+        reopenUnansweredHumanReplyWindow: true,
+      }),
+    )
+  })
+
+  test.each([
+    ["an unflagged run", {}],
+    [
+      "a broadcast run",
+      {
+        metadata: { type: "broadcast", broadcastId: "b", contactInboxId: "ci" },
+        isBulkBroadcast: true,
+      },
+    ],
+    [
+      "a broadcast-metadata run even if flagged",
+      {
+        startedByContactMessage: true,
+        metadata: { type: "broadcast", broadcastId: "b", contactInboxId: "ci" },
+      },
+    ],
+    [
+      "a sequence run even if flagged",
+      {
+        startedByContactMessage: true,
+        metadata: {
+          type: "sequenceSchedule",
+          sequenceStepId: "s",
+          sequenceId: "q",
+          dispatchId: "d",
+          contactInboxId: "ci",
+        },
+      },
+    ],
+    [
+      "an explicitly unflagged (trigger-started) run",
+      { startedByContactMessage: false },
+    ],
+  ])("does not opt in for %s", async (_label, extra) => {
+    await run(extra)
+
+    expect(mocks.disableBotState).toHaveBeenCalledWith(
+      expect.objectContaining({ reopenUnansweredHumanReplyWindow: false }),
+    )
   })
 })

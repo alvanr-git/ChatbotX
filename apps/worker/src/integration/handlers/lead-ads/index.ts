@@ -15,6 +15,9 @@ import {
 } from "@chatbotx.io/database/partials"
 import {
   getLead,
+  getLeadAdAttribution,
+  getLeadgenFormName,
+  type LeadAdAttribution,
   type LeadFieldDatum,
 } from "@chatbotx.io/integration-messenger/apis/leadgen"
 import type { MessengerAuthValue } from "@chatbotx.io/integration-messenger/schema"
@@ -47,6 +50,109 @@ const extractPsidFromInboxUrl = (inboxUrl: string): string | undefined => {
     return last && PSID_RE.test(last) ? last : undefined
   } catch {
     return
+  }
+}
+
+/**
+ * An all-forms automation has no form name of its own, so read it from the
+ * page's forms. Best-effort: a failed lookup leaves the name empty rather than
+ * failing a lead that was otherwise processed.
+ */
+async function resolveFormName(props: {
+  pageId: string
+  formId: string
+  accessToken: string
+  version: string
+}): Promise<string | undefined> {
+  try {
+    const formName = await getLeadgenFormName(
+      props.pageId,
+      props.formId,
+      props.accessToken,
+      props.version,
+    )
+    if (!formName) {
+      logger.info(
+        { formId: props.formId },
+        "processLeadgen: form not found among the page's forms",
+      )
+    }
+    return formName
+  } catch (err) {
+    logger.warn(
+      { err, formId: props.formId },
+      "processLeadgen: failed to resolve form name",
+    )
+    return
+  }
+}
+
+/**
+ * Store the lead's ad, ad set and campaign for `{{last_ad_name}}`,
+ * `{{last_campaign_name}}` and friends. Best-effort like `resolveFormName`:
+ * the names need ad-account access the page token may lack, and a failed read
+ * must not fail a lead whose answers were already applied. `ad_id` falls back
+ * to the webhook's ad group, which Meta uses for the ad itself.
+ */
+async function fetchAdAttribution(props: {
+  leadgenId: string
+  accessToken: string
+  version: string
+}): Promise<LeadAdAttribution | undefined> {
+  try {
+    return await getLeadAdAttribution(
+      props.leadgenId,
+      props.accessToken,
+      props.version,
+      { withNames: true },
+    )
+  } catch (err) {
+    logger.warn(
+      { err, leadgenId: props.leadgenId },
+      "processLeadgen: failed to read the lead's ad names, retrying ids only",
+    )
+  }
+  // Graph denies the whole read when the token lacks ad-account access for
+  // the names; the ids alone are readable with the page token.
+  try {
+    return await getLeadAdAttribution(
+      props.leadgenId,
+      props.accessToken,
+      props.version,
+      { withNames: false },
+    )
+  } catch (err) {
+    logger.warn(
+      { err, leadgenId: props.leadgenId },
+      "processLeadgen: failed to read the lead's ad attribution",
+    )
+    return
+  }
+}
+
+async function recordAdAttribution(props: {
+  leadId: string
+  leadgenId: string
+  adgroupId?: string
+  accessToken: string
+  version: string
+}): Promise<void> {
+  const attribution = await fetchAdAttribution(props)
+  try {
+    await facebookLeadAdsLeadService.setAdAttribution({
+      id: props.leadId,
+      adId: attribution?.ad_id ?? props.adgroupId,
+      adName: attribution?.ad_name,
+      adsetId: attribution?.adset_id,
+      adsetName: attribution?.adset_name,
+      campaignId: attribution?.campaign_id,
+      campaignName: attribution?.campaign_name,
+    })
+  } catch (err) {
+    logger.warn(
+      { err, leadgenId: props.leadgenId },
+      "processLeadgen: failed to store the lead's ad attribution",
+    )
   }
 }
 
@@ -103,7 +209,13 @@ export async function processLeadgen(
   data: IntegrationJobProcessLeadgen["data"],
   job: Job,
 ): Promise<void> {
-  const { integrationType, integrationIdentifier, leadgenId, formId } = data
+  const {
+    integrationType,
+    integrationIdentifier,
+    leadgenId,
+    formId,
+    adgroupId,
+  } = data
 
   const { inbox, integrationRow } =
     await integrationService.identifyInboxAndIntegrationAuthFromIdentifier(
@@ -124,6 +236,9 @@ export async function processLeadgen(
   const claim = await facebookLeadAdsLeadService.claim({
     automationId: automation.id,
     leadgenId,
+    formId,
+    formName: automation.formName,
+    adgroupId,
   })
   if (!claim) {
     return
@@ -178,6 +293,29 @@ export async function processLeadgen(
     })
 
     leadContactId = contact.id
+
+    if (!automation.formName) {
+      const formName = await resolveFormName({
+        pageId: integrationIdentifier,
+        formId,
+        accessToken: auth.tokens.accessToken,
+        version: auth.metadata.version,
+      })
+      if (formName) {
+        await facebookLeadAdsLeadService.setFormName({
+          id: claim.id,
+          formName,
+        })
+      }
+    }
+
+    await recordAdAttribution({
+      leadId: claim.id,
+      leadgenId,
+      adgroupId,
+      accessToken: auth.tokens.accessToken,
+      version: auth.metadata.version,
+    })
 
     // Specific-form automations carry an explicit mapping; the "all forms"
     // automation auto-maps recognized standard fields.

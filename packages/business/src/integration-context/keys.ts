@@ -19,6 +19,8 @@ export const integrationContextEnv = () =>
         .default("change-me-in-production-at-least-32-chars"),
       REALTIME_INTERNAL_URL: z.url().optional(),
       REALTIME_DELIVERY_GATE: z.stringbool().optional().default(true),
+      REDIS_REALTIME_URL: z.url().optional(),
+      REDIS_URL: z.url(),
     },
     runtimeEnv: process.env,
     emptyStringAsUndefined: true,

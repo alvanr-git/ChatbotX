@@ -38,36 +38,12 @@ export const analyticsConversationEventRelations = defineRelationsPart(
   }),
 )
 
-export const analyticsBroadcastEventRelations = defineRelationsPart(
+export const analyticsAgentResponseEventRelations = defineRelationsPart(
   schema,
   (r) => ({
-    analyticsBroadcastEventModel: {
+    analyticsAgentResponseEventModel: {
       workspace: r.one.workspaceModel({
-        from: r.analyticsBroadcastEventModel.workspaceId,
-        to: r.workspaceModel.id,
-      }),
-    },
-  }),
-)
-
-export const analyticsSequenceEventRelations = defineRelationsPart(
-  schema,
-  (r) => ({
-    analyticsSequenceEventModel: {
-      workspace: r.one.workspaceModel({
-        from: r.analyticsSequenceEventModel.workspaceId,
-        to: r.workspaceModel.id,
-      }),
-    },
-  }),
-)
-
-export const analyticsFlowNodeEventRelations = defineRelationsPart(
-  schema,
-  (r) => ({
-    analyticsFlowNodeEventModel: {
-      workspace: r.one.workspaceModel({
-        from: r.analyticsFlowNodeEventModel.workspaceId,
+        from: r.analyticsAgentResponseEventModel.workspaceId,
         to: r.workspaceModel.id,
       }),
     },

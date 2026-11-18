@@ -1,10 +1,14 @@
 import { describe, expect, test } from "vitest"
-import type { EvalCase } from "../evals/cases"
+import { type EvalCase, materializeCases } from "../evals/cases"
 import {
   assertComparableManifests,
   type EvalManifest,
+  getAggregateUsage,
+  getFinalStepUsage,
   validateCaseCoverage,
+  withConfirmationArgument,
 } from "../evals/run-contract"
+import { fixtureOperationIds } from "../evals/sandbox"
 
 const manifest = (): EvalManifest => ({
   corpusHash: "corpus",
@@ -54,6 +58,54 @@ const evalCase: EvalCase = {
 }
 
 describe("evaluation runner contracts", () => {
+  test("records final-step rather than aggregate multi-step usage", async () => {
+    const finalStepUsage = { inputTokens: 30, outputTokens: 7, totalTokens: 37 }
+    const aggregateUsage = {
+      inputTokens: 60,
+      outputTokens: 15,
+      totalTokens: 75,
+    }
+
+    const multiStepResult = {
+      finalStep: { usage: finalStepUsage },
+      usage: aggregateUsage,
+    }
+
+    await expect(getFinalStepUsage(multiStepResult)).resolves.toEqual(
+      finalStepUsage,
+    )
+  })
+
+  test("exposes aggregate multi-step usage alongside final-step usage", () => {
+    const aggregateUsage = {
+      inputTokens: 60,
+      outputTokens: 15,
+      totalTokens: 75,
+    }
+
+    expect(
+      getAggregateUsage({
+        finalStep: { usage: { totalTokens: 37 } },
+        usage: aggregateUsage,
+      }),
+    ).toEqual(aggregateUsage)
+  })
+
+  test("retries confirmation in direct and meta-tool argument shapes", () => {
+    expect(
+      withConfirmationArgument("contacts_send_message", { id: "1" }),
+    ).toEqual({ _confirm: true, id: "1" })
+    expect(
+      withConfirmationArgument("call_tool", {
+        arguments: { id: "1" },
+        name: "contacts_send_message",
+      }),
+    ).toEqual({
+      arguments: { _confirm: true, id: "1" },
+      name: "contacts_send_message",
+    })
+  })
+
   test("permits source and instructions snapshots to differ", () => {
     const baseline = manifest()
     const candidate = {
@@ -88,6 +140,50 @@ describe("evaluation runner contracts", () => {
     expect(failures).toContain("tag-en: missing catalog tool sequences_list")
     expect(failures).toContain(
       "tag-en: missing fixture operation sequences_list",
+    )
+  })
+
+  test("defines fixture-backed channel and integration connection workflows", () => {
+    const connectionCases = materializeCases().filter(
+      (evalCase) => evalCase.domain === "connections",
+    )
+    const catalogOperations = new Set([
+      "connection_providers_list",
+      "connections_list",
+      "connections_create",
+      "connect_sessions_get",
+      "connect_sessions_connect_targets",
+    ])
+
+    expect(connectionCases).toHaveLength(30)
+    expect(
+      validateCaseCoverage(
+        connectionCases,
+        catalogOperations,
+        fixtureOperationIds(),
+      ),
+    ).toEqual([])
+    expect(
+      connectionCases.filter(
+        (evalCase) => evalCase.family === "connection-messenger-finish",
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bindings: [
+            expect.objectContaining({
+              argument: "targetIds",
+              sourcePointer: "/targets/0/id",
+              sourceTools: ["connect_sessions_get"],
+              tool: "connect_sessions_connect_targets",
+            }),
+          ],
+          sequence: [
+            ["connect_sessions_get"],
+            ["connect_sessions_connect_targets"],
+          ],
+        }),
+      ]),
     )
   })
 })

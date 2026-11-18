@@ -4,7 +4,11 @@ import { ROOT_TENANT_ID } from "@chatbotx.io/database/schema"
 import { distributedLock, withCache } from "@chatbotx.io/redis"
 import { tenantService } from "../enterprise/tenant/service"
 import { logger } from "../logger"
-import { type QuotaMetric, userQuotaService } from "../user-quota/service"
+import {
+  type QuotaMetric,
+  type TeamMemberScope,
+  userQuotaService,
+} from "../user-quota/service"
 import { workspaceUsageService } from "../workspace-usage/service"
 import { quotaEnforcementEnv } from "./keys"
 import {
@@ -617,23 +621,61 @@ class QuotaEnforcementService {
     return this.atLimitForMetric(ctx, args.userId, args.metric)
   }
 
-  private async atLimitForMetric(
+  /**
+   * Read-only check for whether `additionalCount` more team members (e.g. an
+   * owner plus N members created together by the admin console's "create
+   * workspace for an owner" flow) still fit under the `teamMembers` limit —
+   * shares `atLimitForMetric`'s pool/user resolution via `anyLevelAtLimit`,
+   * generalized from a single reached/not-reached unit to a batch of more
+   * than one pending insert. Read-only; does not touch any counter.
+   */
+  async hasRoomForTeamMembers(args: {
+    userId: string
+    additionalCount: number
+  }): Promise<boolean> {
+    const ctx = await this.resolveContext(args.userId)
+    return !(await this.anyLevelAtLimit(
+      ctx,
+      args.userId,
+      (limitUserId, scope) =>
+        userQuotaService.isTeamMemberLimitReached(
+          scope,
+          limitUserId,
+          args.additionalCount,
+        ),
+    ))
+  }
+
+  private atLimitForMetric(
     ctx: QuotaContext,
     userId: string,
     metric: QuotaMetric,
   ): Promise<boolean> {
-    const pooled = this.isPooled(ctx)
-    const atLimit = (
-      limitUserId: string,
-      scope: { ownerId: string } | { tenantId: string },
-    ) =>
+    return this.anyLevelAtLimit(ctx, userId, (limitUserId, scope) =>
       metric === "teamMembers"
         ? userQuotaService.isTeamMemberLimitReached(scope, limitUserId)
-        : userQuotaService.isLimitReached(limitUserId, metric)
+        : userQuotaService.isLimitReached(limitUserId, metric),
+    )
+  }
 
+  /**
+   * Pool/user branching shared by `atLimitForMetric` and
+   * `hasRoomForTeamMembers`: a reseller acting directly is governed only by
+   * their own pool row; everyone else is governed by their own user row,
+   * and — if pooled — also by the tenant pool row once the user row passes.
+   * `atLimit(limitUserId, scope)` resolves one level to reached/not-reached.
+   */
+  private async anyLevelAtLimit(
+    ctx: QuotaContext,
+    userId: string,
+    atLimit: (limitUserId: string, scope: TeamMemberScope) => Promise<boolean>,
+  ): Promise<boolean> {
+    const pooled = this.isPooled(ctx)
     if (pooled && userId === ctx.ownerId) {
       // Reseller acting directly: only the pool (owner row) governs.
-      return atLimit(ctx.ownerId, { tenantId: ctx.tenantId })
+      return atLimit(ctx.ownerId, {
+        pool: { ownerId: ctx.ownerId, tenantId: ctx.tenantId },
+      })
     }
 
     const userFull = await atLimit(userId, { ownerId: userId })
@@ -643,7 +685,9 @@ class QuotaEnforcementService {
     if (userFull) {
       return true
     }
-    return atLimit(ctx.ownerId as string, { tenantId: ctx.tenantId })
+    return atLimit(ctx.ownerId as string, {
+      pool: { ownerId: ctx.ownerId as string, tenantId: ctx.tenantId },
+    })
   }
 
   /** Tighter of the user and pool remaining slots (`null` = unlimited). */
@@ -694,7 +738,10 @@ class QuotaEnforcementService {
       const [liveUsed, ownerQuota, teamMembersUsed] = await Promise.all([
         userQuotaService.getLiveUsage(ctx.ownerId),
         userQuotaService.getForUser(ctx.ownerId),
-        userQuotaService.countDistinctTeamMembersForTenant(ctx.tenantId),
+        userQuotaService.countDistinctTeamMembersForPool(
+          ctx.ownerId,
+          ctx.tenantId,
+        ),
       ])
       return Object.fromEntries(
         ALL_METRICS.map((metric) => [

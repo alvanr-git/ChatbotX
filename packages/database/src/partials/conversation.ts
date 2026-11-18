@@ -21,6 +21,10 @@ export const conversationStatuses = z.enum([
   "followUp",
   "archived",
   "blocked",
+  /** Open response-SLA window within its breaching threshold, not yet overdue. */
+  "slaBreaching",
+  /** Open response-SLA window past its deadline. */
+  "slaBreached",
 ])
 export type ConversationStatus = z.infer<typeof conversationStatuses>
 
@@ -48,6 +52,13 @@ export type ConversationStepChallenge = {
     stepId: string
     attempts: number
     lastAttemptAt: Date
+    /**
+     * When this challenge cycle first asked its question. Unlike
+     * `lastAttemptAt` it is never moved by a retry, so a step deadline counts
+     * from the first prompt. Absent on challenges written before it existed.
+     * Stored as JSON, so it reads back as an ISO string.
+     */
+    startedAt?: Date
     appointmentId?: string
     challengeId?: string
   }

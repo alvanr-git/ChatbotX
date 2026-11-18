@@ -1,10 +1,17 @@
 import {
+  apiConnectConfigSchema,
+  integrationApiService,
+  integrationWebchatService,
+  webchatConnectConfigSchema,
+} from "@chatbotx.io/business"
+import {
   CONNECTION_STORE_BINDINGS,
   type ConnectionAdapter,
   type ConnectionRegistry,
   claudeConnectionProvider,
   deepseekConnectionProvider,
   geminiConnectionProvider,
+  museConnectionProvider,
   openaiCompatibleConnectionProvider,
   openaiConnectionProvider,
   openrouterConnectionProvider,
@@ -21,6 +28,7 @@ import { integration as integrationGoogleSheets } from "@chatbotx.io/integration
 import { integration as integrationInstagram } from "@chatbotx.io/integration-instagram"
 import { integration as integrationInstagramFacebook } from "@chatbotx.io/integration-instagram-facebook"
 import { integration as integrationKlaviyo } from "@chatbotx.io/integration-klaviyo"
+import { integration as integrationLine } from "@chatbotx.io/integration-line"
 import { integration as integrationMailchimp } from "@chatbotx.io/integration-mailchimp"
 import { integration as integrationMailerLite } from "@chatbotx.io/integration-mailer-lite"
 import { integration as integrationMessenger } from "@chatbotx.io/integration-messenger"
@@ -95,6 +103,41 @@ const fromCredentialProvider = <Key extends StoreBindingKey>(
   return { provider, store, storeKey }
 }
 
+const connectWebchat: NonNullable<ConnectionAdapter["connect"]> = async (
+  input,
+) => {
+  const data = webchatConnectConfigSchema.parse(input.config)
+  const { actorUserId } = input.actor
+  const result = await integrationWebchatService.createWithWorkspace({
+    workspaceId: input.workspaceId,
+    ownerId: input.ownerId,
+    createdBy: actorUserId ?? input.ownerId,
+    actorUserId,
+    workspaceName: data.name,
+    data: {
+      ...data,
+      auth: {},
+      customCss: data.customCss ?? null,
+    },
+  })
+  return { connection: result.connection }
+}
+
+const connectApi: NonNullable<ConnectionAdapter["connect"]> = async (input) => {
+  const { callbackUrl, name } = apiConnectConfigSchema.parse(input.config)
+  const result = await integrationApiService.createWithToken({
+    ownerId: input.ownerId,
+    actorUserId: input.actor.actorUserId,
+    workspaceId: input.workspaceId,
+    name,
+    callbackUrl,
+  })
+  return {
+    connection: result.connection,
+    secret: { kind: "api_channel_token", token: result.token },
+  }
+}
+
 /**
  * Compile-time exhaustive `Record<IntegrationType, ConnectionAdapter | null>`.
  * `null` marks a type with no connect lifecycle yet: `metaCatalog` and
@@ -105,7 +148,10 @@ const fromCredentialProvider = <Key extends StoreBindingKey>(
  */
 export const CONNECTION_REGISTRY: StoreBoundConnectionRegistry = {
   activeCampaign: fromIntegration(integrationActiveCampaign, "activeCampaign"),
-  api: fromIntegration(integrationApi, "api"),
+  api: {
+    ...fromIntegration(integrationApi, "api"),
+    connect: connectApi,
+  },
   chatbotx: fromIntegration(integrationChatbotx, "chatbotx"),
   claude: fromCredentialProvider(claudeConnectionProvider, "claude"),
   deepseek: fromCredentialProvider(deepseekConnectionProvider, "deepseek"),
@@ -143,6 +189,7 @@ export const CONNECTION_REGISTRY: StoreBoundConnectionRegistry = {
   },
   metaCatalog: null,
   moosend: fromIntegration(integrationMoosend, "moosend"),
+  muse: fromCredentialProvider(museConnectionProvider, "muse"),
   openai: fromCredentialProvider(openaiConnectionProvider, "openai"),
   openaiCompatible: fromCredentialProvider(
     openaiCompatibleConnectionProvider,
@@ -155,10 +202,14 @@ export const CONNECTION_REGISTRY: StoreBoundConnectionRegistry = {
   outlookCalendar: null,
   sendGrid: fromIntegration(integrationSendGrid, "sendGrid"),
   smtp: fromIntegration(integrationSmtp, "smtp"),
+  line: fromIntegration(integrationLine, "line"),
   telegram: fromIntegration(integrationTelegram, "telegram"),
   threads: fromIntegration(integrationThreads, "threads", "threads"),
   tiktok: fromIntegration(integrationTiktok, "tiktok", "tiktok"),
-  webchat: fromIntegration(integrationWebchat, "webchat"),
+  webchat: {
+    ...fromIntegration(integrationWebchat, "webchat"),
+    connect: connectWebchat,
+  },
   whatsapp: fromIntegration(integrationWhatsapp, "whatsapp", "whatsapp"),
   zalo: fromIntegration(integrationZalo, "zalo", "zalo"),
 }

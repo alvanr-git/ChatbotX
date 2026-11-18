@@ -5,6 +5,7 @@ import {
   type ButtonStepProps,
   type ButtonType,
   buttonStepSchema,
+  buttonTypes,
   type FlowNode,
   resolveSendTextLengthLimits,
   stepTypes,
@@ -39,6 +40,14 @@ import {
   useWatch,
 } from "react-hook-form"
 import { setProperty } from "@/lib/object-util"
+import {
+  ButtonEditorChannelContext,
+  useButtonEditorChannel,
+} from "./button-editor-channel"
+import {
+  ButtonStyleField,
+  resolveButtonStylePicker,
+} from "./button-style-field"
 import RecursiveDropdownMenu from "./components/recursive-dropdown-menu"
 import {
   useCreateButtonTarget,
@@ -47,7 +56,7 @@ import {
 import { sendMessageEditorMenusWithButton } from "./nodes/send-message/menu"
 import type { MenuItem } from "./nodes/types"
 import { allSteps, DynamicStepEditor } from "./steps"
-import { allButtonsConfig } from "./steps/button-config"
+import { allButtonsConfig, offeredButtonsConfig } from "./steps/button-config"
 import { SpreadsheetDialogProvider } from "./steps/spreadsheet/components/spreadsheet-dialog-context"
 import { useStepStore } from "./stores/step-store-provider"
 
@@ -72,15 +81,11 @@ export function AllButtonOptions({
   hiddenButtonTypes?: ButtonType[]
 }) {
   const t = useTranslations()
-  const allButtons = useMemo(() => {
-    const configs = allButtonsConfig(t)
-    if (!hiddenButtonTypes || hiddenButtonTypes.length === 0) {
-      return configs
-    }
-    return configs.filter(
-      (buttonConfig) => !hiddenButtonTypes.includes(buttonConfig.buttonType),
-    )
-  }, [t, hiddenButtonTypes])
+  const channel = useButtonEditorChannel()
+  const allButtons = useMemo(
+    () => offeredButtonsConfig(t, { channel, hiddenButtonTypes }),
+    [t, hiddenButtonTypes, channel],
+  )
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -147,9 +152,15 @@ export function ActiveButton({
   )
 }
 
-function ButtonSteps() {
+function ButtonSteps({ buttonType }: { buttonType: ButtonType }) {
   const t = useTranslations()
   const { control } = useFormContext()
+  const allowsSteps = useMemo(
+    () =>
+      allButtonsConfig(t).find((config) => config.buttonType === buttonType)
+        ?.allowsSteps !== false,
+    [t, buttonType],
+  )
   const { fields, append, remove } = useFieldArray({
     control,
     name: "steps",
@@ -166,6 +177,10 @@ function ButtonSteps() {
     },
     [append],
   )
+
+  if (!allowsSteps) {
+    return null
+  }
 
   return (
     <div className="mt-2 flex flex-col gap-2">
@@ -247,13 +262,18 @@ export function ButtonEditorDialog() {
   // quick reply or a button attached to a step. The visible counter sits on
   // the button itself (steps/button/editor.tsx); this only caps the input.
   const isQuickReply = buttonPath?.startsWith("data.details.quickReplies")
+  const channel = resolveNodeChannel(activeNode)
   const labelMax = useMemo(() => {
-    const limits = resolveSendTextLengthLimits({
-      channel: resolveNodeChannel(activeNode),
-    })
+    const limits = resolveSendTextLengthLimits({ channel })
 
     return isQuickReply ? limits.quickReplyLabel : limits.buttonLabel
-  }, [activeNode, isQuickReply])
+  }, [channel, isQuickReply])
+  // Only on a channel whose policy declares styles; elsewhere a stored style
+  // is left as is and ignored when sending.
+  const styleSupport = resolveButtonStylePicker({
+    channel,
+    isQuickReply: !!isQuickReply,
+  })
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: wip
   useEffect(() => {
@@ -295,7 +315,12 @@ export function ButtonEditorDialog() {
       if (currentButtonId && targetNodeId) {
         refreshEdge(currentButtonId, activeNode.id, targetNodeId)
       }
-    } else if (currentButtonId) {
+    } else if (
+      currentButtonId &&
+      values.beforeStep?.stepType !== stepTypes.enum.openMiniApp
+    ) {
+      // An Open Mini App button keeps the edge the user drew: it says where
+      // the flow continues once the Mini App is submitted.
       // Any action besides a node jump (openWebsite, startExternalFlow,
       // startExternalNode, ...) fully handles its own routing on the worker
       // side. Clear a leftover edge from a previous startAnotherNode/
@@ -364,6 +389,16 @@ export function ButtonEditorDialog() {
 
       setValue("beforeStep", created.beforeStep)
 
+      // Switching to Open Mini App starts with no edge: one left over from a
+      // previous Send Message / Start Another Node config would otherwise
+      // become where the flow continues after the Mini App is submitted.
+      if (selectedButtonType === buttonTypes.enum.openMiniApp) {
+        const currentButtonId = getValues("id") as string
+        if (currentButtonId) {
+          removeEdge(currentButtonId)
+        }
+      }
+
       if (created.newNode) {
         const currentButtonId = getValues("id") as string
         if (currentButtonId && activeNode) {
@@ -372,7 +407,15 @@ export function ButtonEditorDialog() {
         onSave()
       }
     },
-    [activeNode, createButtonTarget, getValues, onSave, refreshEdge, setValue],
+    [
+      activeNode,
+      createButtonTarget,
+      getValues,
+      onSave,
+      refreshEdge,
+      removeEdge,
+      setValue,
+    ],
   )
 
   return buttonId ? (
@@ -389,44 +432,50 @@ export function ButtonEditorDialog() {
         </DialogHeader>
 
         <Form {...form}>
-          <SpreadsheetDialogProvider>
-            <form
-              className="flex w-full flex-col gap-4"
-              onSubmit={(e) => {
-                e.stopPropagation()
-                return form.handleSubmit(onSave)(e)
-              }}
-            >
-              <InputField
-                disabled={!!buttonEditorConfig?.lockLabel}
-                label={t("fields.name.label")}
-                maxLength={labelMax}
-                name="label"
-                required
-              />
+          <ButtonEditorChannelContext.Provider value={channel}>
+            <SpreadsheetDialogProvider>
+              <form
+                className="flex w-full flex-col gap-4"
+                onSubmit={(e) => {
+                  e.stopPropagation()
+                  return form.handleSubmit(onSave)(e)
+                }}
+              >
+                <InputField
+                  disabled={!!buttonEditorConfig?.lockLabel}
+                  label={t("fields.name.label")}
+                  maxLength={labelMax}
+                  name="label"
+                  required
+                />
 
-              <div className="mt-2 font-medium">
-                {t("fields.button.whenPressed")}
-              </div>
+                {styleSupport ? (
+                  <ButtonStyleField support={styleSupport} />
+                ) : null}
 
-              {buttonType ? (
-                <div className="flex flex-col gap-2">
-                  <ActiveButton
-                    buttonType={buttonType}
+                <div className="mt-2 font-medium">
+                  {t("fields.button.whenPressed")}
+                </div>
+
+                {buttonType ? (
+                  <div className="flex flex-col gap-2">
+                    <ActiveButton
+                      buttonType={buttonType}
+                      onChooseButton={onChooseButton}
+                    />
+                    <ButtonSteps buttonType={buttonType} />
+                  </div>
+                ) : (
+                  <AllButtonOptions
+                    hiddenButtonTypes={
+                      buttonEditorConfig?.hiddenButtonTypes ?? undefined
+                    }
                     onChooseButton={onChooseButton}
                   />
-                  <ButtonSteps />
-                </div>
-              ) : (
-                <AllButtonOptions
-                  hiddenButtonTypes={
-                    buttonEditorConfig?.hiddenButtonTypes ?? undefined
-                  }
-                  onChooseButton={onChooseButton}
-                />
-              )}
-            </form>
-          </SpreadsheetDialogProvider>
+                )}
+              </form>
+            </SpreadsheetDialogProvider>
+          </ButtonEditorChannelContext.Provider>
         </Form>
 
         <DialogFooter>

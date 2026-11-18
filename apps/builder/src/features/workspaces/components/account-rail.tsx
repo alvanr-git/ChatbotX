@@ -22,7 +22,6 @@ import { getTenantSettings } from "@/features/tenant/utils"
 import { getUserAvatarUrl } from "@/lib/auth/avatar"
 import { buildPlanNotice, buildUsageLabels } from "@/lib/quota-metrics"
 import { resolveTrialMessage, trialMessageClassName } from "@/lib/trial-message"
-import { EditProfileDialog } from "./edit-profile-dialog"
 import { RefreshAllChannelTokensButton } from "./refresh-all-channel-tokens-button"
 
 type AccountRailProps = {
@@ -37,7 +36,7 @@ type AccountRailProps = {
   /** ISO date of the self-managed trial end, or null when not on a trial. */
   trialEndsAt?: string | null
   isSuperAdmin?: boolean
-  isPlatformAdmin?: boolean
+  canAccessManage?: boolean
   /**
    * True only when the request resolved to the platform host (see
    * `resolveTenantByDomain` in `page.tsx`). Gates the Redeem link:
@@ -61,7 +60,7 @@ export const AccountRail = async ({
   planStatus = null,
   trialEndsAt = null,
   isSuperAdmin = false,
-  isPlatformAdmin = false,
+  canAccessManage = false,
   isPlatformContext = false,
 }: AccountRailProps) => {
   const [t, { storageUrl }] = await Promise.all([
@@ -85,7 +84,10 @@ export const AccountRail = async ({
     // to `max-h`.
     <aside className="flex w-full shrink-0 flex-col rounded-xl border bg-card md:sticky md:top-8 md:h-[calc(100vh-4rem)] md:w-72">
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-6 md:pb-2">
-        <div className="relative flex items-center gap-3">
+        <Link
+          className="flex items-center gap-3 rounded-lg p-1 outline-hidden transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          href="/account"
+        >
           <Avatar className="size-11">
             <AvatarImage alt={displayName} src={avatarUrl ?? ""} />
             <AvatarFallback className="rounded-full text-sm">
@@ -100,8 +102,7 @@ export const AccountRail = async ({
               {user.email}
             </span>
           </div>
-          <EditProfileDialog className="absolute inset-e-0 top-0" user={user} />
-        </div>
+        </Link>
 
         {cloud && (
           <div className="flex flex-col gap-4 border-t pt-5">
@@ -169,7 +170,7 @@ export const AccountRail = async ({
               {t("actions.admin")}
             </Link>
           )}
-          {cloud && isPlatformAdmin && (
+          {cloud && canAccessManage && (
             <Link className={railMenuItemClassName} href="/manage">
               <Settings2Icon aria-hidden className="size-4" />
               {t("actions.manage")}

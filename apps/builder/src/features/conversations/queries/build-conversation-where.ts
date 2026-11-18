@@ -1,5 +1,8 @@
 import { sql } from "@chatbotx.io/database/client"
-import { channelTypes } from "@chatbotx.io/database/partials"
+import {
+  type ConversationStatus,
+  channelTypes,
+} from "@chatbotx.io/database/partials"
 import {
   applyContactFilter,
   buildSmartKeywordWhere,
@@ -17,6 +20,12 @@ type ConversationCursor = {
 
 type BuildConversationWhereOptions = {
   includeEmailAndPhone?: boolean
+  /**
+   * Extra restriction AND-ed onto the whole query (a member's chat scope on
+   * the mobile API). It is appended last and never replaced by the request
+   * filters, so no combination of filters can widen it.
+   */
+  scopeWhere?: QueryWhere
 }
 
 type QueryWhere = Record<string, unknown>
@@ -77,6 +86,31 @@ export const appendUnreadWhere = (where: QueryWhere): void => {
   ]
 }
 
+/**
+ * Response-SLA statuses read the window snapshot on the conversation row (set
+ * only while an SLA window is open), so a row without one never matches and no
+ * policy lookup is needed here. Breached = past the deadline; breaching = past
+ * the working-time breaching instant but not yet overdue.
+ */
+const appendSlaWhere = (
+  where: QueryWhere,
+  tags: readonly ConversationStatus[],
+): void => {
+  const now = new Date()
+  const clauses = [
+    ...(tags.includes("slaBreached") ? [{ responseDueAt: { lte: now } }] : []),
+    ...(tags.includes("slaBreaching")
+      ? [
+          { responseSlaBreachingAt: { lte: now } },
+          { responseDueAt: { gt: now } },
+        ]
+      : []),
+  ]
+  if (clauses.length > 0) {
+    where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...clauses]
+  }
+}
+
 export function buildConversationWhere(
   workspaceId: string,
   input: Omit<ListConversationsRequest, "workspaceId">,
@@ -112,7 +146,9 @@ export function buildConversationWhere(
           { lastActivityAt: { lt: cursor.lastActivityAt } },
           { lastActivityAt: { isNull: true } },
           {
-            lastActivityAt: cursor.lastActivityAt,
+            // Explicit `eq`: drizzle's relational filter reads a bare Date as
+            // an empty operator object and drops it, leaving `id < cursor.id`.
+            lastActivityAt: { eq: cursor.lastActivityAt },
             id: { lt: cursor.id },
           },
         ]
@@ -192,6 +228,7 @@ export function buildConversationWhere(
   if (tags.includes("blocked")) {
     addContactWhere(where, { blockedAt: { isNotNull: true } })
   }
+  appendSlaWhere(where, tags)
 
   // ── contactFilter (complex filter builder) ───────────────────────────────
   const contactFilter = pruneEmailPhoneFilterConditions(
@@ -203,6 +240,13 @@ export function buildConversationWhere(
     if (Object.keys(contactFilterWhere).length > 0) {
       addContactWhere(where, contactFilterWhere)
     }
+  }
+
+  if (options.scopeWhere) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      options.scopeWhere,
+    ]
   }
 
   return where

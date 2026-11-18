@@ -2,9 +2,10 @@ import {
   contactInboxService,
   conversationService,
   flowService,
-  publishToWorkspaceParty,
+  messageService,
+  queueMessageCreatedEvent,
 } from "@chatbotx.io/business"
-import { createMessageRepository } from "@chatbotx.io/database/repositories"
+import { SENT_FROM_INBOX_KEY } from "@chatbotx.io/database/partials"
 import type { messageModel } from "@chatbotx.io/database/schema"
 import type {
   ContactInboxModel,
@@ -27,7 +28,6 @@ import {
   startExternalFlowStepDefaultFn,
   stepTypes,
 } from "@chatbotx.io/flow-config"
-import { RealtimeEventType } from "@chatbotx.io/partysocket-config"
 import {
   ChannelError,
   ChannelErrorCategory,
@@ -35,6 +35,7 @@ import {
 } from "@chatbotx.io/sdk"
 import { createId } from "@chatbotx.io/utils"
 import { resolveStackFrames } from "@chatbotx.io/utils/error-log"
+import type { SendFrom } from "@chatbotx.io/utils/send-from"
 import { contactVariableService } from "@chatbotx.io/variables"
 import type {
   BotResponseTrackingContext,
@@ -46,6 +47,7 @@ import {
 } from "../../integration/handlers/messenger-template-handler"
 import { logger } from "../../lib/logger"
 import { skipIfBroadcastNotSendable } from "../utils/broadcast-sendable-guard"
+import { applyMiniAppResumeToTemplateParams } from "../utils/messenger-template-mini-app"
 import {
   shouldSuppressRetryableChannelError,
   willSendRetry,
@@ -56,6 +58,7 @@ import {
   isDeliveredDirectMessage,
   markConversationReadAfterDelivery,
   sendFlowStepToChannel,
+  settleFailedTemplateMessage,
 } from "./send-message"
 
 export interface ProcessMessengerTemplateParams {
@@ -68,6 +71,10 @@ export interface ProcessMessengerTemplateParams {
   }
   isBulkBroadcast?: boolean
   metadata?: MetadataPayload
+  /** See `ProcessWhatsappTemplateParams["sendFrom"]`. */
+  sendFrom?: SendFrom
+  /** The inbox user who sent the running flow, for `{{admin_name}}` in the params. */
+  sentByUserId?: string
   step?: SendMessengerTemplateMessageStepSchema
   template: SendMessengerTemplateMessageStepSchema["template"]
   trackingContext?: BotResponseTrackingContext
@@ -201,6 +208,8 @@ export async function processMessengerTemplate(
     metadata,
     isBulkBroadcast,
     willRetryOnThrow = false,
+    sentByUserId,
+    sendFrom,
   } = params
   const isBulkOutbound = isBulkOutboundMetadata(
     metadata,
@@ -227,6 +236,9 @@ export async function processMessengerTemplate(
   }
 
   let newMessage: typeof messageModel.$inferSelect | null = null
+  // Set once the provider accepted the template: a failure after that point is
+  // bookkeeping, and the delivered message must not be removed or marked.
+  let isDispatched = false
 
   try {
     const validated = await validateMessengerTemplate(
@@ -257,6 +269,7 @@ export async function processMessengerTemplate(
       contactId: conversation.contactId,
       contactInbox,
       conversation,
+      sentByUserId,
     })
     const completeParams = mergeMessengerTemplateButtonParams(
       template.params,
@@ -267,6 +280,24 @@ export async function processMessengerTemplate(
       variables,
       parameterFormat: template.parameterFormat,
     })
+    // Sent only: the stored message keeps the masked params below, so the
+    // resume token never reaches the inbox.
+    const sentParams = flow
+      ? await applyMiniAppResumeToTemplateParams({
+          workspaceId: conversation.workspaceId,
+          contactId: conversation.contactId,
+          conversationId: conversation.id,
+          contactInboxId: contactInbox.id,
+          flowId: flow.id,
+          flowVersionId: flow.versionId,
+          metadata,
+          components:
+            (validated.template.components as MessengerTemplateComponent[]) ||
+            [],
+          params: replacedParams,
+          flowButtons: step?.buttons ?? [],
+        })
+      : replacedParams
 
     const contentAttributes = {
       type: "messenger_template",
@@ -284,10 +315,10 @@ export async function processMessengerTemplate(
       ...(flow && { flowVersionId: flow.versionId }),
       ...(trackingContext && { trackingContext }),
       metadata,
+      ...(sendFrom && { [SENT_FROM_INBOX_KEY]: sendFrom === "inbox" }),
     }
 
-    const messageRepository = await createMessageRepository()
-    newMessage = await messageRepository.create({
+    newMessage = await messageService.create({
       id: createId(),
       contactInboxId: contactInbox.id,
       workspaceId: conversation.workspaceId,
@@ -309,16 +340,19 @@ export async function processMessengerTemplate(
         contactId: contactInbox.contactId,
         at: createdMessage.createdAt,
         bumpActivity: !isBulkOutbound,
+        // Template sends are proactive, never a reply to the last message.
+        closeHumanReplyWindow: false,
       })
     if (trackingInvalidation) {
       await contactInboxService.invalidateTracking(trackingInvalidation)
     }
 
     if (!isBulkOutbound) {
-      publishToWorkspaceParty(conversation.workspaceId, {
-        eventType: RealtimeEventType.messageCreated,
-        data: newMessage,
-      })
+      queueMessageCreatedEvent(
+        conversation.workspaceId,
+        newMessage,
+        conversation,
+      )
     }
 
     const result = await sendFlowStepToChannel({
@@ -331,7 +365,7 @@ export async function processMessengerTemplate(
         nodeId: step?.nodeId ?? createId(),
         stepType: stepTypes.enum.sendMessengerTemplateMessage,
         buttons: step?.buttons ?? [],
-        template: { ...template, params: replacedParams },
+        template: { ...template, params: sentParams },
       },
       metadata,
       messageId: newMessage.id,
@@ -340,6 +374,7 @@ export async function processMessengerTemplate(
         triggerType: "message_bot_sent_messenger_template",
       },
     })
+    isDispatched = true
 
     // Same rule as a flow reply: a delivered bot DM honours the inbox's
     // markReadOnOutbound option. Own-send echoes are ignored by the receive
@@ -378,12 +413,12 @@ export async function processMessengerTemplate(
 
     if (providerMessageId) {
       try {
-        await messageRepository.updateSourceId(
-          newMessage.id,
-          providerMessageId,
-          conversation.workspaceId,
-          newMessage.createdAt,
-        )
+        await messageService.updateSourceId({
+          id: newMessage.id,
+          sourceId: providerMessageId,
+          workspaceId: conversation.workspaceId,
+          createdAt: newMessage.createdAt,
+        })
       } catch (err) {
         logger.error(
           err,
@@ -410,6 +445,12 @@ export async function processMessengerTemplate(
       "Failed to send Messenger template to provider",
     )
 
+    const willRetry = willSendRetry({
+      error,
+      channel: contactInbox.channel,
+      willRetryOnThrow,
+    })
+
     await emit(messageEventTypeSchema.enum["message:failed"], {
       ...eventLogData,
       action: {
@@ -421,12 +462,20 @@ export async function processMessengerTemplate(
       // stackless `ParsedError`, so `ErrorLog.stackTrace` has no other source.
       errorStack: resolveStackFrames(error),
       occurredAt: new Date(),
-      willRetry: willSendRetry({
-        error,
-        channel: contactInbox.channel,
-        willRetryOnThrow,
-      }),
+      willRetry,
     })
+
+    if (newMessage && !isDispatched) {
+      await settleFailedTemplateMessage({
+        message: newMessage,
+        conversationId: conversation.id,
+        workspaceId: conversation.workspaceId,
+        errorMessage: errorData.message,
+        sendFrom,
+        silent: isBulkOutbound,
+        willRetry,
+      })
+    }
 
     throw error
   }

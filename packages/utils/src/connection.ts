@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { DIGITS_REGEX } from "./zod"
 
 export const connectionStatuses = z.enum([
   "connected",
@@ -39,12 +40,73 @@ export const connectionStatusReasons = z.enum([
   "tenant_suspended",
   "token_revoked",
   "provider_revoked",
+  // The provider is re-onboarding the account (e.g. WhatsApp Business app
+  // moved to another device). Active: quota is held and sends are deferred.
+  "provider_offboarded",
   "refresh_failed",
   "verify_failed",
   "quota_exceeded",
   "orphaned_webhook",
 ])
 export type ConnectionStatusReason = z.infer<typeof connectionStatusReasons>
+
+/**
+ * Channel-agnostic lifecycle events a provider reports about the account
+ * behind a connection. Stored on `Connection.providerEventKind` so an
+ * out-of-order or duplicate delivery can be recognised.
+ */
+export const providerAccountEventKinds = z.enum([
+  "revoked",
+  "offboarded",
+  "reconnected",
+])
+export type ProviderAccountEventKind = z.infer<typeof providerAccountEventKinds>
+
+/** What a provider reported about why an account event happened; bounded by the channel adapter. */
+export type ProviderAccountEventDetail = { reason: string; initiatedBy: string }
+
+/** The part of a `Connection` that says whether, and why, it is not simply connected. */
+export type ConnectionStatusState = {
+  status: ConnectionStatus
+  statusReason: ConnectionStatusReason | null
+}
+
+/**
+ * Held by the provider while it re-onboards the account: still active (quota
+ * held), but sends wait and health checks cannot override the state.
+ */
+export const isProviderOffboardedConnection = (
+  state: ConnectionStatusState | null | undefined,
+): boolean =>
+  state?.status === "degraded" && state.statusReason === "provider_offboarded"
+
+/**
+ * Which connections a provider account event may touch, by the route that
+ * delivered it. An account id is not a tenant boundary and a provider sends one
+ * event to every app subscribed to the account, so each route only speaks for
+ * the rows that connected through ITS app (`appId`).
+ */
+export type ProviderAccountRouteScope =
+  /** The platform app. */
+  | { kind: "platform"; appId: string }
+  /** A user- or reseller-owned app whose tenant-aware credential owner is `ownerId`. */
+  | { kind: "credentialOwner"; ownerId: string; appId: string }
+  /** One manually connected integration, which brings its own app. */
+  | { kind: "manualIntegration"; integrationId: string; workspaceId: string }
+
+/** One channel number a provider account event may act on. */
+export type ProviderAccountTarget = {
+  integrationId: string
+  workspaceId: string
+  /** The workspace owner: the quota owner released on a revoke. */
+  workspaceOwnerId: string
+  inboxId: string
+  /** `null` for a row predating the Connection backfill. */
+  connectionId: string | null
+}
+
+/** How many targets one batch of a provider account event handles. */
+export const PROVIDER_ACCOUNT_TARGET_BATCH_SIZE = 200
 
 /**
  * `Inbox.disconnectReason` predates this `Connection` domain and is narrower
@@ -80,6 +142,7 @@ export const CONNECTION_TO_INBOX_DISCONNECT_REASON: Record<
   tenant_suspended: "tenant_suspended",
   token_revoked: "token_revoked",
   provider_revoked: "token_revoked",
+  provider_offboarded: "manual",
   refresh_failed: "token_revoked",
   verify_failed: "manual",
   quota_exceeded: "manual",
@@ -95,15 +158,252 @@ export const CONNECTION_TO_INBOX_DISCONNECT_REASON: Record<
 export const connectionKinds = z.enum(["channel", "integration"])
 export type ConnectionKind = z.infer<typeof connectionKinds>
 
+const connectionConfigFieldTypes = z.enum([
+  "string",
+  "secret",
+  "number",
+  "boolean",
+  "enum",
+  "url",
+])
+
+const connectionConfigItemSchema = z.object({
+  type: z.enum([...connectionConfigFieldTypes.options, "object"]),
+  enumValues: z.array(z.string()).optional(),
+  fields: z
+    .array(
+      z.object({
+        name: z.string(),
+        type: connectionConfigFieldTypes,
+        required: z.boolean(),
+        enumValues: z.array(z.string()).optional(),
+        format: z.string().optional(),
+        pattern: z.string().optional(),
+        description: z.string().optional(),
+      }),
+    )
+    .optional(),
+  format: z.string().optional(),
+  pattern: z.string().optional(),
+  description: z.string().optional(),
+})
+
 export const connectionConfigFieldSchema = z.object({
   name: z.string(),
-  type: z.enum(["string", "secret", "number", "boolean", "enum", "url"]),
+  type: z.enum([...connectionConfigFieldTypes.options, "array"]),
   required: z.boolean(),
   labelKey: z.string().optional(),
   enumValues: z.array(z.string()).optional(),
+  items: connectionConfigItemSchema.optional(),
+  format: z.string().optional(),
+  pattern: z.string().optional(),
   description: z.string().optional(),
 })
 export type ConnectionConfigField = z.infer<typeof connectionConfigFieldSchema>
+
+/** One-time credential a self-serve connect returns exactly once (`connections.create`). */
+export const selfServeSecretSchema = z.object({
+  kind: z.literal("api_channel_token"),
+  token: z.string(),
+})
+export type SelfServeSecret = z.infer<typeof selfServeSecretSchema>
+
+type JsonSchema = {
+  type?: string
+  anyOf?: JsonSchema[]
+  oneOf?: JsonSchema[]
+  const?: unknown
+  default?: unknown
+  description?: string
+  enum?: unknown[]
+  format?: string
+  pattern?: string
+  properties?: Record<string, JsonSchema>
+  required?: string[]
+  items?: JsonSchema
+}
+
+type ConnectionConfigItem = NonNullable<ConnectionConfigField["items"]>
+
+const mergeSchemas = (schemas: JsonSchema[]): JsonSchema => {
+  if (schemas.length === 1) {
+    return schemas[0] ?? {}
+  }
+
+  const propertyNames = new Set(
+    schemas.flatMap((schema) => Object.keys(schema.properties ?? {})),
+  )
+  const required = new Set(propertyNames)
+  for (const schema of schemas) {
+    for (const name of required) {
+      if (!schema.required?.includes(name)) {
+        required.delete(name)
+      }
+    }
+  }
+  const values = schemas.flatMap(
+    (schema) =>
+      schema.enum ?? (schema.const === undefined ? [] : [schema.const]),
+  )
+  const types = [
+    ...new Set(schemas.map((schema) => schema.type).filter(Boolean)),
+  ]
+  const description = schemas.find((schema) => schema.description)?.description
+
+  return {
+    ...(types.length === 1 ? { type: types[0] } : {}),
+    ...(values.length > 0 ? { enum: values } : {}),
+    ...(schemas.some((schema) => schema.properties)
+      ? {
+          properties: Object.fromEntries(
+            [...propertyNames].map((name) => [
+              name,
+              mergeSchemas(
+                schemas.flatMap((schema) =>
+                  schema.properties?.[name] ? [schema.properties[name]] : [],
+                ),
+              ),
+            ]),
+          ),
+        }
+      : {}),
+    ...(required.size > 0 ? { required: [...required] } : {}),
+    ...(description ? { description } : {}),
+  }
+}
+
+const resolveNonNullSchema = (schema: JsonSchema): JsonSchema => {
+  const variants = [...(schema.anyOf ?? []), ...(schema.oneOf ?? [])].filter(
+    (item) => item.type !== "null",
+  )
+  if (variants.length === 0) {
+    return schema
+  }
+  return { ...schema, ...mergeSchemas(variants.map(resolveNonNullSchema)) }
+}
+
+const configTypeForSchema = (
+  schema: JsonSchema,
+): ConnectionConfigField["type"] | "object" => {
+  if (schema.enum) {
+    return "enum"
+  }
+  switch (schema.type) {
+    case "array":
+    case "boolean":
+    case "number":
+    case "string":
+      return schema.format === "uri" ? "url" : schema.type
+    case "integer":
+      return "number"
+    case "object":
+      return "object"
+    default:
+      throw new Error(
+        `Unsupported JSON Schema config type: ${schema.type ?? "unknown"}`,
+      )
+  }
+}
+
+const formatForSchema = (schema: JsonSchema): string | undefined =>
+  schema.pattern === DIGITS_REGEX.source ? "bigint-string" : schema.format
+
+/** A field with a zod `.default()` is optional to the caller even when listed as required. */
+const isRequired = (schema: JsonSchema, required: boolean): boolean =>
+  required && !("default" in schema)
+
+const configItemForSchema = (rawSchema: JsonSchema): ConnectionConfigItem => {
+  const schema = resolveNonNullSchema(rawSchema)
+  const type = configTypeForSchema(schema)
+  if (type === "array") {
+    throw new Error("Nested array config fields are not supported")
+  }
+  if (type === "object") {
+    const required = new Set(schema.required)
+    return {
+      type,
+      ...(schema.description ? { description: schema.description } : {}),
+      ...(schema.properties
+        ? {
+            fields: Object.entries(schema.properties).map(([name, property]) =>
+              configItemFieldForSchema(name, property, required.has(name)),
+            ),
+          }
+        : {}),
+    }
+  }
+
+  const format = formatForSchema(schema)
+  return {
+    type,
+    ...(schema.enum
+      ? {
+          enumValues: schema.enum.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        }
+      : {}),
+    ...(format ? { format } : {}),
+    ...(schema.pattern ? { pattern: schema.pattern } : {}),
+    ...(schema.description ? { description: schema.description } : {}),
+  }
+}
+
+const configItemFieldForSchema = (
+  name: string,
+  rawSchema: JsonSchema,
+  required: boolean,
+): NonNullable<ConnectionConfigItem["fields"]>[number] => {
+  const schema = resolveNonNullSchema(rawSchema)
+  const item = configItemForSchema(schema)
+  if (item.type === "object") {
+    throw new Error("Nested object config fields are not supported")
+  }
+  return {
+    name,
+    ...item,
+    required: isRequired(schema, required),
+  } as NonNullable<ConnectionConfigItem["fields"]>[number]
+}
+
+const configFieldForSchema = (
+  name: string,
+  rawSchema: JsonSchema,
+  required: boolean,
+): ConnectionConfigField => {
+  const schema = resolveNonNullSchema(rawSchema)
+  const type = configTypeForSchema(schema)
+  if (type === "array") {
+    return {
+      name,
+      type,
+      required: isRequired(schema, required),
+      ...(schema.items ? { items: configItemForSchema(schema.items) } : {}),
+      ...(schema.description ? { description: schema.description } : {}),
+    }
+  }
+
+  const item = configItemForSchema(schema)
+  if (item.type === "object") {
+    throw new Error("Top-level object config fields are not supported")
+  }
+  return {
+    name,
+    ...item,
+    required: isRequired(schema, required),
+  } as ConnectionConfigField
+}
+
+/** Converts a Zod object schema to the connection catalog's field metadata. */
+export const zodToConfigFields = (
+  schema: z.ZodObject,
+): ConnectionConfigField[] => {
+  const jsonSchema = z.toJSONSchema(schema) as JsonSchema
+  const required = new Set(jsonSchema.required)
+  return Object.entries(jsonSchema.properties ?? {}).map(([name, property]) =>
+    configFieldForSchema(name, property, required.has(name)),
+  )
+}
 
 export const connectSessionNextActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open_url"), url: z.string() }),

@@ -12,6 +12,7 @@ import {
   lowQueue,
   quotaQueue,
   scheduleQueue,
+  templateQueue,
   triggerQueue,
   webhookQueue,
 } from "@chatbotx.io/worker-config"
@@ -58,6 +59,7 @@ async function buildApp() {
     lowQueue,
     quotaQueue,
     scheduleQueue,
+    templateQueue,
     ...(sequenceSchedulerQueue ? [sequenceSchedulerQueue] : []),
   ].filter(isBullBoardQueue)
 
@@ -77,7 +79,7 @@ async function buildApp() {
 
 async function handler(request: Request) {
   const user = await getCurrentUser()
-  if (!(user && isSuperAdmin(user))) {
+  if (!(user && (await isSuperAdmin(user)))) {
     return new Response("Not found", { status: 404 })
   }
 

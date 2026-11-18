@@ -21,7 +21,9 @@ const chatStoreState = {
   applyAgentLastReadAt: vi.fn(),
   handleNewMessages: vi.fn(),
   markMessagesDeleted: vi.fn(),
+  removeMessages: vi.fn(),
   markMessageFailed: vi.fn(),
+  settleSendResult: vi.fn(),
   assignMessageCommentId: vi.fn(),
   updateMessageText: vi.fn(),
   updateMessageContentAttributes: vi.fn(),
@@ -31,6 +33,7 @@ const chatStoreState = {
   openConversation: openConversationMock,
   patchContactInboxThreadControl: vi.fn(),
   resumeConversationHeadRefresh: vi.fn(),
+  scheduleConversationHeadRefresh: vi.fn(),
 }
 const wholeStoreSelectionMock = vi.fn()
 vi.mock("@/features/chat/store/chat-store-provider", () => ({
@@ -41,6 +44,11 @@ vi.mock("@/features/chat/store/chat-store-provider", () => ({
     }
     return selection
   },
+}))
+
+const responseSlaState = { enabled: false }
+vi.mock("@/features/response-sla/provider/response-sla-hook", () => ({
+  useResponseSlaEnabled: () => responseSlaState.enabled,
 }))
 
 const conversationIdParamMock = { set: vi.fn(), clear: vi.fn() }
@@ -111,7 +119,7 @@ describe("ChatRealtime — chat event parity", () => {
     expect(wholeStoreSelectionMock).not.toHaveBeenCalled()
   })
 
-  test("registers exactly the eleven chat events, no more, no fewer", async () => {
+  test("registers exactly the twelve chat events, no more, no fewer", async () => {
     await render()
     expect(Object.keys(capturedHandlers ?? {}).sort()).toEqual(
       [
@@ -125,6 +133,7 @@ describe("ChatRealtime — chat event parity", () => {
         "messageDeleted",
         "messageFailed",
         "messageIdAssigned",
+        "messageRemoved",
         "messageUpdated",
       ].sort(),
     )
@@ -144,6 +153,12 @@ describe("ChatRealtime — chat event parity", () => {
     await render()
     act(() => emit("messageDeleted", { messageIds: ["m1"] }))
     expect(chatStoreState.markMessagesDeleted).toHaveBeenCalledWith(["m1"])
+  })
+
+  test("messageRemoved drops the messages from the timeline", async () => {
+    await render()
+    act(() => emit("messageRemoved", { messageIds: ["m1"] }))
+    expect(chatStoreState.removeMessages).toHaveBeenCalledWith(["m1"])
   })
 
   test("messageIdAssigned assigns the comment id", async () => {
@@ -169,6 +184,27 @@ describe("ChatRealtime — chat event parity", () => {
       "client-1",
       "boom",
     )
+  })
+
+  test("messageFailed is also the composer queue's answer, success (null) included", async () => {
+    await render()
+    act(() =>
+      emit("messageFailed", { messageId: "m1", clientId: "c1", error: null }),
+    )
+    act(() =>
+      emit("messageFailed", { messageId: "m2", clientId: "c2", error: "boom" }),
+    )
+
+    expect(chatStoreState.settleSendResult).toHaveBeenNthCalledWith(1, {
+      messageId: "m1",
+      clientId: "c1",
+      error: null,
+    })
+    expect(chatStoreState.settleSendResult).toHaveBeenNthCalledWith(2, {
+      messageId: "m2",
+      clientId: "c2",
+      error: "boom",
+    })
   })
 
   test("messageUpdated updates the message text/attachment fields", async () => {
@@ -243,6 +279,69 @@ describe("ChatRealtime — chat event parity", () => {
         assignedInboxTeam: null,
       },
     )
+  })
+
+  test("an assignment refreshes the list head only while the SLA is on (the deadline may move)", async () => {
+    await render()
+    const assigned = {
+      conversationIds: ["conv-1"],
+      assignedUserId: "user-1",
+      assignedInboxTeamId: null,
+    }
+
+    act(() => emit("conversationAssigned", assigned))
+    expect(
+      chatStoreState.scheduleConversationHeadRefresh,
+    ).not.toHaveBeenCalled()
+
+    responseSlaState.enabled = true
+    await render()
+    act(() => emit("conversationAssigned", assigned))
+    expect(chatStoreState.scheduleConversationHeadRefresh).toHaveBeenCalledWith(
+      "workspace-1",
+    )
+    responseSlaState.enabled = false
+  })
+
+  test("a customer message refreshes the list head only while the SLA is on", async () => {
+    const customerMessage = {
+      id: "message-9",
+      conversationId: "conversation-9",
+      messageType: "incoming",
+    }
+    const agentMessage = {
+      ...customerMessage,
+      id: "message-10",
+      messageType: "outgoing",
+    }
+
+    await render()
+    await act(async () => {
+      emit("messageCreated", customerMessage)
+      await Promise.resolve()
+    })
+    expect(
+      chatStoreState.scheduleConversationHeadRefresh,
+    ).not.toHaveBeenCalled()
+
+    responseSlaState.enabled = true
+    await render()
+    await act(async () => {
+      emit("messageCreated", agentMessage)
+      await Promise.resolve()
+    })
+    expect(
+      chatStoreState.scheduleConversationHeadRefresh,
+    ).not.toHaveBeenCalled()
+
+    await act(async () => {
+      emit("messageCreated", customerMessage)
+      await Promise.resolve()
+    })
+    expect(chatStoreState.scheduleConversationHeadRefresh).toHaveBeenCalledWith(
+      "workspace-1",
+    )
+    responseSlaState.enabled = false
   })
 
   test("conversationUpdated applies a valid agent read timestamp", async () => {

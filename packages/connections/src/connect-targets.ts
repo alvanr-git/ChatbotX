@@ -167,10 +167,38 @@ const connectCandidate = async (input: {
 }
 
 /**
+ * Releases this attempt's target lease once its connect settles, success or
+ * failure. After a success the committed active Connection is what rejects a
+ * repeat attempt (`duplicated`), so holding the lease to its expiry would only
+ * block a reconnect of that target after the Connection is deleted. Best-effort:
+ * a release failure never masks the connect outcome — the lease still expires.
+ */
+const releaseTargetClaim = async (input: {
+  session: Pick<ConnectSessionModel, "id" | "workspaceId" | "provider">
+  targetId: string
+  claimToken: string
+}): Promise<void> => {
+  try {
+    await connectSessionService.releaseTarget({
+      id: input.session.id,
+      workspaceId: input.session.workspaceId,
+      targetId: input.targetId,
+      ownerToken: input.claimToken,
+    })
+  } catch (err) {
+    logger.error(
+      { err, targetId: input.targetId, provider: input.session.provider },
+      "connectTargets: failed to release a target claim after a connect attempt",
+    )
+  }
+}
+
+/**
  * Finishes an `awaiting_selection` connect session by leasing each requested
- * target. A failed lease first checks whether another request committed an
- * active Connection; otherwise it reports the in-progress attempt without
- * persisting a retryable outcome, so the current owner can finish normally.
+ * target for the duration of its connect attempt. A failed lease first checks
+ * whether another request committed an active Connection; otherwise it reports
+ * the in-progress attempt without persisting a retryable outcome, so the
+ * current owner can finish normally.
  */
 export const connectTargets = async (input: {
   sessionId: string
@@ -221,8 +249,7 @@ export const connectTargets = async (input: {
   try {
     for (const targetId of input.targetIds) {
       const target = targetById.get(targetId)
-      const candidate = candidateBySourceId.get(targetId)
-      if (!(target && candidate)) {
+      if (!target) {
         outcomes.push({ targetId, status: "failed", reason: "unknown" })
         continue
       }
@@ -232,6 +259,11 @@ export const connectTargets = async (input: {
             ? { targetId, status: "duplicated", reason: "alreadyConnected" }
             : { targetId, status: "failed", reason: "notSelectable" },
         )
+        continue
+      }
+      const candidate = candidateBySourceId.get(targetId)
+      if (!candidate) {
+        outcomes.push({ targetId, status: "failed", reason: "unknown" })
         continue
       }
 
@@ -282,19 +314,6 @@ export const connectTargets = async (input: {
             : { targetId, status: "connected", connectionId: connection.id },
         )
       } catch (err) {
-        try {
-          await connectSessionService.releaseTarget({
-            id: session.id,
-            workspaceId: session.workspaceId,
-            targetId,
-            ownerToken: claimToken,
-          })
-        } catch (releaseErr) {
-          logger.error(
-            { err: releaseErr, targetId, provider: session.provider },
-            "connectTargets: failed to release a target claim after a failed connect attempt",
-          )
-        }
         outcomes.push(
           toFailureOutcome({
             err,
@@ -302,6 +321,8 @@ export const connectTargets = async (input: {
             targetId,
           }),
         )
+      } finally {
+        await releaseTargetClaim({ session, targetId, claimToken })
       }
     }
   } catch (err) {

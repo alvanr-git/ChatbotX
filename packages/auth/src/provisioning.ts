@@ -1,19 +1,17 @@
 import {
+  generateTemporaryPassword,
   platformCredentialService,
   resolveTenantSettingsByOwner,
   workspaceService,
 } from "@chatbotx.io/business"
 import { ChatbotXException } from "@chatbotx.io/business/errors"
-import { db, isUniqueViolationError } from "@chatbotx.io/database/client"
-import { accountModel, userModel } from "@chatbotx.io/database/schema"
+import { userRepository } from "@chatbotx.io/database/repositories"
 import {
   DEFAULT_ACCOUNT_CREDENTIALS_SUBJECT,
   sendAccountCredentials,
 } from "@chatbotx.io/mail"
-import { generateRandomString, hashPassword } from "better-auth/crypto"
-import { isPlaceholderEmail } from "./placeholder-email"
-
-const TEMP_PASSWORD_LENGTH = 16
+import { isPlaceholderEmail } from "@chatbotx.io/utils/placeholder-email"
+import { assertNotTenantOwnerEmail } from "./tenant-owner-email"
 
 export type ProvisionResellerAccountInput = {
   /** The reseller (white-label owner) provisioning the account. */
@@ -22,8 +20,6 @@ export type ProvisionResellerAccountInput = {
   email: string
   /** End-customer's display name. */
   name: string
-  /** Live vs test credential selector; defaults to test. */
-  livemode?: boolean
   /** Override the sign-in link; defaults to the reseller's branded app URL. */
   signInUrl?: string
 }
@@ -47,8 +43,8 @@ export type ProvisionResellerAccountResult = {
 export async function provisionResellerAccount(
   input: ProvisionResellerAccountInput,
 ): Promise<ProvisionResellerAccountResult> {
-  const { resellerUserId, email, name } = input
-  const livemode = input.livemode ?? false
+  const { resellerUserId, name } = input
+  const email = input.email.trim().toLowerCase()
 
   // The Facebook placeholder domain belongs to phone-only Facebook users; a
   // verified row on it would capture that person's Facebook sign-in while the
@@ -68,7 +64,6 @@ export async function provisionResellerAccount(
   const smtp = await platformCredentialService.findDecryptedForUser({
     userId: resellerUserId,
     type: "smtp",
-    livemode,
   })
   if (!smtp) {
     throw new ChatbotXException(
@@ -82,26 +77,21 @@ export async function provisionResellerAccount(
   //    request input — see docs/tenancy.md).
   const tenantId = await workspaceService.resolveTenantForOwner(resellerUserId)
 
+  // The tenant owner already signs in on the platform with this email; a
+  // sub-account copy would shadow them inside their own tenant.
+  await assertNotTenantOwnerEmail({ email, tenantId })
+
   // 3. Idempotency: email is unique per tenant. If the account already exists,
   //    do not recreate it or re-send (the temp password is only known at
   //    creation time).
-  const existing = await db.query.userModel.findFirst({
-    where: { email, tenantId },
-    columns: { id: true },
-  })
+  const existing = await userRepository.findIdByEmail({ email, tenantId })
   if (existing) {
     return { userId: existing.id, alreadyExisted: true }
   }
 
   // 4. Generate + hash a temporary password using better-auth's own hasher so
   //    the credential verifies on first sign-in.
-  const initialPassword = generateRandomString(
-    TEMP_PASSWORD_LENGTH,
-    "a-z",
-    "A-Z",
-    "0-9",
-  )
-  const hashedPassword = await hashPassword(initialPassword)
+  const { initialPassword, hashedPassword } = await generateTemporaryPassword()
 
   // 5. Resolve branding + sign-in link for the credentials email.
   const settings = await resolveTenantSettingsByOwner(resellerUserId)
@@ -138,55 +128,18 @@ export async function provisionResellerAccount(
     },
   )
 
-  // 7. Create the user + credential account in one transaction. Business-layer
-  //    `db` is NOT tenant-scoped, so `tenantId` is stamped explicitly on both.
-  //    A concurrent provision of the same (email, tenantId) can slip between the
-  //    idempotency check in step 3 and this insert; the unique index
-  //    `User_email_tenant_key` rejects the loser, so translate that into the
-  //    idempotent `alreadyExisted` result instead of surfacing a raw 23505.
-  try {
-    const userId = await db.transaction(async (tx) => {
-      const [createdUser] = await tx
-        .insert(userModel)
-        .values({
-          email,
-          name,
-          emailVerified: true,
-          mustChangePassword: true,
-          tenantId,
-        })
-        .returning({ id: userModel.id })
+  // 7. Create the user + credential account in one transaction. The repository
+  //    resolves a concurrent create of the same tenant-scoped email as an
+  //    idempotent result.
+  const createdUser = await userRepository.insertWithCredential({
+    email,
+    name,
+    hashedPassword,
+    tenantId,
+  })
 
-      if (!createdUser) {
-        throw new ChatbotXException(
-          "Failed to create provisioned user",
-          "provisionFailed",
-          500,
-        )
-      }
-
-      await tx.insert(accountModel).values({
-        accountId: createdUser.id,
-        providerId: "credential",
-        password: hashedPassword,
-        userId: createdUser.id,
-        tenantId,
-      })
-
-      return createdUser.id
-    })
-
-    return { userId, alreadyExisted: false }
-  } catch (error) {
-    if (isUniqueViolationError(error)) {
-      const raced = await db.query.userModel.findFirst({
-        where: { email, tenantId },
-        columns: { id: true },
-      })
-      if (raced) {
-        return { userId: raced.id, alreadyExisted: true }
-      }
-    }
-    throw error
+  return {
+    userId: createdUser.userId,
+    alreadyExisted: !createdUser.created,
   }
 }

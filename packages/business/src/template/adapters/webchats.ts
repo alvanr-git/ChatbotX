@@ -1,14 +1,22 @@
 import { db, eq } from "@chatbotx.io/database/client"
+import type { WebchatPersistentMenu } from "@chatbotx.io/database/partials"
 import { integrationWebchatModel } from "@chatbotx.io/database/schema"
 import { ChatbotXException } from "../../errors"
 import {
   type CreateWebchatRequest,
   integrationWebchatService,
 } from "../../integration-webchat/service"
+import {
+  createFlowRefPatcher,
+  dependenciesOn,
+  makeCollector,
+  recordCopy,
+  scopedWhere,
+  updateNotSupported,
+} from "./shared"
 import type {
   PatchTask,
   ResourceAdapter,
-  ResourceCollector,
   TemplateInstallContext,
 } from "./types"
 
@@ -47,15 +55,19 @@ const isChannelLimitReached = (error: unknown): boolean =>
  * `welcomeFlowId` is always deferred (webchats insert before flows in Phase
  * 1) and patched once `idMaps.flow` is complete.
  */
-export const webchatsAdapter: ResourceAdapter = {
+export const webchatsAdapter: ResourceAdapter<TemplateWebchatEntry> = {
   category: "webchats",
   providesKinds: [],
   consumesKinds: ["flow"],
   deferredKinds: ["flow"],
+  trackedKind: "integrationWebchat",
+  folderTypes: [],
+  minFormatVersion: 1,
+  sync: updateNotSupported("webchats"),
 
   async insert(
     ctx: TemplateInstallContext,
-    entries: readonly (Record<string, unknown> & { sourceId: string })[],
+    entries: readonly TemplateWebchatEntry[],
   ): Promise<PatchTask[]> {
     if (entries.length === 0) {
       return []
@@ -66,20 +78,28 @@ export const webchatsAdapter: ResourceAdapter = {
       columns: { ownerId: true },
     })
     if (!workspace) {
+      // Every entry is skipped: say so instead of dropping them silently.
+      for (const entry of entries) {
+        ctx.warn({
+          category: "webchats",
+          entityKind: "workspaceUnavailable",
+          path: `webchats.${entry.sourceId}`,
+          value: ctx.workspaceId,
+        })
+      }
       return []
     }
 
-    const pendingWelcomeFlowBySourceId = new Map<string, string>()
+    const flowRefs = createFlowRefPatcher("webchats")
 
-    for (const rawEntry of entries) {
-      const entry = rawEntry as unknown as TemplateWebchatEntry
+    for (const entry of entries) {
       const data: CreateWebchatRequest = {
         name: entry.name,
         auth: entry.auth ?? {},
         enable: entry.enable,
         authorizedDomains: entry.authorizedDomains,
         conversationStarters: entry.conversationStarters,
-        persistentMenus: entry.persistentMenus,
+        persistentMenus: entry.persistentMenus as WebchatPersistentMenu[],
         brandColor: entry.brandColor,
         hideHeader: entry.hideHeader,
         showLogo: entry.showLogo,
@@ -107,78 +127,39 @@ export const webchatsAdapter: ResourceAdapter = {
         continue
       }
 
-      if (entry.welcomeFlowId) {
-        pendingWelcomeFlowBySourceId.set(created.id, entry.welcomeFlowId)
-      }
-      ctx.track({
+      flowRefs.defer({
+        sourceEntryId: entry.sourceId,
+        field: "welcomeFlowId",
+        sourceFlowId: entry.welcomeFlowId,
+        write: async (tx, welcomeFlowId) => {
+          await tx
+            .update(integrationWebchatModel)
+            .set({ welcomeFlowId })
+            .where(eq(integrationWebchatModel.id, created.integration.id))
+        },
+      })
+      recordCopy(ctx, {
         category: "webchats",
         resourceKind: "integrationWebchat",
-        resourceId: created.id,
-        sourceResourceId: entry.sourceId,
-        wasExisting: false,
+        sourceId: entry.sourceId,
+        resourceId: created.integration.id,
       })
     }
 
-    return [
-      {
-        category: "webchats",
-        apply: async (patchCtx) => {
-          for (const [
-            webchatId,
-            flowSourceId,
-          ] of pendingWelcomeFlowBySourceId) {
-            const targetFlowId = patchCtx.idMaps.flow?.get(flowSourceId)
-            if (!targetFlowId) {
-              patchCtx.warn({
-                category: "webchats",
-                entityKind: "flow",
-                path: `webchats.${webchatId}.welcomeFlowId`,
-                value: flowSourceId,
-              })
-              continue
-            }
-            await patchCtx.tx
-              .update(integrationWebchatModel)
-              .set({ welcomeFlowId: targetFlowId })
-              .where(eq(integrationWebchatModel.id, webchatId))
-          }
-        },
-      },
-    ]
+    return flowRefs.tasks()
   },
 
-  collector: {
-    async resolveIds(workspaceId) {
-      const rows = await db.query.integrationWebchatModel.findMany({
-        where: { workspaceId },
+  collector: makeCollector({
+    findIds: (query) =>
+      db.query.integrationWebchatModel.findMany({
+        where: scopedWhere(query),
         columns: { id: true },
-      })
-      return rows.map((row) => row.id)
-    },
+        limit: query.limit,
+      }),
 
-    async verifyOwnership(workspaceId, ids) {
-      const uniqueIds = [...new Set(ids)]
-      if (uniqueIds.length === 0) {
-        return []
-      }
+    async collectRows(workspaceId, ids) {
       const rows = await db.query.integrationWebchatModel.findMany({
-        where: { workspaceId, id: { in: uniqueIds } },
-        columns: { id: true },
-      })
-      return rows.map((row) => row.id)
-    },
-
-    async collect(workspaceId, ids) {
-      if (ids.length === 0) {
-        return {
-          entries: [],
-          folderIds: [],
-          productCategoryIds: [],
-          hardDependencies: [],
-        }
-      }
-      const rows = await db.query.integrationWebchatModel.findMany({
-        where: { workspaceId, id: { in: [...ids] } },
+        where: scopedWhere({ workspaceId, ids }),
       })
       const entries = rows.map((row) => ({
         sourceId: row.id,
@@ -200,12 +181,14 @@ export const webchatsAdapter: ResourceAdapter = {
         welcomeFlowId: row.welcomeFlowId,
       }))
 
+      // The welcome flow travels with the webchat, like a keyword's flow.
       return {
         entries,
-        folderIds: [],
-        productCategoryIds: [],
-        hardDependencies: [],
+        hardDependencies: dependenciesOn(
+          "flows",
+          rows.map((row) => row.welcomeFlowId),
+        ),
       }
     },
-  } satisfies ResourceCollector,
+  }),
 }

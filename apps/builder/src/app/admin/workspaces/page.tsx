@@ -1,3 +1,7 @@
+import {
+  hasEnterpriseFeatures,
+  isSupportConsentRequired,
+} from "@chatbotx.io/business"
 import { getTranslations } from "next-intl/server"
 import type { SearchParams } from "nuqs/server"
 import { Suspense } from "react"
@@ -10,9 +14,11 @@ export default async function AdminWorkspacesPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const [t, search] = await Promise.all([
+  const [t, search, consentRequired, canCreateWorkspace] = await Promise.all([
     getTranslations(),
     getAdminWorkspacesSearchParamsCache.parse(await searchParams),
+    isSupportConsentRequired(),
+    hasEnterpriseFeatures(),
   ])
 
   const promises = Promise.all([listAdminWorkspaces(search)])
@@ -24,12 +30,20 @@ export default async function AdminWorkspacesPage({
           {t("platformAdmin.workspaces.title")}
         </h3>
         <p className="text-muted-foreground text-sm">
-          {t("platformAdmin.workspaces.description")}
+          {t(
+            consentRequired
+              ? "platformAdmin.workspaces.description"
+              : "platformAdmin.workspaces.descriptionConsentDisabled",
+          )}
         </p>
       </div>
 
       <Suspense>
-        <AdminWorkspacesTable promises={promises} />
+        <AdminWorkspacesTable
+          canCreateWorkspace={canCreateWorkspace}
+          consentRequired={consentRequired}
+          promises={promises}
+        />
       </Suspense>
     </div>
   )

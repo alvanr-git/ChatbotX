@@ -1,19 +1,18 @@
 // @vitest-environment node
 import type { UserModel } from "@chatbotx.io/database/types"
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { resolveCredentialScopedUserId } from "../src/features/platform-credentials/scope"
 
-const { isSuperAdminSpy } = vi.hoisted(() => ({
+const { canUseOwnCredentialsSpy, isSuperAdminSpy } = vi.hoisted(() => ({
+  canUseOwnCredentialsSpy: vi.fn(),
   isSuperAdminSpy: vi.fn(),
 }))
 
 vi.mock("@chatbotx.io/business", () => ({
+  canUseOwnCredentials: canUseOwnCredentialsSpy,
   isSuperAdmin: isSuperAdminSpy,
 }))
 vi.mock("@/env", () => ({ isCloud: () => true }))
-
-const { resolveCredentialScopedUserId } = await import(
-  "../src/features/platform-credentials/scope"
-)
 
 const asUser = (id: string) => ({ id }) as UserModel
 
@@ -22,28 +21,47 @@ describe("resolveCredentialScopedUserId", () => {
     vi.clearAllMocks()
   })
 
-  test("rejects a non-super-admin requesting platform scope", () => {
-    isSuperAdminSpy.mockReturnValue(false)
+  test("rejects a non-super-admin requesting platform scope", async () => {
+    isSuperAdminSpy.mockResolvedValue(false)
 
-    expect(() =>
+    await expect(
       resolveCredentialScopedUserId(asUser("user-1"), "platform"),
-    ).toThrow("Unauthorized")
+    ).rejects.toThrow("Unauthorized")
   })
 
-  test("resolves platform scope to undefined for a super admin", () => {
-    isSuperAdminSpy.mockReturnValue(true)
+  test("resolves platform scope to undefined for a super admin", async () => {
+    isSuperAdminSpy.mockResolvedValue(true)
 
-    expect(
+    await expect(
       resolveCredentialScopedUserId(asUser("admin-1"), "platform"),
-    ).toBeUndefined()
+    ).resolves.toBeUndefined()
   })
 
-  test("resolves user scope to the caller's own id without checking super-admin status", () => {
-    isSuperAdminSpy.mockReturnValue(false)
-
-    expect(resolveCredentialScopedUserId(asUser("user-1"), "user")).toBe(
-      "user-1",
-    )
+  test("rejects user scope for a cloud user without credential entitlement", async () => {
+    isSuperAdminSpy.mockResolvedValue(false)
+    canUseOwnCredentialsSpy.mockResolvedValue(false)
+    await expect(
+      resolveCredentialScopedUserId(asUser("user-1"), "user"),
+    ).rejects.toThrow("Unauthorized")
     expect(isSuperAdminSpy).not.toHaveBeenCalled()
+  })
+
+  test("resolves user scope for a cloud user with credential entitlement", async () => {
+    canUseOwnCredentialsSpy.mockResolvedValue(true)
+
+    await expect(
+      resolveCredentialScopedUserId(asUser("user-1"), "user"),
+    ).resolves.toBe("user-1")
+  })
+
+  test("resolves a user scope for credential cleanup after an entitlement downgrade", async () => {
+    canUseOwnCredentialsSpy.mockResolvedValue(false)
+
+    await expect(
+      resolveCredentialScopedUserId(asUser("user-1"), "user", {
+        allowWithoutEntitlement: true,
+      }),
+    ).resolves.toBe("user-1")
+    expect(canUseOwnCredentialsSpy).not.toHaveBeenCalled()
   })
 })

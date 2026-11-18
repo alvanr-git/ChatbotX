@@ -9,7 +9,15 @@ import {
   isNull,
   sql,
 } from "@chatbotx.io/database/client"
-import { workspaceMemberRoles } from "@chatbotx.io/database/partials"
+import {
+  type WorkspaceMemberPermissions,
+  workspaceMemberRoles,
+} from "@chatbotx.io/database/partials"
+import { templateUninstallStateRepository } from "@chatbotx.io/database/repositories"
+import {
+  type WorkspaceDeletionRequestState,
+  workspaceRepository,
+} from "@chatbotx.io/database/repositories/workspace"
 import {
   ROOT_TENANT_ID,
   workspaceMemberModel,
@@ -18,9 +26,13 @@ import {
 import type { WorkspaceModel } from "@chatbotx.io/database/types"
 import { withCache } from "@chatbotx.io/redis"
 import { formatInTimeZone } from "date-fns-tz"
-import { dispatchAuditRecord } from "../audit/dispatcher"
+import {
+  dispatchAuditRecord,
+  dispatchAuditRecordSafely,
+} from "../audit/dispatcher"
 import { BaseService } from "../base.service"
 import { connectionStateService } from "../connection/state-service"
+import { contactActivityService } from "../contact-activity/service"
 import { contactInboxPostService } from "../contact-inbox-post/service"
 import { tenantService } from "../enterprise/tenant/service"
 import {
@@ -29,10 +41,19 @@ import {
   workspaceDeletionStartedException,
   workspaceLimitReachedException,
 } from "../errors"
-import { isCommunity } from "../keys"
 import { logger } from "../logger"
+import { notifyWorkspaceCurrencyChange } from "../pipeline/currency-refresh"
 import { quotaEnforcementService } from "../quota-enforcement/service"
+import { resourceDeletionLogService } from "../resource-deletion-log/service"
+import { templateInstallIntentService } from "../template/install-intent"
+import { dispatchStagedInstalls } from "../template/installation-dispatch"
+import {
+  stageSharedTemplateInstall,
+  stageTenantDefaultInstall,
+} from "../template/installation-stage"
 import { userQuotaService } from "../user-quota/service"
+import { workspaceDeletionRecordService } from "../workspace-deletion-record/service"
+import { withPurgeTimeouts } from "../workspace-lifecycle/purge-batch"
 import {
   type WorkspaceTeardownIntegrations,
   workspaceLifecycleService,
@@ -40,7 +61,13 @@ import {
 import {
   workspaceMemberCacheTag,
   workspaceMemberService,
+  workspaceRosterCacheTag,
 } from "../workspace-member/service"
+import {
+  closePreviousWorkspaceDeletionRequest,
+  completeWorkspaceDeletionLog,
+  workspaceDeletionTarget,
+} from "./deletion-log"
 import { nextScheduledDeletionAt } from "./deletion-schedule"
 import {
   compensateWorkspaceQuotaConsumption,
@@ -49,10 +76,21 @@ import {
 } from "./quota-consumption"
 
 type WorkspaceWhere = Partial<{ id: string; ownerId: string }>
+type EnsureOwnerWorkspaceInput = {
+  ownerId: string
+  name: string
+  tx?: DatabaseClient
+  quotaConsumption?: WorkspaceQuotaConsumption
+  /** Tenant of the host the request came in on (server-resolved, never client input). */
+  hostTenantId?: string
+}
+
 /** What `writeWorkspace` has already done, for `insertWorkspace`'s rollback. */
 type WriteProgress = {
   workspaceId?: string
-  teamMemberUsage: { liveIncremented: boolean }
+  /** A white-label default staged a `pending` install in this transaction: dispatch it once the transaction commits. */
+  hasStagedInstall?: boolean
+  teamMemberUsage: { liveIncrementedCount: number }
 }
 type DueWorkspace = Pick<WorkspaceModel, "id" | "ownerId" | "tenantId">
 
@@ -60,6 +98,21 @@ const stableKey = (where: WorkspaceWhere) =>
   JSON.stringify(Object.fromEntries(Object.entries(where).sort()))
 
 const PURGE_WORKSPACE_TEARDOWN_CONCURRENCY = 5
+const PURGE_WORKSPACE_MAX_DURATION_MS = 45 * 60 * 1000
+
+// Every new membership (owner and additional members alike) starts with the
+// same defaults — mirrors `acceptInvitationAction`'s member insert.
+const DEFAULT_MEMBER_NOTIFICATION_TYPES = {
+  notifyAdmin: true,
+  newMessageToHuman: true,
+  newOrder: true,
+}
+const DEFAULT_MEMBER_NOTIFICATION_CHANNELS = {
+  messenger: true,
+  email: true,
+  telegram: true,
+  browser: true,
+}
 
 const WORKSPACE_SETTINGS_KEYS = [
   "defaultReply",
@@ -112,23 +165,83 @@ class WorkspaceService extends BaseService {
     )
   }
 
-  /**
-   * The live workspace a user already owns — excludes a row mid soft-delete
-   * (`scheduledDeletionAt` set) so `createFirstWorkspace`'s idempotency
-   * check never hands back a workspace that's about to be purged, and
-   * orders by `id` (time-ordered) so a concurrent caller resolving "the"
-   * first workspace agrees deterministically even if the owner somehow
-   * ends up with more than one live row.
-   */
   async findActiveByOwner(props: {
     ownerId: string
     tx?: DatabaseClient
   }): Promise<WorkspaceModel | undefined> {
-    const { ownerId, tx = db } = props
-    return await tx.query.workspaceModel.findFirst({
-      where: { ownerId, scheduledDeletionAt: { isNull: true } },
-      orderBy: { id: "asc" },
-    })
+    return await workspaceRepository.findActiveByOwner(
+      { ownerId: props.ownerId },
+      props.tx,
+    )
+  }
+
+  /**
+   * Finds or creates an owner-scoped workspace under a transaction-scoped
+   * advisory lock. The lookup defines each caller's reuse policy; `create`
+   * retains the caller's transaction and quota semantics.
+   */
+  private async ensureForOwner(
+    props: EnsureOwnerWorkspaceInput,
+    findExisting: (
+      input: { ownerId: string; tenantId: string },
+      tx: DatabaseClient,
+    ) => Promise<WorkspaceModel | undefined>,
+  ): Promise<WorkspaceModel> {
+    const { ownerId, name, tx, quotaConsumption, hostTenantId } = props
+    const run = async (lockTx: DatabaseClient): Promise<WorkspaceModel> => {
+      await workspaceRepository.lockFirstWorkspace({ ownerId }, lockTx)
+      // Reuse only a workspace of the tenant this request targets: a reseller
+      // owner on their white-label host must not get a root workspace back
+      // (and the other way round).
+      const tenantId = await this.resolveWorkspaceTenant({
+        ownerId,
+        hostTenantId,
+      })
+      const existing = await findExisting({ ownerId, tenantId }, lockTx)
+      if (existing) {
+        // Nothing new to install into: a share page's choice must not carry
+        // over to whatever this user creates next.
+        await templateInstallIntentService.clear(ownerId)
+        return existing
+      }
+      return await this.create({
+        data: { name, ownerId, tenantId },
+        createdBy: ownerId,
+        tx: lockTx,
+        quotaConsumption,
+        hostTenantId,
+      })
+    }
+
+    return tx ? await run(tx) : await db.transaction(run)
+  }
+
+  /**
+   * The owner's live workspace, created when they have none. Serialized per
+   * owner with a transaction-scoped advisory lock so two tabs opening `/` at
+   * once cannot both create one. A Redis lock would not fence a caller-owned
+   * `tx` (its writes are invisible to the other caller until commit), so the
+   * lock rides the transaction that stays open until `create` commits.
+   */
+  async ensureFirstForOwner(
+    props: EnsureOwnerWorkspaceInput,
+  ): Promise<WorkspaceModel> {
+    return await this.ensureForOwner(props, (input, tx) =>
+      workspaceRepository.findActiveByOwner(input, tx),
+    )
+  }
+
+  /**
+   * The owner's empty live workspace, created when none remain. Channel
+   * connects reuse an unfinished target on replay but never attach a channel
+   * to a workspace that already has an Inbox.
+   */
+  async ensureConnectTargetForOwner(
+    props: EnsureOwnerWorkspaceInput,
+  ): Promise<WorkspaceModel> {
+    return await this.ensureForOwner(props, (input, tx) =>
+      workspaceRepository.findEmptyActiveByOwner(input, tx),
+    )
   }
 
   // Auth gate — membership must take effect immediately on removal, so this
@@ -214,7 +327,15 @@ class WorkspaceService extends BaseService {
     if (Object.keys(picked).length === 0) {
       return await this.findById({ id: props.id })
     }
-    return await this.update({ id: props.id, data: picked })
+    const updated = await this.update({ id: props.id, data: picked })
+    if (props.data.targetCountry !== undefined) {
+      // Pipelines follow the country's currency unless they set their own.
+      // Notified on every write of the country, not only on a change: comparing
+      // with a value read before the write races with a concurrent save (the
+      // later one would see no change and skip), and a refetch is cheap.
+      await notifyWorkspaceCurrencyChange(props.id)
+    }
+    return updated
   }
 
   async update(props: {
@@ -251,21 +372,21 @@ class WorkspaceService extends BaseService {
       throw workspaceDeletionStartedException()
     }
 
-    const memberUserIds = await workspaceMemberService.listUserIdsByWorkspaceId(
-      { tx, workspaceId: id },
-    )
-    await this.invalidateCacheTags([
-      `workspaces:${id}`,
-      ...memberUserIds.map((userId) => workspaceMemberCacheTag(userId)),
-    ])
+    await this.invalidateWorkspaceCache(id, tx)
 
     // Only when a caller-owned transaction hasn't been passed in — emitting
     // here while nested in an open db.transaction(...) would enqueue an audit
     // row for a write that might still roll back.
     const changedKeys = Object.keys(data)
-    const onlyScheduledDeletionChanged =
-      changedKeys.length === 1 && changedKeys[0] === "scheduledDeletionAt"
-    if (!props.tx && changedKeys.length > 0 && !onlyScheduledDeletionChanged) {
+    const deletionMetadataKeys = new Set([
+      "deletionRequestedAt",
+      "deletionRequestedById",
+      "scheduledDeletionAt",
+    ])
+    const onlyDeletionMetadataChanged =
+      changedKeys.length > 0 &&
+      changedKeys.every((key) => deletionMetadataKeys.has(key))
+    if (!props.tx && changedKeys.length > 0 && !onlyDeletionMetadataChanged) {
       const nameChanged = data.name !== undefined && data.name !== previousName
       await this.audit(
         "update",
@@ -276,6 +397,19 @@ class WorkspaceService extends BaseService {
     }
 
     return updated
+  }
+
+  private async invalidateWorkspaceCache(
+    id: string,
+    tx: DatabaseClient,
+  ): Promise<void> {
+    const memberUserIds = await workspaceMemberService.listUserIdsByWorkspaceId(
+      { tx, workspaceId: id },
+    )
+    await this.invalidateCacheTags([
+      `workspaces:${id}`,
+      ...memberUserIds.map((userId) => workspaceMemberCacheTag(userId)),
+    ])
   }
 
   /** The stored logo path: `null` when unset, `undefined` when there is no such workspace. */
@@ -334,41 +468,128 @@ class WorkspaceService extends BaseService {
   }
 
   async scheduleDeletion(props: {
+    actorId: string
     id: string
     tx?: DatabaseClient
   }): Promise<WorkspaceModel> {
-    const { tx = db } = props
-    const workspace = await this.update({
+    const workspace = await this.changeDeletionRequest({
       id: props.id,
-      tx,
-      data: {
-        scheduledDeletionAt: nextScheduledDeletionAt(),
+      tx: props.tx,
+      change: async (tx, current) => {
+        const updated = await this.update({
+          id: props.id,
+          tx,
+          data: {
+            deletionRequestedAt: new Date(),
+            deletionRequestedById: props.actorId,
+            scheduledDeletionAt: nextScheduledDeletionAt(),
+          },
+        })
+        // A repeat submit replaces the earlier request (and its deadline), so
+        // each accepted submit stays its own row with its own requester.
+        if (current?.scheduledDeletionAt) {
+          await closePreviousWorkspaceDeletionRequest(current, tx)
+        }
+        await resourceDeletionLogService.recordRequest({
+          resource: workspaceDeletionTarget(updated.id, updated.name),
+          status: "pending",
+          requestedByUserId: props.actorId,
+          tx,
+        })
+        return updated
       },
     })
     if (!props.tx) {
-      await this.audit(
-        "schedule_deletion",
-        "scheduled the workspace for deletion",
-      )
+      await this.writeScheduledDeletionAudit({
+        actorId: props.actorId,
+        id: props.id,
+      })
     }
     return workspace
+  }
+
+  async finalizeScheduledDeletion(props: {
+    actorId: string
+    id: string
+  }): Promise<void> {
+    await this.invalidateWorkspaceCache(props.id, db)
+    await this.writeScheduledDeletionAudit(props)
+  }
+
+  private async writeScheduledDeletionAudit(props: {
+    actorId: string
+    id: string
+  }): Promise<void> {
+    await dispatchAuditRecordSafely(
+      {
+        action: "schedule_deletion",
+        detail: "scheduled the workspace for deletion",
+        userId: props.actorId,
+        workspaceId: props.id,
+      },
+      "workspace-deletion: failed to dispatch schedule audit record",
+    )
   }
 
   async cancelDeletion(props: {
     id: string
     tx?: DatabaseClient
   }): Promise<WorkspaceModel> {
-    const { tx = db } = props
-    const workspace = await this.update({
+    const workspace = await this.changeDeletionRequest({
       id: props.id,
-      tx,
-      data: {
-        scheduledDeletionAt: null,
+      tx: props.tx,
+      change: async (tx, current) => {
+        const updated = await this.update({
+          id: props.id,
+          tx,
+          data: {
+            deletionRequestedAt: null,
+            deletionRequestedById: null,
+            scheduledDeletionAt: null,
+          },
+        })
+        // Nothing to close, and no table scan to pay for, on a workspace that
+        // was never scheduled (or whose request an earlier cancel already closed).
+        if (current?.scheduledDeletionAt) {
+          await closePreviousWorkspaceDeletionRequest(current, tx)
+        }
+        return updated
       },
     })
     if (!props.tx) {
       await this.audit("cancel_deletion", "canceled the workspace deletion")
     }
+    return workspace
+  }
+
+  /**
+   * Changes a workspace's deletion request and writes its log row in one
+   * transaction (the caller's when `tx` is passed), under a lock on the
+   * workspace row so concurrent schedule/cancel calls serialize. `change`
+   * receives the row as it was before the change. When this call opened the
+   * transaction the caches are invalidated again after the commit, because
+   * `update` invalidates them before it.
+   */
+  private async changeDeletionRequest(props: {
+    id: string
+    tx?: DatabaseClient
+    change: (
+      tx: DatabaseClient,
+      current: WorkspaceDeletionRequestState | undefined,
+    ) => Promise<WorkspaceModel>
+  }): Promise<WorkspaceModel> {
+    const run = async (tx: DatabaseClient): Promise<WorkspaceModel> => {
+      const current = await workspaceRepository.findByIdForUpdate(
+        { id: props.id },
+        tx,
+      )
+      return await props.change(tx, current)
+    }
+    if (props.tx) {
+      return await run(props.tx)
+    }
+    const workspace = await db.transaction(run)
+    await this.invalidateWorkspaceCache(props.id, db)
     return workspace
   }
 
@@ -386,13 +607,28 @@ class WorkspaceService extends BaseService {
     chunkSize?: number
     maxChunks?: number
     integrations?: WorkspaceTeardownIntegrations
+    /**
+     * Lets go of a purged workspace's payment providers (the store's Stripe
+     * account, its PayPal webhook) before their rows go with the cascade.
+     * Passed in by the worker, so this module never loads the payments graph.
+     */
+    teardownPaymentProviders?: (workspaceId: string) => Promise<void>
   }): Promise<number> {
     const chunkSize = props?.chunkSize ?? 500
     const maxChunks = props?.maxChunks ?? 20
+    const deadlineAt = Date.now() + PURGE_WORKSPACE_MAX_DURATION_MS
     let totalDeleted = 0
     const reconciles = new Map<string, { ownerId: string; tenantId: string }>()
 
     for (let chunk = 0; chunk < maxChunks; chunk++) {
+      if (Date.now() >= deadlineAt) {
+        logger.info(
+          { durationMs: PURGE_WORKSPACE_MAX_DURATION_MS },
+          "workspace-purge: deadline reached, deferring remaining work",
+        )
+        break
+      }
+
       // Claim a chunk of due workspaces in a short transaction and immediately
       // release the FOR UPDATE locks. The heavy per-workspace teardown runs
       // outside any transaction so million-row deletes never hold a workspace
@@ -446,7 +682,12 @@ class WorkspaceService extends BaseService {
         claimed.rows,
         PURGE_WORKSPACE_TEARDOWN_CONCURRENCY,
         async (workspace) =>
-          await this.teardownDueWorkspace(workspace, props?.integrations),
+          await this.teardownDueWorkspace(
+            workspace,
+            props?.integrations,
+            deadlineAt,
+            props?.teardownPaymentProviders,
+          ),
       )
       const deleted = teardownResults.filter(isNonNull)
 
@@ -489,11 +730,11 @@ class WorkspaceService extends BaseService {
     await Promise.allSettled(
       [...reconciles.values()].map(async ({ ownerId, tenantId }) => {
         try {
-          await userQuotaService.reconcileOwnerPoolUsage(ownerId, tenantId)
+          await userQuotaService.reconcileOwnerAfterTeardown(ownerId, tenantId)
         } catch (err) {
           logger.error(
             { err, ownerId, tenantId },
-            "workspace-purge: failed to reconcile owner pool usage",
+            "workspace-purge: failed to reconcile owner quota",
           )
         }
       }),
@@ -502,17 +743,43 @@ class WorkspaceService extends BaseService {
     return totalDeleted
   }
 
+  private async writeDeletionRecord(workspace: DueWorkspace): Promise<void> {
+    const record = await workspaceDeletionRecordService.recordForWorkspace({
+      workspace,
+    })
+    if (record?.created) {
+      logger.info(
+        {
+          ownerId: workspace.ownerId,
+          usageSnapshot: record.usageSnapshot,
+          workspaceId: workspace.id,
+        },
+        "workspace-purge: deletion record written",
+      )
+    }
+  }
+
   private async teardownDueWorkspace(
     workspace: DueWorkspace,
-    integrations?: WorkspaceTeardownIntegrations,
+    integrations: WorkspaceTeardownIntegrations | undefined,
+    deadlineAt: number,
+    teardownPaymentProviders?: (workspaceId: string) => Promise<void>,
   ): Promise<DueWorkspace | null> {
     try {
+      if (Date.now() >= deadlineAt) {
+        throw new WorkspacePurgeIncompleteError(workspace.id, "deadline")
+      }
+
       const fencedWorkspace = await this.acquirePurgeFence(workspace.id)
       if (!fencedWorkspace) {
         return null
       }
+      await this.writeDeletionRecord(fencedWorkspace)
 
-      await workspaceLifecycleService.freezeWorkspaceRuntime(fencedWorkspace.id)
+      await workspaceLifecycleService.freezeWorkspaceRuntime(
+        fencedWorkspace.id,
+        deadlineAt,
+      )
 
       await workspaceLifecycleService
         .disconnectWorkspaceIntegrations(fencedWorkspace.id)
@@ -522,6 +789,14 @@ class WorkspaceService extends BaseService {
             "workspace-purge: failed to disconnect workspace integrations",
           )
         })
+      // The store's Stripe account and PayPal webhook, before their rows go
+      // with the workspace's cascade.
+      await teardownPaymentProviders?.(fencedWorkspace.id).catch((err) => {
+        logger.error(
+          { err, workspaceId: fencedWorkspace.id },
+          "workspace-purge: failed to disconnect payment providers",
+        )
+      })
 
       const { pendingReleases } =
         await workspaceLifecycleService.disconnectWorkspaceChannels({
@@ -541,8 +816,12 @@ class WorkspaceService extends BaseService {
       // Drain high-volume child tables in small self-committing batches before
       // the FK cascade, so no single statement deletes millions of rows under lock.
       await workspaceLifecycleService.purgeWorkspaceHeavyData({
+        deadlineAt,
         workspaceId: fencedWorkspace.id,
       })
+      if (Date.now() >= deadlineAt) {
+        throw new WorkspacePurgeIncompleteError(fencedWorkspace.id, "deadline")
+      }
 
       const postPurge = await contactInboxPostService.purgeWorkspace({
         workspaceId: fencedWorkspace.id,
@@ -554,9 +833,87 @@ class WorkspaceService extends BaseService {
         )
       }
 
-      // Best-effort: never block/roll back the purge if release fails —
-      // `reconcileOwnerPoolUsage` below re-derives `workspaces` from source
-      // for every affected owner regardless.
+      const activityPurge = await contactActivityService.purgeWorkspace({
+        workspaceId: fencedWorkspace.id,
+      })
+      if (!activityPurge.complete) {
+        throw new WorkspacePurgeIncompleteError(
+          fencedWorkspace.id,
+          activityPurge.table ?? "ContactActivity",
+        )
+      }
+
+      // Resolved before the final transaction, not inside it: the table has no
+      // index, so the scan must not count against that transaction. It runs
+      // under the purge timeouts (a slow or blocked scan defers the purge) and
+      // before the deadline check below (a late scan cannot start the delete).
+      // After the fence nothing can cancel or resubmit, so the row cannot change.
+      const pendingDeletionLogId = await withPurgeTimeouts({
+        table: "ResourceDeletionLog",
+        workspaceId: fencedWorkspace.id,
+        fn: (tx) =>
+          resourceDeletionLogService.findPendingId({
+            resource: workspaceDeletionTarget(fencedWorkspace.id),
+            tx,
+          }),
+      })
+
+      if (Date.now() >= deadlineAt) {
+        throw new WorkspacePurgeIncompleteError(fencedWorkspace.id, "deadline")
+      }
+
+      const deletedWorkspace = await withPurgeTimeouts({
+        table: "Workspace",
+        workspaceId: fencedWorkspace.id,
+        fn: async (tx) => {
+          // A running template uninstall holds installation rows and then
+          // waits for the copies' rows; the cascade below takes those rows
+          // and, through the Template delete trigger, the installation rows:
+          // they can deadlock. Defer to the next run while one holds a live
+          // lease (an abandoned claim's lease expires). This narrows the
+          // collision, it does not close it: an uninstall claimed right after
+          // this check can still contend, and then Postgres aborts one side
+          // (40P01) or the purge's lock timeout trips — both retried.
+          if (
+            await templateUninstallStateRepository.hasLiveUninstallTouchingWorkspace(
+              fencedWorkspace.id,
+              tx,
+            )
+          ) {
+            throw new WorkspacePurgeIncompleteError(
+              fencedWorkspace.id,
+              "TemplateUninstall",
+            )
+          }
+          const deleted = await tx
+            .delete(workspaceModel)
+            .where(eq(workspaceModel.id, fencedWorkspace.id))
+            .returning({
+              id: workspaceModel.id,
+              name: workspaceModel.name,
+              deletionRequestedById: workspaceModel.deletionRequestedById,
+              deletionRequestedAt: workspaceModel.deletionRequestedAt,
+            })
+          if (deleted[0]) {
+            await workspaceDeletionRecordService.markPurged({
+              workspaceId: fencedWorkspace.id,
+              tx,
+            })
+            await completeWorkspaceDeletionLog({
+              pendingLogId: pendingDeletionLogId,
+              workspace: deleted[0],
+              tx,
+            })
+          }
+          return deleted
+        },
+      })
+      if (!deletedWorkspace[0]) {
+        throw new WorkspacePurgeIncompleteError(fencedWorkspace.id, "Workspace")
+      }
+
+      // Best-effort: never roll back a completed purge if release fails —
+      // the post-loop reconciliation re-derives workspaces from source.
       await quotaEnforcementService
         .release({ userId: workspace.ownerId, metric: "workspaces" })
         .catch((err) => {
@@ -569,11 +926,6 @@ class WorkspaceService extends BaseService {
             "workspace-purge: workspace quota release failed",
           )
         })
-
-      await db
-        .delete(workspaceModel)
-        .where(eq(workspaceModel.id, fencedWorkspace.id))
-
       return fencedWorkspace
     } catch (err) {
       if (err instanceof WorkspacePurgeIncompleteError) {
@@ -643,15 +995,60 @@ class WorkspaceService extends BaseService {
    * a tenant) gets that tenant; a plain platform user gets the root tenant.
    */
   async resolveTenantForOwner(creatorId: string): Promise<string> {
+    const { userTenantId, ownedTenantId } =
+      await this.loadOwnerTenancy(creatorId)
+    return this.ownerTenantFrom(userTenantId, ownedTenantId)
+  }
+
+  /** One read of the owner's own tenant plus the tenant they own, shared by both resolvers. */
+  private async loadOwnerTenancy(ownerId: string): Promise<{
+    userTenantId: string | undefined
+    ownedTenantId: string | undefined
+  }> {
     const creator = await db.query.userModel.findFirst({
-      where: { id: creatorId },
+      where: { id: ownerId },
       columns: { tenantId: true },
     })
-    if (creator && creator.tenantId !== ROOT_TENANT_ID) {
-      return creator.tenantId
+    const owned =
+      creator && creator.tenantId !== ROOT_TENANT_ID
+        ? undefined
+        : await tenantService.findByOwner(ownerId)
+    return { userTenantId: creator?.tenantId, ownedTenantId: owned?.id }
+  }
+
+  private ownerTenantFrom(
+    userTenantId: string | undefined,
+    ownedTenantId: string | undefined,
+  ): string {
+    if (userTenantId !== undefined && userTenantId !== ROOT_TENANT_ID) {
+      return userTenantId
     }
-    const owned = await tenantService.findByOwner(creatorId)
-    return owned?.id ?? ROOT_TENANT_ID
+    return ownedTenantId ?? ROOT_TENANT_ID
+  }
+
+  /**
+   * Tenant for a new workspace. Sub-accounts always get their own tenant. A
+   * reseller owner (a root user who owns a tenant) gets their tenant only when
+   * the request came in on that tenant's host, otherwise the root tenant.
+   * `hostTenantId` must be server-resolved; `undefined` (no request context,
+   * e.g. worker/script) keeps the owner-derived tenant.
+   */
+  async resolveWorkspaceTenant(props: {
+    ownerId: string
+    hostTenantId?: string
+  }): Promise<string> {
+    const { userTenantId, ownedTenantId } = await this.loadOwnerTenancy(
+      props.ownerId,
+    )
+    const ownerTenant = this.ownerTenantFrom(userTenantId, ownedTenantId)
+    if (
+      ownerTenant === ROOT_TENANT_ID ||
+      props.hostTenantId === undefined ||
+      (userTenantId !== undefined && userTenantId !== ROOT_TENANT_ID)
+    ) {
+      return ownerTenant
+    }
+    return props.hostTenantId === ownerTenant ? ownerTenant : ROOT_TENANT_ID
   }
 
   /**
@@ -667,8 +1064,21 @@ class WorkspaceService extends BaseService {
     createdBy: string
     tx?: DatabaseClient
     quotaConsumption?: WorkspaceQuotaConsumption
+    /** Additional members (role `agent`) inserted alongside the owner, in the same transaction. Used by the admin console's "create workspace for an owner" flow. */
+    members?: Array<{ userId: string; permissions: WorkspaceMemberPermissions }>
+    /** False when the owner is not the one creating it (the admin console): their share-page choice stays out of it. */
+    consumeInstallIntent?: boolean
+    /** Tenant of the request host; lets a reseller owner pick tenant vs root. Ignored when `data.tenantId` is set. */
+    hostTenantId?: string
   }): Promise<WorkspaceModel> {
-    return await this.insertWorkspace(props)
+    // First, so a creation refused below still ends the choice.
+    const installIntentToken =
+      props.consumeInstallIntent === false
+        ? null
+        : await templateInstallIntentService.take(props.createdBy)
+    const insertProps = { ...props, installIntentToken }
+
+    return await this.insertWorkspace(insertProps)
   }
 
   private async insertWorkspace(props: {
@@ -676,6 +1086,9 @@ class WorkspaceService extends BaseService {
     createdBy: string
     tx?: DatabaseClient
     quotaConsumption?: WorkspaceQuotaConsumption
+    members?: Array<{ userId: string; permissions: WorkspaceMemberPermissions }>
+    installIntentToken: string | null
+    hostTenantId?: string
   }): Promise<WorkspaceModel> {
     // This consume runs against `db`, not `tx`: if a caller wraps `create` in
     // its own transaction that later rolls back (e.g. a channel connect action),
@@ -693,7 +1106,7 @@ class WorkspaceService extends BaseService {
     // Filled by `writeWorkspace` as it goes, so the catch below knows which
     // live counters actually moved.
     const progress: WriteProgress = {
-      teamMemberUsage: { liveIncremented: false },
+      teamMemberUsage: { liveIncrementedCount: 0 },
     }
     let newWorkspace: WorkspaceModel
     try {
@@ -715,8 +1128,8 @@ class WorkspaceService extends BaseService {
             consumed: true,
             userId: props.createdBy,
             workspaceId: progress.workspaceId,
-            teamMembersLiveIncremented:
-              progress.teamMemberUsage.liveIncremented,
+            teamMembersLiveIncrementedCount:
+              progress.teamMemberUsage.liveIncrementedCount,
           })
         : releaseWorkspaceSeat(props.createdBy))
       throw err
@@ -730,14 +1143,29 @@ class WorkspaceService extends BaseService {
         consumed: true,
         userId: props.createdBy,
         workspaceId: newWorkspace.id,
-        teamMembersLiveIncremented: progress.teamMemberUsage.liveIncremented,
+        teamMembersLiveIncrementedCount:
+          progress.teamMemberUsage.liveIncrementedCount,
       })
+    }
+
+    // Right after the owned transaction commits, before anything that could
+    // throw: the staged install is durable, and the sweep recovers a lost
+    // enqueue, so this only buys latency. A caller-owned transaction
+    // dispatches itself after its own commit (`dispatchStagedInstalls`).
+    if (!props.tx && progress.hasStagedInstall) {
+      await dispatchStagedInstalls(newWorkspace.id)
     }
 
     // After the owned transaction commits: busting earlier would let a
     // concurrent read re-cache the owner's membership list without the new
     // workspace until the TTL.
-    await this.invalidateCacheTags([workspaceMemberCacheTag(props.createdBy)])
+    await this.invalidateCacheTags([
+      workspaceMemberCacheTag(props.createdBy),
+      ...(props.members ?? []).map((member) =>
+        workspaceMemberCacheTag(member.userId),
+      ),
+      workspaceRosterCacheTag(newWorkspace.id),
+    ])
 
     // Sanctioned exception: no workspaceId exists in the ALS actor yet at
     // this point, so this bypasses this.audit() with an explicit override.
@@ -762,11 +1190,18 @@ class WorkspaceService extends BaseService {
     createdBy: string
     tx: DatabaseClient
     progress: WriteProgress
+    members?: Array<{ userId: string; permissions: WorkspaceMemberPermissions }>
+    installIntentToken: string | null
+    hostTenantId?: string
   }): Promise<WorkspaceModel> {
     const { data, tx } = props
 
     const tenantId =
-      data.tenantId ?? (await this.resolveTenantForOwner(props.createdBy))
+      data.tenantId ??
+      (await this.resolveWorkspaceTenant({
+        ownerId: props.createdBy,
+        hostTenantId: props.hostTenantId,
+      }))
     const [newWorkspace] = await tx
       .insert(workspaceModel)
       .values({
@@ -793,25 +1228,51 @@ class WorkspaceService extends BaseService {
           broadcast: true,
           ecommerce: true,
         },
-        notificationTypes: {
-          notifyAdmin: true,
-          newMessageToHuman: true,
-          newOrder: true,
-        },
-        notificationChannels: {
-          messenger: true,
-          email: true,
-          telegram: true,
-          browser: true,
-        },
+        notificationTypes: DEFAULT_MEMBER_NOTIFICATION_TYPES,
+        notificationChannels: DEFAULT_MEMBER_NOTIFICATION_CHANNELS,
       },
     })
+
+    // Admin-console "create workspace for an owner" flow attaches members in
+    // the same transaction as the owner above, so a later failure (quota,
+    // cache) rolls every member back with the workspace instead of leaving a
+    // partially staffed workspace behind.
+    for (const member of props.members ?? []) {
+      await workspaceMemberService.create({
+        tx,
+        teamMemberUsage: props.progress.teamMemberUsage,
+        data: {
+          userId: member.userId,
+          workspaceId: newWorkspace.id,
+          role: workspaceMemberRoles.enum.agent,
+          permissions: member.permissions,
+          notificationTypes: DEFAULT_MEMBER_NOTIFICATION_TYPES,
+          notificationChannels: DEFAULT_MEMBER_NOTIFICATION_CHANNELS,
+        },
+      })
+    }
 
     await this.ensureMacRollup({
       workspaceId: newWorkspace.id,
       userId: props.createdBy,
       tx,
     })
+
+    // A share page's template takes the place of the tenant's default.
+    const stagedFromShareLink = props.installIntentToken
+      ? await stageSharedTemplateInstall(tx, {
+          workspaceId: newWorkspace.id,
+          tenantId,
+          createdBy: props.createdBy,
+          shareToken: props.installIntentToken,
+        })
+      : null
+    props.progress.hasStagedInstall =
+      (stagedFromShareLink ??
+        (await stageTenantDefaultInstall(tx, {
+          workspaceId: newWorkspace.id,
+          tenantId,
+        }))) !== null
 
     return newWorkspace
   }

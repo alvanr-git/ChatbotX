@@ -1,6 +1,7 @@
 import {
   connectionStateService,
   messengerIntegrationService,
+  userService,
 } from "@chatbotx.io/business"
 import type { MessengerAuthValue } from "@chatbotx.io/integration-messenger"
 import {
@@ -20,6 +21,7 @@ import {
 import { AuthType } from "@chatbotx.io/sdk"
 import { normalizeError } from "universal-error-normalizer"
 import { seedReconnectBranding } from "@/features/channel-connect/lib/branding-follow-ups"
+import { buildFacebookUserAuth } from "@/features/channel-connect/lib/facebook-user-auth"
 import type { ReconnectResult } from "@/lib/channel-reconnect"
 import { lookupIntegrationUserInfo } from "@/lib/integration-user-info"
 import { logger } from "@/lib/log"
@@ -35,6 +37,7 @@ export async function reconnectMessengerHandler(props: {
   credentialConfig: { clientId: string; clientSecret: string; version: string }
   workspaceId: string
   integrationId: string
+  userId: string
   code: string
   callbackUrl: string
 }): Promise<ReconnectResult> {
@@ -106,6 +109,19 @@ export async function reconnectMessengerHandler(props: {
       },
     }
 
+    // The user-level token, as the connect route's SSO reuse stores it.
+    await userService.recordConnectionAuthorization({
+      userId: props.userId,
+      provider: "messenger",
+      auth: buildFacebookUserAuth(
+        props.credentialConfig,
+        userToken,
+        props.callbackUrl,
+      ),
+      phase: "reconnectValidated",
+      workspaceId: props.workspaceId,
+    })
+
     // DB write before the webhook subscription (matching the connect flow) so
     // a failed write never leaves the webhook re-bound while the stored auth
     // still holds the stale token (see `commitReconnect`'s doc for the
@@ -168,6 +184,7 @@ export async function reconnectMessengerHandler(props: {
       accessToken: pageToken,
       version: props.credentialConfig.version,
       subscribedFields: scopesToPageSubscribeFields(debug?.scopes).join(","),
+      includeMarketingMessages: true,
     })
 
     await ensureMessengerWhitelistedDomain({
@@ -177,9 +194,8 @@ export async function reconnectMessengerHandler(props: {
         platform: {
           appUrl,
           publicRealtimeUrl: "",
-          internalRealtimeUrl: "",
           storageUrl: "",
-          getRealtimeBroadcastAuthHeaders: async () => ({}),
+          publishGuestRealtimeEvent: async () => undefined,
         },
         storagePrefix: "",
       },

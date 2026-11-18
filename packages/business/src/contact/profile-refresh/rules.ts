@@ -1,6 +1,17 @@
 import { type ChannelType, genderTypes } from "@chatbotx.io/database/partials"
 import type { ContactModel } from "@chatbotx.io/database/types"
-import type { IncomingContact } from "@chatbotx.io/sdk"
+import type { IncomingContact, IncomingMessage } from "@chatbotx.io/sdk"
+
+/**
+ * "Real inbound" = not an echo/outgoing send, and not a non-message row (e.g.
+ * an `activity` reaction row). The one definition the worker's profile refresh,
+ * its activity tracking and the Google click lookup share.
+ */
+export const isInboundConversationMessage = (
+  incomingMessage: IncomingMessage,
+): boolean =>
+  incomingMessage.messageType !== "outgoing" &&
+  (incomingMessage.type ?? "message") === "message"
 
 /**
  * Where a contact's profile name can come from, per channel. Exhaustive over
@@ -29,6 +40,7 @@ export const contactProfileNameCapabilities = {
   messenger: { inbound: "channelApi", onDemand: true },
   instagram: { inbound: "channelApi", onDemand: true }, // direct and via-Facebook; registry dispatch is the app's concern
   zalo: { inbound: "channelApi", onDemand: true },
+  line: { inbound: "channelApi", onDemand: true }, // GET /v2/bot/profile/{userId}: friends only, keyed by the contact's LINE user id
   telegram: { inbound: "channelApi", onDemand: true }, // getChat keyed by the contact's chat id — identity-safe (payload names a clicking user, not the chat)
   whatsapp: { inbound: "payload", onDemand: false }, // contacts[0].profile.name; no user-profile API
   tiktok: { inbound: null, onDemand: false }, // webhook carries ids only, no profile API

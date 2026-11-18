@@ -48,6 +48,7 @@ type TestMessage = {
   conversationId: string
   createdAt: Date
   messageType: string
+  clientId?: string | null
   senderType?: string
   senderId?: string | null
 }
@@ -61,9 +62,13 @@ const makeConversation = (id: string, lastActivityAt: Date) =>
     lastActivityAt,
   }) as TestConversation
 
-const makeMessage = (conversationId: string, createdAt: Date) =>
+const makeMessage = (
+  conversationId: string,
+  createdAt: Date,
+  id = `msg-${conversationId}`,
+) =>
   ({
-    id: `msg-${conversationId}`,
+    id,
     workspaceId: "ws-1",
     conversationId,
     createdAt,
@@ -1002,6 +1007,200 @@ describe("chat store conversation updates", () => {
     unsubscribe()
   })
 
+  describe("edit and unsend keep the conversation list preview in step", () => {
+    const withPreview = (conversationId: string, previewId: string) => ({
+      ...makeConversation(conversationId, new Date("2026-01-01T00:00:00Z")),
+      messages: [
+        {
+          ...makeMessage(
+            conversationId,
+            new Date("2026-01-01T00:00:00Z"),
+            previewId,
+          ),
+          text: "original",
+          deletedAt: null,
+        },
+      ],
+    })
+
+    const seed = () => {
+      const store = createChatStore()
+      store.setState({
+        conversations: [
+          withPreview("conv-1", "msg-last"),
+          withPreview("conv-2", "msg-other"),
+        ] as never,
+        activeConversationId: "conv-1",
+        messages: [
+          {
+            ...makeMessage(
+              "conv-1",
+              new Date("2026-01-01T00:00:00Z"),
+              "msg-last",
+            ),
+            text: "original",
+            deletedAt: null,
+          },
+        ] as never,
+      })
+      return store
+    }
+
+    const previewOf = (
+      store: ReturnType<typeof createChatStore>,
+      conversationId: string,
+    ) =>
+      store
+        .getState()
+        .conversations.find(
+          (conversation) => conversation.id === conversationId,
+        )?.messages[0]
+
+    test("an edit changes the preview text as well as the open timeline", () => {
+      const store = seed()
+
+      store.getState().updateMessageText("msg-last", "edited", {
+        newAttachmentPath: null,
+        removedAttachment: false,
+      })
+
+      expect(store.getState().messages[0]?.text).toBe("edited")
+      expect(previewOf(store, "conv-1")?.text).toBe("edited")
+    })
+
+    test("an edit changes the preview of a conversation that is not open", () => {
+      const store = seed()
+
+      store.getState().updateMessageText("msg-other", "edited elsewhere", {
+        newAttachmentPath: null,
+        removedAttachment: false,
+      })
+
+      expect(previewOf(store, "conv-2")?.text).toBe("edited elsewhere")
+      expect(store.getState().messages[0]?.text).toBe("original")
+    })
+
+    test("an unsend marks the preview deleted as well as the open timeline", () => {
+      const store = seed()
+
+      store.getState().markMessagesDeleted(["msg-last"])
+
+      expect(store.getState().messages[0]?.deletedAt).toBeInstanceOf(Date)
+      expect(previewOf(store, "conv-1")?.deletedAt).toBeInstanceOf(Date)
+    })
+
+    test("restoring a message whose unsend failed clears the preview mark as well", () => {
+      const store = seed()
+      store.getState().markMessagesDeleted(["msg-last"])
+
+      store.getState().markMessagesRestored(["msg-last"])
+
+      expect(store.getState().messages[0]?.deletedAt).toBeNull()
+      expect(previewOf(store, "conv-1")?.deletedAt).toBeNull()
+    })
+
+    test("an edit or unsend of a message that is not a preview leaves the previews alone", () => {
+      const store = seed()
+      const before = store.getState().conversations
+
+      store.getState().updateMessageText("msg-older", "edited", {
+        newAttachmentPath: null,
+        removedAttachment: false,
+      })
+      store.getState().markMessagesDeleted(["msg-older"])
+
+      expect(store.getState().conversations).toBe(before)
+    })
+
+    test("only the matching preview changes, the other conversations keep their reference", () => {
+      const store = seed()
+      const untouched = previewOf(store, "conv-2")
+
+      store.getState().markMessagesDeleted(["msg-last"])
+
+      expect(previewOf(store, "conv-2")).toBe(untouched)
+    })
+  })
+
+  describe("removeMessages drops messages the server removed for good", () => {
+    const preview = (conversationId: string, previewId: string) => ({
+      ...makeConversation(conversationId, new Date("2026-01-01T00:00:00Z")),
+      messages: [
+        makeMessage(
+          conversationId,
+          new Date("2026-01-01T00:02:00Z"),
+          previewId,
+        ),
+      ],
+    })
+
+    const seed = () => {
+      const store = createChatStore()
+      store.setState({
+        conversations: [
+          preview("conv-1", "msg-failed"),
+          preview("conv-2", "msg-failed-elsewhere"),
+        ] as never,
+        activeConversationId: "conv-1",
+        messages: [
+          makeMessage("conv-1", new Date("2026-01-01T00:00:00Z"), "msg-older"),
+          makeMessage("conv-1", new Date("2026-01-01T00:01:00Z"), "msg-kept"),
+          makeMessage("conv-1", new Date("2026-01-01T00:02:00Z"), "msg-failed"),
+        ] as never,
+      })
+      return store
+    }
+
+    const previewIdOf = (
+      store: ReturnType<typeof createChatStore>,
+      conversationId: string,
+    ) =>
+      (
+        store
+          .getState()
+          .conversations.find(
+            (conversation) => conversation.id === conversationId,
+          )?.messages[0] as { id: string } | undefined
+      )?.id
+
+    test("takes the message out of the open timeline, with no placeholder", () => {
+      const store = seed()
+
+      store.getState().removeMessages(["msg-failed"])
+
+      expect(store.getState().messages.map((message) => message.id)).toEqual([
+        "msg-older",
+        "msg-kept",
+      ])
+    })
+
+    test("the open conversation's preview falls back to its last remaining message", () => {
+      const store = seed()
+
+      store.getState().removeMessages(["msg-failed"])
+
+      expect(previewIdOf(store, "conv-1")).toBe("msg-kept")
+    })
+
+    test("a conversation that is not open keeps its preview until reloaded", () => {
+      const store = seed()
+
+      store.getState().removeMessages(["msg-failed-elsewhere"])
+
+      expect(previewIdOf(store, "conv-2")).toBe("msg-failed-elsewhere")
+      expect(store.getState().messages).toHaveLength(3)
+    })
+
+    test("keeps the state reference when no loaded message matches", () => {
+      const store = seed()
+      const before = store.getState()
+
+      store.getState().removeMessages(["missing"])
+
+      expect(store.getState()).toBe(before)
+    })
+  })
+
   test("keeps the state reference for unmatched realtime mutations", () => {
     const store = createChatStore()
     const before = store.getState()
@@ -1040,6 +1239,74 @@ describe("chat store conversation updates", () => {
 
     expect(store.getState().messages).toEqual([message])
     expect(mockFindConversationAuthenticatedAPI).not.toHaveBeenCalled()
+  })
+
+  test("keeps distinct server messages when rapid sends share an optimistic client id", () => {
+    const store = createChatStore()
+    const conversation = makeConversation(
+      "conv-1",
+      new Date("2026-01-01T00:00:00Z"),
+    )
+    const optimistic = {
+      ...makeMessage("conv-1", new Date("2026-01-02T00:00:00Z"), "optimistic"),
+      clientId: "client-a",
+      contactInboxId: "",
+    }
+    const serverMessages = ["message-1", "message-2", "message-3"].map(
+      (id, index) => ({
+        ...makeMessage("conv-1", new Date(`2026-01-02T00:00:0${index}Z`), id),
+        clientId: "client-a",
+        contactInboxId: "inbox-1",
+      }),
+    )
+    store.setState({
+      conversations: [conversation] as never,
+      activeConversationId: "conv-1",
+      messages: [optimistic] as never,
+    })
+
+    store.getState().handleNewMessages(serverMessages as never)
+
+    expect(store.getState().messages.map((message) => message.id)).toEqual([
+      "message-1",
+      "message-2",
+      "message-3",
+    ])
+  })
+
+  test("keeps distinct server messages when repeated client ids arrive in separate batches", () => {
+    const store = createChatStore()
+    const conversation = makeConversation(
+      "conv-1",
+      new Date("2026-01-01T00:00:00Z"),
+    )
+    const optimistic = {
+      ...makeMessage("conv-1", new Date("2026-01-02T00:00:00Z"), "optimistic"),
+      clientId: "client-a",
+      contactInboxId: "",
+    }
+    const serverMessages = ["message-1", "message-2", "message-3"].map(
+      (id, index) => ({
+        ...makeMessage("conv-1", new Date(`2026-01-02T00:00:0${index}Z`), id),
+        clientId: "client-a",
+        contactInboxId: "inbox-1",
+      }),
+    )
+    store.setState({
+      conversations: [conversation] as never,
+      activeConversationId: "conv-1",
+      messages: [optimistic] as never,
+    })
+
+    for (const message of serverMessages) {
+      store.getState().handleNewMessages([message] as never)
+    }
+
+    expect(store.getState().messages.map((message) => message.id)).toEqual([
+      "message-1",
+      "message-2",
+      "message-3",
+    ])
   })
 
   test("updates an active thread before its conversation reaches the sidebar", () => {
@@ -1414,6 +1681,132 @@ describe("chat store handleNewMessages messaging window", () => {
   })
 })
 
+describe("chat store handleNewMessages response SLA snapshot", () => {
+  const makeSlaStore = () => {
+    const store = createChatStore()
+    store.setState({
+      conversations: [
+        {
+          ...makeConversation("conv-1", new Date("2026-09-17T08:00:00Z")),
+          responseDueAt: new Date("2026-09-17T09:00:00Z"),
+          responseSlaBreachingAt: new Date("2026-09-17T08:45:00Z"),
+          responseSlaTargetSeconds: 3600,
+          contactInboxes: [{ id: "ci-1", lastIncomingMessageAt: null }],
+        },
+      ] as never,
+    })
+    return store
+  }
+  const slaOf = (store: ReturnType<typeof createChatStore>) =>
+    store.getState().conversations[0] as unknown as {
+      responseDueAt: Date | null
+      responseSlaBreachingAt: Date | null
+      responseSlaTargetSeconds: number | null
+    }
+  const outgoing = (senderType: string, senderId: string | null) =>
+    ({
+      ...makeMessage("conv-1", new Date("2026-09-17T09:30:00Z")),
+      id: `msg-${senderType}`,
+      messageType: "outgoing",
+      senderType,
+      senderId,
+    }) as never
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setConversationUrl(null)
+  })
+
+  test("an agent reply clears the snapshot so the pill and SLA filters update without a refetch", async () => {
+    const store = makeSlaStore()
+
+    await store.getState().handleNewMessages([outgoing("user", "agent-1")])
+
+    expect(slaOf(store)).toMatchObject({
+      responseDueAt: null,
+      responseSlaBreachingAt: null,
+      responseSlaTargetSeconds: null,
+    })
+  })
+
+  test("a bot reply clears it only while the bot is enabled (mirrors the server close rule)", async () => {
+    const enabled = makeSlaStore()
+    enabled.setState({
+      conversations: enabled
+        .getState()
+        .conversations.map((c) => ({ ...c, botEnabled: true })),
+    })
+    await enabled.getState().handleNewMessages([outgoing("bot", null)])
+    expect(slaOf(enabled).responseDueAt).toBeNull()
+
+    const paused = makeSlaStore()
+    paused.setState({
+      conversations: paused
+        .getState()
+        .conversations.map((c) => ({ ...c, botEnabled: false })),
+    })
+    await paused.getState().handleNewMessages([outgoing("bot", null)])
+    expect(slaOf(paused).responseSlaTargetSeconds).toBe(3600)
+  })
+
+  test("a reply older than the latest customer message keeps the newer window's snapshot", async () => {
+    const store = makeSlaStore()
+    store.setState({
+      conversations: store.getState().conversations.map((c) => ({
+        ...c,
+        contactRepliedAt: new Date("2026-09-17T09:45:00Z"),
+      })),
+    })
+
+    // `outgoing` is stamped 09:30, before the 09:45 customer message.
+    await store.getState().handleNewMessages([outgoing("user", "agent-1")])
+
+    expect(slaOf(store).responseSlaTargetSeconds).toBe(3600)
+  })
+
+  test("a reply after the latest customer message clears it", async () => {
+    const store = makeSlaStore()
+    store.setState({
+      conversations: store.getState().conversations.map((c) => ({
+        ...c,
+        contactRepliedAt: new Date("2026-09-17T09:15:00Z"),
+      })),
+    })
+
+    await store.getState().handleNewMessages([outgoing("user", "agent-1")])
+
+    expect(slaOf(store).responseDueAt).toBeNull()
+  })
+
+  test("a proactive WhatsApp template keeps the snapshot (the server keeps the window open)", async () => {
+    const store = makeSlaStore()
+    store.setState({
+      conversations: store
+        .getState()
+        .conversations.map((c) => ({ ...c, botEnabled: true })),
+    })
+    await store.getState().handleNewMessages([
+      {
+        ...(outgoing("bot", null) as object),
+        contentAttributes: { type: "whatsapp_template" },
+      } as never,
+    ])
+    expect(slaOf(store).responseSlaTargetSeconds).toBe(3600)
+  })
+
+  test("a contact message leaves the snapshot alone", async () => {
+    const store = makeSlaStore()
+
+    await store
+      .getState()
+      .handleNewMessages([
+        makeMessage("conv-1", new Date("2026-09-17T09:40:00Z")) as never,
+      ])
+
+    expect(slaOf(store).responseSlaTargetSeconds).toBe(3600)
+  })
+})
+
 describe("chat store loadMoreMessages", () => {
   test("prepends the older page and advances the message cursor", async () => {
     const store = createChatStore()
@@ -1423,8 +1816,16 @@ describe("chat store loadMoreMessages", () => {
       messages: [existing] as never,
       nextCursorMessage: "cursor-1",
     })
-    const older = makeMessage("conv-1", new Date("2026-01-01T01:00:00Z"))
-    const oldest = makeMessage("conv-1", new Date("2026-01-01T00:00:00Z"))
+    const older = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T01:00:00Z"),
+      "message-older",
+    )
+    const oldest = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T00:00:00Z"),
+      "message-oldest",
+    )
     // The API returns newest-first; the store reverses into display order.
     mockListMessagesAuthenticatedAPI.mockResolvedValue({
       data: [older, oldest],
@@ -1442,7 +1843,183 @@ describe("chat store loadMoreMessages", () => {
     expect(store.getState().messages).toEqual([oldest, older, existing])
     expect(store.getState().hasNextMessagePage).toBe(false)
     expect(store.getState().isLoadMoreMessage).toBe(false)
+    expect(store.getState().lastPrependedCount).toBe(2)
+    expect(store.getState().prependSeq).toBe(1)
     expect(store.getState().messagesConversationId).toBe("conv-1")
+  })
+
+  test("retains realtime messages that arrive while the older page loads", async () => {
+    const store = createChatStore()
+    const first = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T01:00:00Z"),
+      "message-1",
+    )
+    const second = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T02:00:00Z"),
+      "message-2",
+    )
+    const third = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T03:00:00Z"),
+      "message-3",
+    )
+    const fourth = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T04:00:00Z"),
+      "message-4",
+    )
+    const fifth = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T05:00:00Z"),
+      "message-5",
+    )
+    const oldest = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T00:00:00Z"),
+      "message-0",
+    )
+    const { promise: page, resolve: resolvePage } = Promise.withResolvers<{
+      data: TestMessage[]
+      nextCursor: string | null
+    }>()
+
+    store.setState({
+      activeConversationId: "conv-1",
+      messages: [first, second, third] as never,
+    })
+    mockListMessagesAuthenticatedAPI.mockReturnValueOnce(page)
+
+    const loadMore = store.getState().loadMoreMessages("ws-1", 20)
+    store.getState().handleNewMessages([fourth] as never)
+    store.getState().handleNewMessages([fifth] as never)
+    resolvePage({ data: [oldest], nextCursor: null })
+
+    await loadMore
+
+    expect(store.getState().messages).toEqual([
+      oldest,
+      first,
+      second,
+      third,
+      fourth,
+      fifth,
+    ])
+  })
+
+  test("deduplicates a page that overlaps messages already delivered by realtime", async () => {
+    const store = createChatStore()
+    const existing = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T01:00:00Z"),
+      "message-1",
+    )
+    const realtime = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T02:00:00Z"),
+      "message-2",
+    )
+    const oldest = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T00:00:00Z"),
+      "message-0",
+    )
+
+    store.setState({
+      activeConversationId: "conv-1",
+      messages: [existing] as never,
+    })
+    mockListMessagesAuthenticatedAPI.mockResolvedValueOnce({
+      data: [realtime, existing, oldest],
+      nextCursor: null,
+    })
+
+    const loadMore = store.getState().loadMoreMessages("ws-1", 20)
+    store.getState().handleNewMessages([realtime] as never)
+    await loadMore
+
+    expect(store.getState().messages).toEqual([oldest, existing, realtime])
+  })
+
+  test("drops a page when the active conversation changes before it resolves", async () => {
+    const store = createChatStore()
+    const original = makeMessage(
+      "conv-1",
+      new Date("2026-01-01T01:00:00Z"),
+      "message-1",
+    )
+    const current = makeMessage(
+      "conv-2",
+      new Date("2026-01-01T02:00:00Z"),
+      "message-2",
+    )
+    const { promise: page, resolve: resolvePage } = Promise.withResolvers<{
+      data: TestMessage[]
+      nextCursor: string | null
+    }>()
+
+    store.setState({
+      activeConversationId: "conv-1",
+      messages: [original] as never,
+    })
+    mockListMessagesAuthenticatedAPI.mockReturnValueOnce(page)
+
+    const loadMore = store.getState().loadMoreMessages("ws-1", 20)
+    store.setState({
+      activeConversationId: "conv-2",
+      messages: [current] as never,
+    })
+    resolvePage({ data: [original], nextCursor: null })
+
+    await loadMore
+
+    expect(store.getState().messages).toEqual([current])
+    expect(store.getState().isLoadMoreMessage).toBe(false)
+  })
+
+  test("keeps the latest load-more request active when an older conversation request settles", async () => {
+    const store = createChatStore()
+    const firstRequest = Promise.withResolvers<{
+      data: TestMessage[]
+      nextCursor: string | null
+    }>()
+    const secondRequest = Promise.withResolvers<{
+      data: TestMessage[]
+      nextCursor: string | null
+    }>()
+    const secondConversationMessage = makeMessage(
+      "conv-2",
+      new Date("2026-01-01T02:00:00Z"),
+      "message-2",
+    )
+
+    store.setState({
+      activeConversationId: "conv-1",
+      nextCursorMessage: "cursor-1",
+    })
+    mockListMessagesAuthenticatedAPI
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+
+    const firstLoad = store.getState().loadMoreMessages("ws-1", 20)
+    store.getState().setActiveConversationId("conv-2")
+    const secondLoad = store.getState().loadMoreMessages("ws-1", 20)
+
+    firstRequest.resolve({ data: [], nextCursor: "stale-cursor" })
+    await firstLoad
+
+    expect(store.getState().isLoadMoreMessage).toBe(true)
+    expect(store.getState().nextCursorMessage).toBeNull()
+
+    secondRequest.resolve({
+      data: [secondConversationMessage],
+      nextCursor: null,
+    })
+    await secondLoad
+
+    expect(store.getState().isLoadMoreMessage).toBe(false)
+    expect(store.getState().messages).toEqual([secondConversationMessage])
   })
 
   test("resets the in-flight flag when the request fails so a retry is possible", async () => {
@@ -1867,5 +2444,120 @@ describe("createChatStore seed invariant check", () => {
     createChatStore()
 
     expect(loggerWarnMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("chat store send queues", () => {
+  const queued = (clientId: string) => ({
+    clientId,
+    input: { text: clientId } as never,
+  })
+
+  test("a queue is created on first use and survives switching the active conversation", async () => {
+    const store = createChatStore()
+    const { enqueueSend } = await import(
+      "../src/features/messages/lib/send-queue"
+    )
+
+    store
+      .getState()
+      .updateSendQueue("conv-1", (queue) => enqueueSend(queue, queued("a")))
+    store.setState({ activeConversationId: "conv-2" })
+
+    expect(store.getState().sendQueues["conv-1"]?.waiting).toHaveLength(1)
+  })
+
+  test("queues of different conversations are independent", async () => {
+    const store = createChatStore()
+    const { enqueueSend } = await import(
+      "../src/features/messages/lib/send-queue"
+    )
+
+    store
+      .getState()
+      .updateSendQueue("conv-1", (queue) => enqueueSend(queue, queued("a")))
+    store
+      .getState()
+      .updateSendQueue("conv-2", (queue) => enqueueSend(queue, queued("b")))
+
+    expect(store.getState().sendQueues["conv-1"]?.waiting[0]?.clientId).toBe(
+      "a",
+    )
+    expect(store.getState().sendQueues["conv-2"]?.waiting[0]?.clientId).toBe(
+      "b",
+    )
+  })
+
+  test("a result settles the matching in-flight message in whichever queue holds it", async () => {
+    const store = createChatStore()
+    const { enqueueSend, markSendSubmitted } = await import(
+      "../src/features/messages/lib/send-queue"
+    )
+    store
+      .getState()
+      .updateSendQueue("conv-1", (queue) =>
+        markSendSubmitted(enqueueSend(queue, queued("a")), "a", 0),
+      )
+
+    store
+      .getState()
+      .settleSendResult({ clientId: "a", messageId: "m-a", error: null })
+
+    expect(store.getState().sendQueues["conv-1"]?.inFlight).toBeNull()
+  })
+
+  test("a drained queue is dropped once its gap is over, so the map keeps only live conversations", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    try {
+      const store = createChatStore()
+      const { enqueueSend, markSendSubmitted } = await import(
+        "../src/features/messages/lib/send-queue"
+      )
+      store
+        .getState()
+        .updateSendQueue("conv-1", (queue) =>
+          markSendSubmitted(enqueueSend(queue, queued("a")), "a", 0),
+        )
+      store.getState().settleSendResult({ clientId: "a", error: null })
+      // Still inside the 500 ms gap: kept so the next message waits for it.
+      expect(store.getState().sendQueues["conv-1"]).toBeDefined()
+
+      vi.advanceTimersByTime(1000)
+      store.getState().updateSendQueue("conv-2", (queue) => queue)
+
+      expect(store.getState().sendQueues["conv-1"]).toBeUndefined()
+      expect(store.getState().sendQueues["conv-2"]).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test("a failure result holds the queue only when messages wait behind it", async () => {
+    const store = createChatStore()
+    const { enqueueSend, markSendSubmitted } = await import(
+      "../src/features/messages/lib/send-queue"
+    )
+    store
+      .getState()
+      .updateSendQueue("conv-1", (queue) =>
+        markSendSubmitted(
+          enqueueSend(enqueueSend(queue, queued("a")), queued("b")),
+          "a",
+          0,
+        ),
+      )
+
+    store.getState().settleSendResult({ clientId: "a", error: "refused" })
+
+    expect(store.getState().sendQueues["conv-1"]?.holdReason).toBe("failed")
+  })
+
+  test("a result nobody is waiting for keeps the state reference", () => {
+    const store = createChatStore()
+    const before = store.getState()
+
+    store.getState().settleSendResult({ clientId: "stray", error: null })
+
+    expect(store.getState()).toBe(before)
   })
 })

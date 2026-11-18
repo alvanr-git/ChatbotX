@@ -21,6 +21,14 @@ alternatives for the app layer. The app layer calls a service; the service
 may call a repository. See `.agents/rules/data-access.md` for the full rule
 and the per-layer responsibility table.
 
+## Reading `User`
+
+`User.connectionAuthorizations` is an encrypted secret column. Read users through
+`userColumnsWithoutSecrets` (`@chatbotx.io/database/repositories/user-columns`) and never return the
+full row to a client, cache, log or `ctx`; write it only via
+`userService.recordConnectionAuthorization`. See AGENTS.md invariant 26 and
+`docs/agents/invariants.md`.
+
 ## Boundary Rule
 
 Do not add direct database imports in:
@@ -199,8 +207,8 @@ fix or a new filter only has to happen once.
 
 The public path is required, not "if there is one": every operation —
 including result-returning ones like links, previews, test runs, stats, and
-exports — ships a public procedure unless it is on the AGENTS.md invariant 23
-exempt list. A result-returning operation with no DB access keeps its one
+exports — ships a public procedure unless it is on the exempt list of invariant 23
+in `docs/agents/invariants.md`. A result-returning operation with no DB access keeps its one
 implementation in `features/<x>/lib/` instead of a service (the bot simulator's
 `createBotSimulatorLink` is the example); the same convergence rule applies.
 

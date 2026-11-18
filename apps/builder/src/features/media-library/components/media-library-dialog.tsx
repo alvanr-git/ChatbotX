@@ -23,7 +23,6 @@ import { getMimeTypeFromFile } from "@chatbotx.io/ui/lib/file-types"
 import { cn } from "@chatbotx.io/ui/lib/utils"
 import {
   ChevronLeftIcon,
-  FileIcon,
   FolderIcon,
   HeartIcon,
   Loader,
@@ -32,8 +31,6 @@ import {
   SearchIcon,
   TimerIcon,
   Trash2Icon,
-  VideoIcon,
-  Volume2Icon,
 } from "lucide-react"
 import Image from "next/image"
 import { useTranslations } from "next-intl"
@@ -55,6 +52,7 @@ import { recordMediaLibraryFileAccessAction } from "../actions/record-access.act
 import { renameMediaLibraryFolderAction } from "../actions/rename-folder.action"
 import { toggleMediaLibraryFavouriteAction } from "../actions/toggle-favourite.action"
 import type { ListFilesResponse, ListFoldersResponse } from "../schema"
+import { FileTypeIcon } from "./file-type-icon"
 
 type MediaFile = ListFilesResponse["data"][number]
 type MediaFolder = ListFoldersResponse["data"][number]
@@ -62,6 +60,10 @@ type MediaFolder = ListFoldersResponse["data"][number]
 type ActiveSection = "recent" | "favourite" | { folderId: string }
 
 const FILE_GRID_SCROLL_THRESHOLD = 200
+
+const IMAGE_UPLOAD_ACCEPT = "image/png,image/jpeg,image/gif,image/webp"
+
+export type MediaLibraryFileType = "image"
 
 export type MediaLibraryDialogProps = Omit<
   ComponentPropsWithoutRef<typeof Dialog>,
@@ -74,6 +76,9 @@ export type MediaLibraryDialogProps = Omit<
   // appended below). Defaults to the shared media-library prefix — pass this
   // to keep a caller's uploads under its own feature-specific path.
   uploadPath?: string
+  // Restricts uploads to this media kind. The caller filters the listed
+  // `files` itself (the trigger passes it to the list request).
+  fileType?: MediaLibraryFileType
   onSelect?: (file: MediaFile) => void
   // When set, "Done" confirms every checked file via `onSelectMultiple`
   // instead of requiring exactly one via `onSelect`.
@@ -94,16 +99,6 @@ export type MediaLibraryDialogProps = Omit<
   onFolderDeleted?: (folderId: string) => void
   onFilesMoved?: (fileIds: string[], folderId: string | null) => void
   onOpenChange?: (open: boolean) => void
-}
-
-function FileTypeIcon({ mimeType }: { mimeType: string }) {
-  if (mimeType.startsWith("video/")) {
-    return <VideoIcon className="size-10 text-muted-foreground" />
-  }
-  if (mimeType.startsWith("audio/")) {
-    return <Volume2Icon className="size-10 text-muted-foreground" />
-  }
-  return <FileIcon className="size-10 text-muted-foreground" />
 }
 
 function FilePreview({
@@ -142,6 +137,7 @@ export function MediaLibraryDialog({
   folders,
   files,
   uploadPath,
+  fileType,
   onSelect,
   multiple = false,
   onSelectMultiple,
@@ -788,7 +784,11 @@ export function MediaLibraryDialog({
           <DialogFooter className="mx-0 mb-0 border-t px-6 py-3">
             <div className="flex w-full items-center justify-between">
               <DirectUploadButton
-                accept="image/png,image/jpeg,image/gif,video/mp4,audio/*,application/*"
+                accept={
+                  fileType === "image"
+                    ? IMAGE_UPLOAD_ACCEPT
+                    : "image/png,image/jpeg,image/gif,video/mp4,audio/*,application/*"
+                }
                 label={t("upload")}
                 maxSize={52_428_800} // 50MB
                 multiple

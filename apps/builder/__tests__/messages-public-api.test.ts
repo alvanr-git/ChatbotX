@@ -53,9 +53,15 @@ const conversationService = {
 const messageService = {
   findByIdWithUrls: vi.fn(),
   createOutgoing: vi.fn(),
+  resendOutgoing: vi.fn(),
 }
 const resolveTemplateParams = vi.fn()
 vi.mock("@chatbotx.io/business", () => ({
+  conversationMemberScope: {
+    resolve: vi.fn(),
+    allows: () => true,
+    where: () => undefined,
+  },
   conversationService,
   messageService,
   resolveTemplateParams,
@@ -277,6 +283,7 @@ describe("POST /v1/conversations/{conversationId}/messages", () => {
       conversation: { id: "conv-1", contactId: "contact-1" },
       contactInbox: { id: "contact-inbox-1" },
       input,
+      sendFrom: "api",
     })
     expect(messageService.createOutgoing.mock.calls[0][0]).not.toHaveProperty(
       "user",
@@ -398,6 +405,59 @@ describe("DELETE /v1/conversations/{conversationId}/messages/{messageId}", () =>
   })
 })
 
+describe("POST /v1/conversations/{conversationId}/messages/{messageId}/resend", () => {
+  const procedure = findProcedure(
+    "POST",
+    "/v1/conversations/{conversationId}/messages/{messageId}/resend",
+  )
+
+  test("is a 202 under the Messages tag", () => {
+    expect(procedure.route.successStatus).toBe(202)
+    expect(procedure.route.tags).toContain("Messages")
+  })
+
+  test("delegates to messageService.resendOutgoing with the id field it expects and returns its result", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00Z")
+    messageService.resendOutgoing.mockResolvedValueOnce({
+      id: "msg-1",
+      queued: true,
+    })
+
+    const result = await procedure.handler?.({
+      context,
+      input: { conversationId: "conv-1", messageId: "msg-1", createdAt },
+    })
+
+    expect(messageService.resendOutgoing).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
+      messageId: "msg-1",
+      createdAt,
+      sendFrom: "api",
+    })
+    expect(result).toEqual({ id: "msg-1", queued: true })
+  })
+
+  test("checks the caller may see the conversation first, and resends nothing when it may not", async () => {
+    conversationService.findByOrFail.mockRejectedValueOnce(
+      new Error("Conversation not found"),
+    )
+
+    await expect(
+      procedure.handler?.({
+        context,
+        input: {
+          conversationId: "conv-1",
+          messageId: "msg-1",
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      }),
+    ).rejects.toThrow("Conversation not found")
+
+    expect(messageService.resendOutgoing).not.toHaveBeenCalled()
+  })
+})
+
 describe("POST /v1/conversations/{conversationId}/messages/{messageId}/attributes", () => {
   const procedure = findProcedure(
     "POST",
@@ -453,6 +513,9 @@ describe("POST /v1/conversations/{conversationId}/whatsapp-template", () => {
       workspaceId: "workspace-1",
       conversationId: "9",
       request: { templateId: "5", templateData: { params: [] }, inboxId: "3" },
+      // An API send is not an agent reply: no human-sent analytics event.
+      sender: { initiatedBy: "api" },
+      sendFrom: "api",
     })
   })
 
@@ -485,6 +548,8 @@ describe("POST /v1/conversations/{conversationId}/whatsapp-template", () => {
       workspaceId: "workspace-1",
       conversationId: "9",
       request: { templateId: "5", templateData: nested },
+      sender: { initiatedBy: "api" },
+      sendFrom: "api",
     })
   })
 

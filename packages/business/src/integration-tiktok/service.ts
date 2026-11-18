@@ -10,6 +10,7 @@ import {
   type TiktokAuthValue,
   type TiktokDirectReplyStatus,
   tiktokCanListVideos,
+  tiktokCanMessage,
   updateTiktokDirectReplyStatus,
 } from "@chatbotx.io/integration-tiktok"
 import type { AuthValue } from "@chatbotx.io/sdk"
@@ -131,6 +132,9 @@ class TiktokIntegrationService extends BaseService {
    * owner over 18; a Registered Business Account or one that has run Messaging
    * Ads; messaging permissions set to "Requests". So it is surfaced verbatim
    * rather than replaced with a generic failure.
+   *
+   * A comments-only connection holds no messaging scope, so it is refused
+   * before the call, with a reason TikTok's own answer would not give.
    */
   async setCommentToMessage(props: {
     workspaceId: string
@@ -141,6 +145,12 @@ class TiktokIntegrationService extends BaseService {
     const integration = await this.findById({ id, workspaceId })
     const auth = integration.auth as TiktokAuthValue
     const status: TiktokDirectReplyStatus = enabled ? "ENABLE" : "DISABLE"
+
+    if (!tiktokCanMessage(auth)) {
+      throw new ChatbotXException(
+        "This TikTok connection has no messaging permission, so Comment-to-Message cannot be used. TikTok Business Messaging is not available to accounts registered in the EEA, Switzerland or the UK.",
+      )
+    }
 
     try {
       await updateTiktokDirectReplyStatus(
@@ -387,6 +397,27 @@ class TiktokIntegrationService extends BaseService {
       )
       return { ...fallback, degraded: true }
     }
+  }
+
+  /**
+   * Inboxes of the workspace's TikTok connections that cannot read a video's
+   * caption (no `video.list` grant — connected before the scope was approved,
+   * or the owner unticked it). A `hashtags` comment automation skips every
+   * comment on these until the owner reconnects, so the form warns about them.
+   * Returns ids only: the rows carry tokens that must never reach a client.
+   */
+  async listInboxIdsWithoutCaptionAccess(props: {
+    workspaceId: string
+  }): Promise<string[]> {
+    const integrations = await this.listByWorkspace({
+      workspaceId: props.workspaceId,
+    })
+    return integrations
+      .filter(
+        (integration) =>
+          !tiktokCanListVideos(integration.auth as TiktokAuthValue),
+      )
+      .map((integration) => integration.inboxId)
   }
 
   async findByOpenId(openId: string): Promise<IntegrationTiktokModel | null> {

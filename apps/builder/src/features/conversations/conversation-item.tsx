@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { useFormatter, useTranslations } from "next-intl"
 import { useMemo } from "react"
+import { contactDisplayName } from "@/features/contacts/lib/contact-display-name"
 import { useNow } from "@/hooks/use-now"
 import { useUserAvatarUrl } from "@/lib/auth/avatar"
 import { useChatStore } from "../chat/store/chat-store-provider"
@@ -35,6 +36,7 @@ import { InboxIcon } from "../inboxes/components/inbox-icon"
 import { useWhatsappVoipCallStore } from "../integration-whatsapp/calling/voip/voip-call-store"
 import { useOptionalWhatsappVoipCallContext } from "../integration-whatsapp/calling/voip/whatsapp-voip-call-context"
 import { useTenantSettings } from "../tenant/tenant-settings-provider"
+import { SlaPill } from "./components/sla-pill"
 import { ThreadControlPill } from "./components/thread-control-pill"
 import { useMarkConversationRead } from "./hooks/use-mark-conversation-read"
 import { isConversationUnread } from "./lib/is-conversation-unread"
@@ -264,22 +266,25 @@ export default function ConversationItem({
     })),
   )
 
+  // Name, else email, else phone: a contact a channel never named still reads as someone.
+  const contactName = contactDisplayName(conversation.contact)
+
   const contactAvatar = useMemo(
     () => (
       <Avatar
         className={cn("h-12 w-12", isUnread && "border-2 border-primary")}
       >
         <AvatarImage
-          alt={conversation.contact?.fullName ?? ""}
+          alt={contactName ?? ""}
           className="object-cover"
           src={avatarUrl}
         />
         <AvatarFallback className="bg-gray-300 dark:bg-zinc-100 dark:text-zinc-800">
-          {conversation.contact?.fullName?.slice(0, 2)}
+          {contactName?.slice(0, 2)}
         </AvatarFallback>
       </Avatar>
     ),
-    [conversation.contact, avatarUrl, isUnread],
+    [contactName, avatarUrl, isUnread],
   )
 
   // Opening a conversation is read by the thread pane (`useThreadReadTracking`),
@@ -354,7 +359,7 @@ export default function ConversationItem({
                   : "font-medium text-muted-foreground",
               )}
             >
-              {conversation.contact?.fullName}
+              {contactName}
             </span>
             {isComment ? (
               <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-[10px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -394,6 +399,10 @@ export default function ConversationItem({
                 />
               )}
               <ThreadControlPill conversation={conversation} />
+              <SlaPill
+                responseDueAt={conversation.responseDueAt}
+                responseSlaBreachingAt={conversation.responseSlaBreachingAt}
+              />
             </div>
             <span className="text-neutral-400" suppressHydrationWarning>
               {conversation.lastActivityAt ? (

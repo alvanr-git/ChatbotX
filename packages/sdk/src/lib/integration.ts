@@ -1,4 +1,5 @@
 import type { MetadataPayload } from "@chatbotx.io/flow-config"
+import type { SendFrom } from "@chatbotx.io/utils/send-from"
 import type { AuthValue, Oauth2AuthValue } from "./auth"
 import type { ConnectionProvider } from "./connection"
 import {
@@ -66,6 +67,9 @@ export type RichResponseContentAttributes = {
         | { type: "actions"; actions: Record<string, unknown>[] }
         | { type: "text"; text: string }
         | { type: "unsupported"; reason: string }
+        | { type: "poll_open"; pollId: string }
+        | { type: "poll_vote"; pollId: string; candidateId: string }
+        | { type: "poll_list" }
     }
   >
 }
@@ -86,12 +90,18 @@ export type ChannelSendFlowStepProps<IAuth extends AuthValue> = {
     quickReplies?: MessageButtonTemplate[]
     metadata?: MetadataPayload
     richResponse?: RichResponseContentAttributes
-    sendFrom?: "inbox"
+    sendFrom?: SendFrom
     /**
      * See {@link CommentAnchor}. Honored by Messenger and Instagram; other
      * channels ignore it.
      */
     commentAnchor?: CommentAnchor
+    /**
+     * Thread headers (subject, message id, references) of the conversation's
+     * last inbound email, so a flow reply lands in the same thread. Read only
+     * by the SMTP channel; other channels ignore it.
+     */
+    emailThread?: Record<string, unknown>
   }
 }
 export type OutgoingSendResult = {
@@ -112,7 +122,7 @@ export type MessageHandlers<
         message: OutgoingMessage
         quickReplies?: MessageButtonTemplate[]
         metadata?: MetadataPayload
-        sendFrom?: "inbox"
+        sendFrom?: SendFrom
       }
     },
     OutgoingSendResult
@@ -141,9 +151,11 @@ export type MessageHandlers<
         quickReplies?: MessageButtonTemplate[]
         metadata?: MetadataPayload
         richResponse?: RichResponseContentAttributes
-        sendFrom?: "inbox"
+        sendFrom?: SendFrom
         /** See {@link ChannelSendFlowStepProps}. */
         commentAnchor?: CommentAnchor
+        /** See {@link ChannelSendFlowStepProps}. */
+        emailThread?: Record<string, unknown>
       }
     },
     OutgoingSendResult
@@ -178,7 +190,7 @@ export type CommentHandlers<IAuth extends AuthValue> = {
         contact: OutgoingContact
         message: OutgoingMessage
         metadata?: MetadataPayload
-        sendFrom?: "inbox"
+        sendFrom?: SendFrom
       }
     },
     OutgoingSendResult
@@ -193,7 +205,7 @@ export type CommentHandlers<IAuth extends AuthValue> = {
         contact: OutgoingContact
         message: OutgoingMessage
         metadata?: MetadataPayload
-        sendFrom?: "inbox"
+        sendFrom?: SendFrom
       }
     },
     OutgoingSendResult
@@ -398,7 +410,22 @@ export type ContactHandlers<IAuth extends AuthValue> = {
   getProfile: Handler<
     {
       ctx: Context<IAuth>
-      data: { includeProfileSnapshot?: boolean; sourceId: string }
+      data: {
+        // Download and store the profile picture (default). A caller that does
+        // not need the picture yet (contact creation on a lazy-avatar channel)
+        // passes false and the picture is fetched the first time it is needed.
+        includeAvatar?: boolean
+        includeProfileSnapshot?: boolean
+        /**
+         * Deadline for the channel's profile request (including reading the
+         * response), for best-effort lookups that must not hold the receive
+         * job; no retries when set. Unset = the channel's default client
+         * policy. Avatar download is not covered: callers set `includeAvatar:
+         * false`.
+         */
+        requestTimeoutMs?: number
+        sourceId: string
+      }
     },
     IncomingContact
   >
@@ -515,6 +542,14 @@ export type IntegrationDefinition<
     [key: string]: IChannel<IAuth>
   }
   actions: IActions
+  /**
+   * Whether the provider reports per-message delivery receipts that this
+   * integration turns into `message:delivered` events. Declared explicitly
+   * because registering `handleMessageStatus` does not prove it (Messenger
+   * receives receipts and discards them). A channel without receipts has its
+   * successful send treated as the delivery moment.
+   */
+  deliveryReceipts?: boolean
   handleRequest: Handler<
     HandleRequestProps<IConfig>,
     Oauth2AuthValue | string | number
@@ -599,6 +634,10 @@ export class Integration<
   get channels() {
     // biome-ignore lint/suspicious/noExplicitAny: wip
     return this.props.channels || ({} as { [key: string]: IChannel<any> })
+  }
+
+  get deliveryReceipts(): boolean {
+    return this.props.deliveryReceipts === true
   }
 
   get disconnect(): T["disconnect"] {

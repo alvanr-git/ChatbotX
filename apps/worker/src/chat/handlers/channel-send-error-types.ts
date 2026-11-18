@@ -2,15 +2,21 @@ import type {
   ContactInboxModel,
   ConversationModel,
 } from "@chatbotx.io/database/types"
+import type { MetadataPayload } from "@chatbotx.io/flow-config"
 
 // Kept apart from the reconciler registry so each reconciler can import the
 // contract without importing the registry that imports it (no module cycle).
 
 export type ChannelSendErrorContext = {
   error: unknown
-  conversation: Pick<ConversationModel, "id" | "workspaceId">
+  conversation: Pick<
+    ConversationModel,
+    "id" | "workspaceId" | "assignedUserId" | "assignedInboxTeamId"
+  >
   contactInbox: ContactInboxModel
   contentAttributes: unknown
+  /** The send job's payload tag (broadcast, sequence, flow node, ...). */
+  metadata?: MetadataPayload
 }
 
 /**

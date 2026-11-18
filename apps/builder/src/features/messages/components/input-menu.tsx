@@ -1,4 +1,4 @@
-import { getChannelFlowPolicy } from "@chatbotx.io/flow-config"
+import { getChannelFlowPolicy, stepSupport } from "@chatbotx.io/flow-config"
 import { Button } from "@chatbotx.io/ui/components/ui/button"
 import { channelTypes } from "@chatbotx.io/utils/channel"
 import { WorkflowIcon } from "lucide-react"
@@ -6,12 +6,16 @@ import { useTranslations } from "next-intl"
 import type { ReactElement } from "react"
 import { SelectFlowDialog } from "@/features/flows/components/select-flow-dialog"
 import SavedReplyManage from "@/features/saved-replies/saved-reply-manage"
+import type { SavedReplyResource } from "@/features/saved-replies/schema/resource"
 import { useChatStore } from "../../chat/store/chat-store-provider"
+import { CreateAppointmentDialogTrigger } from "./create-appointment-trigger"
 import EmojiPicker from "./emoji-picker"
 import { SendProductsDialogTrigger } from "./send-products-trigger"
 
 type InputMenuProps = {
   setContent: (text: string, insert?: boolean) => void
+  /** Fills the composer with a saved reply's text and images. */
+  onSelectSavedReply: (savedReply: SavedReplyResource) => void
   /** The inbox the composer sends through; decides which tools it offers. */
   contactInbox?: { channel: string; inboxId: string }
   bypassThreadControlLock?: boolean
@@ -51,6 +55,7 @@ export const SendFlowDialogTrigger = ({
  */
 export const InputMenu = ({
   setContent,
+  onSelectSavedReply,
   contactInbox,
   bypassThreadControlLock,
 }: InputMenuProps) => {
@@ -61,6 +66,11 @@ export const InputMenu = ({
   const canSendProducts =
     channel.success &&
     Boolean(getChannelFlowPolicy(channel.data)?.productMessages)
+  // The booking link travels in a URL button, not in the text: a channel that
+  // cannot send text with buttons would deliver the prompt without the link.
+  const canSendBookingLink =
+    channel.success &&
+    getChannelFlowPolicy(channel.data)?.steps.sendText === stepSupport.full
 
   return (
     <>
@@ -78,8 +88,14 @@ export const InputMenu = ({
           inboxId={contactInbox.inboxId}
         />
       )}
+      {!activePost && canSendBookingLink && contactInbox && (
+        <CreateAppointmentDialogTrigger
+          bypassThreadControlLock={bypassThreadControlLock}
+          inboxId={contactInbox.inboxId}
+        />
+      )}
       <EmojiPicker onSelectEmoji={(emoji) => setContent(emoji, true)} />
-      <SavedReplyManage onSelect={setContent} />
+      <SavedReplyManage onSelect={onSelectSavedReply} />
     </>
   )
 }

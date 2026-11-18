@@ -5,12 +5,15 @@ import {
   type IncomingAttachment,
   type IncomingContact,
   type IncomingMessage,
+  isDeferrableAttachmentType,
   type MessageHandlers,
   type MessageReferral,
   messageTypes,
   type ReceivedMessageResult,
+  toPendingIncomingAttachment,
 } from "@chatbotx.io/sdk"
 
+import { isLiveMediaDeferrableUrl } from "@chatbotx.io/utils/live-media"
 import { getMessageAttachmentEntity } from "../../apis/attachment"
 import { InstagramException } from "../../exception"
 import { logger } from "../../lib/logger"
@@ -20,6 +23,26 @@ import {
   type InstagramMessagingEvent,
   instagramWebhookEventSchema,
 } from "../../schema"
+
+// A lazy channel keeps the provider's CDN URL and stores the bytes on first
+// use; anything else (a sticker/GIF host, a share, a template) is downloaded
+// now, exactly as before.
+const toIncomingAttachment = (
+  ctx: Context<InstagramAuthValue>,
+  attachment: Parameters<typeof getMessageAttachmentEntity>[0]["attachment"],
+): Promise<IncomingAttachment | undefined> => {
+  const url = attachment.payload.url
+  const pending =
+    url &&
+    isDeferrableAttachmentType(attachment.type) &&
+    isLiveMediaDeferrableUrl("instagram", url)
+      ? toPendingIncomingAttachment({ url, type: attachment.type })
+      : null
+  if (pending) {
+    return Promise.resolve(pending)
+  }
+  return getMessageAttachmentEntity({ ctx, attachment })
+}
 
 const getMessageAttachments = async (
   ctx: Context<InstagramAuthValue>,
@@ -33,7 +56,7 @@ const getMessageAttachments = async (
     const attachmentPromises = message.attachments
       .filter((attachment) => attachment.payload.url)
       .map((attachment) =>
-        getMessageAttachmentEntity({ ctx, attachment }).catch((error) => {
+        toIncomingAttachment(ctx, attachment).catch((error) => {
           logger.error("Error processing attachment", error)
           return null
         }),
@@ -76,6 +99,12 @@ export const hasStoryMention = (message: InstagramMessage): boolean =>
     (attachment) => attachment.type === "story_mention",
   ) ?? false
 
+/** An `ig_reel` / `reel` attachment means the contact shared a reel. */
+export const hasReelShare = (message: InstagramMessage): boolean =>
+  message.attachments?.some(
+    (attachment) => attachment.type === "ig_reel" || attachment.type === "reel",
+  ) ?? false
+
 const getMessageEntity = async (
   ctx: Context<InstagramAuthValue>,
   messaging: InstagramMessagingEvent,
@@ -102,6 +131,8 @@ const getMessageEntity = async (
       contentAttributes = { type: "story_reply", story: storyReply }
     } else if (hasStoryMention(messaging.message)) {
       contentAttributes = { type: "story_mention" }
+    } else if (hasReelShare(messaging.message)) {
+      contentAttributes = { type: "reel_share" }
     }
     message = {
       sourceId: messaging.message.mid,
@@ -160,6 +191,7 @@ const getMessageEntity = async (
     ref,
     referralSource,
     referral,
+    occurredAt: new Date(messaging.timestamp),
     contact,
   }
 }

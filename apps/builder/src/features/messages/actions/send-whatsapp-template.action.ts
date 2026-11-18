@@ -16,11 +16,14 @@ export const sendWhatsappTemplateAction = workspaceActionClient
     const {
       bindArgsParsedInputs: [workspaceId, conversationId],
       parsedInput,
+      ctx,
     } = props
 
     await sendWhatsappTemplateToConversation({
       workspaceId,
       conversationId,
       request: parsedInput,
+      sender: { initiatedBy: "user", adminId: ctx.user.id },
+      sendFrom: "inbox",
     })
   })

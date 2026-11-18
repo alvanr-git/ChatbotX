@@ -1,4 +1,5 @@
 import type { Readable } from "node:stream"
+import type { RealtimeGuestEventData } from "@chatbotx.io/realtime-protocol"
 import type { AuthValue } from "../auth"
 
 export type ContextUploader = {
@@ -6,8 +7,13 @@ export type ContextUploader = {
     newPath: string,
     body: string | Readable | Buffer<ArrayBufferLike>,
     options?: unknown,
+    abortSignal?: AbortSignal,
     // biome-ignore lint/suspicious/noExplicitAny: wip
   ): Promise<any>
+  /** Reads an object by key straight from the bucket. */
+  getObjectStream?(
+    path: string,
+  ): Promise<{ stream: AsyncIterable<Uint8Array>; contentLength?: number }>
 }
 
 export type ContextQueue = {
@@ -34,6 +40,17 @@ export type AuthStore<AO extends AuthValue = AuthValue> = {
   markOffline?: (reason?: unknown) => Promise<void>
 }
 
+/**
+ * Short-lived key/value store scoped to one integration. For single-use
+ * secrets that must cross a process boundary within seconds (e.g. a reply
+ * token stashed at receive time and taken at send time). `take` is atomic:
+ * only one caller gets the value.
+ */
+export type ContextEphemeralStore = {
+  put(key: string, value: string, ttlSeconds: number): Promise<void>
+  take(key: string): Promise<string | null>
+}
+
 export type Context<AO extends AuthValue, ID = Record<string, unknown>> = {
   storagePrefix: string
   /**
@@ -46,20 +63,21 @@ export type Context<AO extends AuthValue, ID = Record<string, unknown>> = {
   auth: AO
   authStore?: AuthStore<AO>
   queue?: ContextQueue
+  ephemeral?: ContextEphemeralStore
   integrationDetail?: ID
   platform: {
     appUrl: string
-    /**
-     * Internal server-to-server realtime broadcast base URL. Never expose this
-     * deployment-wide URL to clients.
-     */
-    internalRealtimeUrl: string
     publicRealtimeUrl: string
     storageUrl: string
-    getRealtimeBroadcastAuthHeaders: (target: {
-      kind: "guest" | "workspace" | "user"
-      id: string
-    }) => Promise<Record<string, string>>
+    /**
+     * Publishes a guest-scoped event through the platform's durable realtime
+     * transport. The integration never receives a deployment-internal URL or
+     * signing secret.
+     */
+    publishGuestRealtimeEvent: (
+      guestConversationId: string,
+      event: RealtimeGuestEventData,
+    ) => Promise<void>
   }
 }
 

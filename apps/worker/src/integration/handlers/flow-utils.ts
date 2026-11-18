@@ -15,12 +15,14 @@ import {
 } from "@chatbotx.io/flow-config"
 import type { CommentAnchor, Variables } from "@chatbotx.io/sdk"
 import type { ErrorLogProvider } from "@chatbotx.io/utils/error-log"
+import type { SendFrom } from "@chatbotx.io/utils/send-from"
 import {
   type BotResponseTrackingContext,
   BROADCAST_SEND_PRIORITY,
   ChatJobAction,
   type ChatJobSendFlowStep,
   chatQueue,
+  flowContinuationJobOptions,
   IntegrationJobAction,
   integrationQueue,
   type NodeVisits,
@@ -43,10 +45,12 @@ export type ExecuteMultipleStepsProps = {
   metadata?: MetadataPayload
   isBulkBroadcast?: boolean
   quickReplies?: ButtonStepProps[]
-  sendFrom?: "inbox"
+  sendFrom?: SendFrom
+  sentByUserId?: string
   nodeVisits?: NodeVisits
   triggerMessageId?: string
   triggerMessageCreatedAt?: Date
+  startedByContactMessage?: boolean
   commentAnchor?: CommentAnchor
   appointmentId?: string
   flowExecutionKey?: string
@@ -137,6 +141,7 @@ export const STEP_PRODUCES_MESSAGE: Record<StepType, boolean> = {
   setUpCoupon: false,
   markCouponUsed: false,
   changeGamificationScore: false,
+  pipeline: false,
   condition: false,
   evaluateDecision: false,
 
@@ -161,6 +166,7 @@ export const STEP_PRODUCES_MESSAGE: Record<StepType, boolean> = {
   aiAnalyzeImage: false,
   aiGenerateImage: false,
   aiEditImage: false,
+  aiSegmentImage: false,
   aiSpeechToText: false,
   aiTextToSpeech: false,
   aiExtractData: false,
@@ -190,6 +196,9 @@ export const STEP_PRODUCES_MESSAGE: Record<StepType, boolean> = {
 
   // External/Others (X_)
   openWebsite: false,
+  openMiniApp: false,
+  callPhoneNumber: true,
+  copyText: true,
   addNotes: false,
 
   // Broadcast Operations (B_)
@@ -227,6 +236,7 @@ export const STEP_PRODUCES_MESSAGE: Record<StepType, boolean> = {
   sendViewCatalog: true,
   whatsappFlow: true,
   sendProducts: true,
+  sendCollection: true,
   whatsappLocation: true,
   sendMessengerTemplateMessage: true,
 
@@ -239,6 +249,9 @@ export const STEP_PRODUCES_MESSAGE: Record<StepType, boolean> = {
   disableMessengerComposer: false,
   setMessengerPersona: false,
   updateMessengerContactData: false,
+
+  // More options — sends a whatsappLocation without the comment anchor.
+  findPlacesNearMe: false,
 }
 
 /**
@@ -257,14 +270,37 @@ export type SuccessErrorStepSchema = BaseStepSchema & {
   errorNodeId?: string
 }
 
+/**
+ * The node the edge leaving `sourceId` enters. Pass `sourceNodeId` whenever the
+ * handle id may not be unique across the flow: condition case ids (and
+ * `otherwiseId`) were kept as-is by node Duplicate, so two condition nodes can
+ * share a handle id and a handle-only lookup returns the other node's edge.
+ */
 export const seekConnectedNode = (
   flowVersion: FlowVersionModel,
   sourceId: string,
+  sourceNodeId?: string,
 ) => {
   const connectedNode = (flowVersion.edges as EdgeSchema[]).find(
-    (edge) => edge.sourceHandle === sourceId,
+    (edge) =>
+      edge.sourceHandle === sourceId &&
+      (sourceNodeId === undefined || edge.source === sourceNodeId),
   )
   return connectedNode?.target
+}
+
+/** Id of the flow node whose `details.steps` holds the step `stepId`. */
+export const findNodeIdContainingStep = (
+  flowVersion: FlowVersionModel,
+  stepId: string,
+): string | undefined => {
+  const nodes = (flowVersion.nodes ?? []) as Array<{
+    id: string
+    data?: { details?: { steps?: Array<{ id?: string }> } }
+  }>
+  return nodes.find((node) =>
+    node.data?.details?.steps?.some((step) => step.id === stepId),
+  )?.id
 }
 
 export async function sendFlow(
@@ -300,23 +336,26 @@ export async function sendFlow(
           isBulkBroadcast: props.isBulkBroadcast,
           appointmentId: props.appointmentId,
           sendFrom: props.sendFrom,
+          sentByUserId: props.sentByUserId,
           nodeVisits: props.nodeVisits,
           triggerMessageId: props.triggerMessageId,
           triggerMessageCreatedAt: props.triggerMessageCreatedAt,
+          startedByContactMessage: props.startedByContactMessage,
           commentAnchor: props.commentAnchor,
           origin: webhookChannelOrigin(),
         },
       },
-      ...broadcastPriorityOptions(props.metadata),
+      flowContinuationJobOptions(props.metadata),
     )
   }
 }
 
 /**
  * The trailing job-options argument carrying `BROADCAST_SEND_PRIORITY` for a
- * job that belongs to a broadcast run, so every flow step after the
- * broadcast's first job keeps yielding to live traffic. Empty otherwise — a
- * job without a priority runs first, and its `add` call keeps its old shape.
+ * chat job that belongs to a broadcast run, so its sends keep yielding to live
+ * traffic. Empty otherwise — a job without a priority runs first, and its `add`
+ * call keeps its old shape. Chat jobs have no continuation tier: the ladder for
+ * flow jobs on `integration` is `flowContinuationJobOptions`.
  */
 function broadcastPriorityOptions(
   metadata: MetadataPayload | undefined,
@@ -368,6 +407,7 @@ export const logStepProviderError = (
     contactInbox: Pick<ContactInboxModel, "sourceId">
   },
   error: unknown,
+  httpCode?: string | null,
 ): Promise<void> =>
   logProviderError({
     provider,
@@ -375,4 +415,5 @@ export const logStepProviderError = (
     contactId: props.conversation.contactId,
     sourceId: props.contactInbox.sourceId,
     error,
+    httpCode,
   })

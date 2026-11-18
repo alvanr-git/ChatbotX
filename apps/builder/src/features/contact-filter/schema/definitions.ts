@@ -32,12 +32,29 @@ export type ContactFilterOptionSource =
   | "inboxes"
   | "tags"
   | "flows"
+  | "flowNodes"
+  | "keywords"
+  | "whatsappFlows"
+  | "emailTopics"
+  | "ads"
   | "broadcasts"
   | "sequences"
   | "reflinks"
   | "assignees"
   | "ctwaConversionTypes"
   | "channelPosts"
+  | "workingHours"
+  | "products"
+
+/**
+ * Where a contact-filter field may be used. `contacts` is every list/audience
+ * surface (contacts, conversations, broadcast audience and their public APIs);
+ * `flowCondition` is the flow Condition step, which evaluates the filter at
+ * runtime. A field limited to `flowCondition` is rejected by the schemas of
+ * every other surface, not just hidden from their pickers.
+ */
+export const CONTACT_FILTER_SURFACES = ["contacts", "flowCondition"] as const
+export type ContactFilterSurface = (typeof CONTACT_FILTER_SURFACES)[number]
 
 export type ContactFilterFieldDefinition = {
   field: ContactFilterField
@@ -49,7 +66,14 @@ export type ContactFilterFieldDefinition = {
    * (e.g. superseded by another) without breaking saved filters/broadcasts.
    */
   hidden?: boolean
+  /** Surfaces that accept this field. Omitted = every surface. */
+  surfaces?: readonly ContactFilterSurface[]
 }
+
+export const isFieldOnSurface = (
+  def: ContactFilterFieldDefinition,
+  surface: ContactFilterSurface,
+): boolean => !def.surfaces || def.surfaces.includes(surface)
 
 const conditionSchemaForDef = (def: ContactFilterFieldDefinition) =>
   staticFieldFilter(def.field)
@@ -196,6 +220,11 @@ export const CONTACT_FILTER_FIELD_DEFINITIONS = [
     optionSource: "none",
   },
   {
+    field: contactFilterFields.enum.lastDelivered,
+    schemaKind: "datetime",
+    optionSource: "none",
+  },
+  {
     field: contactFilterFields.enum.lastSeen,
     schemaKind: "datetime",
     optionSource: "none",
@@ -244,6 +273,31 @@ export const CONTACT_FILTER_FIELD_DEFINITIONS = [
     field: contactFilterFields.enum.entryPointsLinks,
     schemaKind: "multiSelect",
     optionSource: "reflinks",
+  },
+  {
+    field: contactFilterFields.enum.completedWhatsAppFlows,
+    schemaKind: "multiSelect",
+    optionSource: "whatsappFlows",
+  },
+  {
+    field: contactFilterFields.enum.sentMessage,
+    schemaKind: "text",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.keywordsReceived,
+    schemaKind: "multiSelect",
+    optionSource: "keywords",
+  },
+  {
+    field: contactFilterFields.enum.executedFlow,
+    schemaKind: "multiSelect",
+    optionSource: "flows",
+  },
+  {
+    field: contactFilterFields.enum.executedStep,
+    schemaKind: "multiSelect",
+    optionSource: "flowNodes",
   },
   {
     field: contactFilterFields.enum.consecutiveAiFailures,
@@ -324,6 +378,26 @@ export const CONTACT_FILTER_FIELD_DEFINITIONS = [
     schemaKind: "boolean",
     optionSource: "none",
   },
+  {
+    field: contactFilterFields.enum.emailSent,
+    schemaKind: "multiSelect",
+    optionSource: "emailTopics",
+  },
+  {
+    field: contactFilterFields.enum.emailDelivered,
+    schemaKind: "multiSelect",
+    optionSource: "emailTopics",
+  },
+  {
+    field: contactFilterFields.enum.emailOpened,
+    schemaKind: "multiSelect",
+    optionSource: "emailTopics",
+  },
+  {
+    field: contactFilterFields.enum.emailClicked,
+    schemaKind: "multiSelect",
+    optionSource: "emailTopics",
+  },
   // --- Ads (CTWA / Google) ---
   {
     field: contactFilterFields.enum.fromCtwaAd,
@@ -336,11 +410,64 @@ export const CONTACT_FILTER_FIELD_DEFINITIONS = [
     optionSource: "none",
   },
   {
+    field: contactFilterFields.enum.clickedAd,
+    schemaKind: "multiSelect",
+    optionSource: "ads",
+  },
+  {
     field: contactFilterFields.enum.ctwaConversion,
     schemaKind: "multiSelect",
     optionSource: "ctwaConversionTypes",
   },
+  // --- Ecommerce: orders (not cancelled, store currency) and the web shop cart ---
+  {
+    field: contactFilterFields.enum.totalSpent,
+    schemaKind: "number",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.numberOfOrders,
+    schemaKind: "number",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.bought,
+    schemaKind: "datetime",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.boughtItems,
+    schemaKind: "select",
+    optionSource: "products",
+  },
+  {
+    field: contactFilterFields.enum.shoppingCartIsEmpty,
+    schemaKind: "boolean",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.shoppingCartContainsItems,
+    schemaKind: "select",
+    optionSource: "products",
+  },
+  {
+    field: contactFilterFields.enum.shoppingCartSubtotal,
+    schemaKind: "number",
+    optionSource: "none",
+  },
+  {
+    field: contactFilterFields.enum.shoppingCartTotal,
+    schemaKind: "number",
+    optionSource: "none",
+  },
   // --- System fields ---
+  {
+    field: contactFilterFields.enum.isWithinWorkingHours,
+    schemaKind: "multiSelect",
+    optionSource: "workingHours",
+    // Evaluated against `now()`, so it only means something at runtime.
+    surfaces: ["flowCondition"],
+  },
   {
     field: contactFilterFields.enum.lastUserInput,
     schemaKind: "text",
@@ -353,5 +480,14 @@ export const CONTACT_FILTER_FIELD_DEFINITIONS = [
   },
 ] as const satisfies readonly ContactFilterFieldDefinition[]
 
+/** Condition schemas accepted on `surface` (field definitions filtered by `surfaces`). */
+const conditionSchemasForSurface = (surface: ContactFilterSurface) =>
+  CONTACT_FILTER_FIELD_DEFINITIONS.filter((def) =>
+    isFieldOnSurface(def, surface),
+  ).map((def) => conditionSchemaForDef(def))
+
 export const contactFilterConditionSchemas =
-  CONTACT_FILTER_FIELD_DEFINITIONS.map((def) => conditionSchemaForDef(def))
+  conditionSchemasForSurface("contacts")
+
+export const flowConditionFilterConditionSchemas =
+  conditionSchemasForSurface("flowCondition")

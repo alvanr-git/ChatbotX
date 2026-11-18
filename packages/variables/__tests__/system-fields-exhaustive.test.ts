@@ -86,10 +86,40 @@ vi.mock("@chatbotx.io/business", () => ({
       contentAttributes: { postId: "post-1" },
     }),
   },
+  facebookLeadAdsLeadService: {
+    findLatestByContact: vi.fn().mockResolvedValue({
+      leadgenId: "lead-1",
+      formId: "form-1",
+      formName: "Form",
+      adgroupId: "adgroup-1",
+      adId: "ad-1",
+      adName: "Ad",
+      adsetId: "adset-1",
+      adsetName: "Ad set",
+      campaignId: "campaign-1",
+      campaignName: "Campaign",
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+    }),
+  },
+  contactReferralEventService: {
+    findLatestAdTouchAt: vi
+      .fn()
+      .mockResolvedValue(new Date("2026-02-01T00:00:00Z")),
+  },
+  questionnaireSubmissionService: {
+    findLatestCompletedForContact: vi
+      .fn()
+      .mockResolvedValue({ id: "submission-1", totalPoints: 5 }),
+  },
   resolveContactAvatarUrl: mockResolveContactAvatarUrl,
   workspaceApiTokenService: {
     resolveDefaultTokenPlaintext: vi.fn().mockResolvedValue("cbx_ws_plaintext"),
   },
+}))
+
+vi.mock("@chatbotx.io/business/pipeline/variable-targets", () => ({
+  loadLastPipelineItemId: vi.fn().mockResolvedValue("pipeline-item-1"),
+  loadPipelineVariableTargets: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock("@chatbotx.io/business/system-field", () => ({
@@ -105,6 +135,8 @@ vi.mock("../src/helpers/assigned", () => ({
   resolveAssigneeEmail: vi.fn().mockResolvedValue("admin@example.com"),
   resolveAssigneeId: vi.fn().mockResolvedValue("admin-1"),
   resolveAssigneeName: vi.fn().mockResolvedValue("Admin"),
+  resolveSenderName: vi.fn().mockResolvedValue("Sender"),
+  listSenderTeamNames: vi.fn().mockResolvedValue("Team A, Team B"),
 }))
 
 vi.mock("../src/helpers/contact", () => ({
@@ -112,6 +144,8 @@ vi.mock("../src/helpers/contact", () => ({
   findPrimaryContactChannel: vi.fn().mockResolvedValue("messenger"),
   listContactNotesString: vi.fn().mockResolvedValue("note"),
   getLatestContactNoteString: vi.fn().mockResolvedValue("note"),
+  listContactAdIdsString: vi.fn().mockResolvedValue("ad-1, ad-2"),
+  getFirstContactAdId: vi.fn().mockResolvedValue("ad-1"),
 }))
 
 vi.mock("../src/helpers/leaderboard", () => ({
@@ -129,6 +163,7 @@ vi.mock("../src/helpers/queued-messages", () => ({
 vi.mock("../src/helpers/last-input", () => ({
   getContactLastInput: vi.fn().mockResolvedValue("hello"),
   getContactLastInputType: vi.fn().mockResolvedValue("text"),
+  getContactLastTextInput: vi.fn().mockResolvedValue("hello"),
 }))
 
 vi.mock("../src/helpers/integration-fields", () => ({
@@ -180,6 +215,8 @@ const contactInbox = {
   lastIncomingMessageAt: new Date("2026-01-02T03:04:05.000Z"),
   lastOutboundMessageAt: new Date("2026-01-02T03:04:05.000Z"),
   lastBtnTitle: "Choose plan",
+  lastStoryId: "story-1",
+  lastUserInputType: "text",
   lastInputFailure: "Invalid email",
   lastErrorLog: "(#551) unavailable",
   webchatParentUrl: "https://shop.example",
@@ -190,6 +227,7 @@ const contactInbox = {
     ref: "launch",
     adId: "ad-123",
     adTitle: "Launch ad",
+    adBody: "Launch offer",
     ctwaClid: "ctwa-1",
     sourceUrl: "https://example.com/ad",
     sourcePlatform: "facebook",
@@ -216,6 +254,7 @@ const fullContext = {
   contactInbox,
   conversation,
   appointmentId: "appointment-1",
+  sentByUserId: "user-1",
   workspace,
 }
 const emptyContext = {

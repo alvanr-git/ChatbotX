@@ -1,6 +1,7 @@
 import { zodBigintAsString } from "@chatbotx.io/utils"
 import { z } from "zod"
-import { timeRangeQuerySchema } from "./common"
+import { agentResponseSlaStatsShape } from "./agent-response"
+import { analyticsFilterFields, timeRangeQuerySchema } from "./common"
 import { contactEventTypes, contactSenderTypes } from "./contact-event"
 
 export const contactStatsSchema = z.object({
@@ -19,7 +20,12 @@ export const contactsByDimensionSchema = z.object({
 })
 export type ContactsByDimension = z.infer<typeof contactsByDimensionSchema>
 
-export const contactDimensionSchema = z.enum(["country", "channel", "source"])
+export const contactDimensionSchema = z.enum([
+  "country",
+  "channel",
+  "source",
+  "language",
+])
 export type ContactDimension = z.infer<typeof contactDimensionSchema>
 
 export const contactDimensionMetricSchema = z.enum(["new", "total"])
@@ -39,26 +45,35 @@ export const contactsByDimensionFields = {
   metric: contactDimensionMetricSchema
     .default("new")
     .describe(
-      "`new` counts contacts created between `from` and `to`. `total` counts the contacts that exist as of `to` (created minus deleted); `from` is ignored and `country` is not supported. An empty `dimension` means unknown.",
+      "`new` counts contacts created between `from` and `to`. `total` counts the contacts that exist as of `to` (created minus deleted); `from` is ignored and only `channel` and `source` are supported (only `channel` together with `inboxIds`). `language` groups by the contact language recorded when the contact was created. An empty `dimension` means unknown.",
     ),
 }
 
+// Under an inbox filter the total is anchored on per-inbox contact counts,
+// which only exist per channel.
 export const isSupportedDimensionMetric = ({
   dimension,
   metric,
+  inboxIds,
 }: {
   dimension: ContactDimension
   metric: ContactDimensionMetric
-}): boolean => metric !== "total" || TOTAL_METRIC_DIMENSIONS.includes(dimension)
+  inboxIds?: readonly string[]
+}): boolean =>
+  metric !== "total" ||
+  (inboxIds?.length
+    ? dimension === "channel"
+    : TOTAL_METRIC_DIMENSIONS.includes(dimension))
 
 export const unsupportedDimensionMetricIssue = {
   message:
-    "`metric: total` is only supported for the channel and source dimensions",
+    "`metric: total` is only supported for the channel and source dimensions, and only for channel with `inboxIds`",
   path: ["metric"],
 }
 
 export const contactsByDimensionQuerySchema = timeRangeQuerySchema
   .extend(contactsByDimensionFields)
+  .extend(analyticsFilterFields)
   .refine(isSupportedDimensionMetric, unsupportedDimensionMetricIssue)
 export type ContactsByDimensionQuery = z.infer<
   typeof contactsByDimensionQuerySchema
@@ -122,6 +137,13 @@ export const humanAgentStatsSchema = z.object({
   uniqueContacts: z.number(),
   userEmail: z.string().optional(),
   userName: z.string().optional(),
+  avgResponseSeconds: z.number().nullable(),
+  avgWorkingResponseSeconds: z.number().nullable(),
+  avgFirstResponseSeconds: z.number().nullable(),
+  avgWorkingFirstResponseSeconds: z.number().nullable(),
+  responseCount: z.number(),
+  firstResponseCount: z.number(),
+  ...agentResponseSlaStatsShape,
 })
 export type HumanAgentStats = z.infer<typeof humanAgentStatsSchema>
 

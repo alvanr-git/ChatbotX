@@ -1,6 +1,12 @@
 import type { RichResponseContentAttributes } from "../../schema"
 import type { AttachmentModel, MessageModel } from "../../types"
 
+/** A queued message's text plus the file types attached to it (keyword
+ * rules match image/video attachments, not just text). */
+export type MessageTextWithFileTypes = Pick<MessageModel, "id" | "text"> & {
+  attachmentFileTypes: AttachmentModel["fileType"][]
+}
+
 export interface CreateMessageInput {
   contactInboxId: string
   contentAttributes?: Record<string, unknown> | null
@@ -9,10 +15,12 @@ export interface CreateMessageInput {
   createdAt?: Date
   id?: string
   messageType: "incoming" | "outgoing" | "activity"
+  parentId?: string | null
   senderId?: string | null
   senderType: "bot" | "contact" | "system" | "user" | "api"
   sourceId?: string | null
   text?: string | null
+  type?: "message" | "comment"
   updatedAt?: Date
   workspaceId: string
 }
@@ -27,6 +35,8 @@ export interface CreateAttachmentInput {
   createdAt?: Date
   fileType: "image" | "video" | "audio" | "gif" | "file"
   height?: number | null
+  // true: never re-encode (image sent as a file). null/undefined: a photo.
+  keepOriginal?: boolean | null
   messageCreatedAt: Date
   messageId: string
   mimeType: string
@@ -187,7 +197,9 @@ export type AttachmentLookupRow = Pick<
   | "sourceId"
   | "originPath"
   | "mimeType"
+  | "size"
   | "createdAt"
+  | "keepOriginal"
 >
 
 export interface UpdateAttachmentParams {
@@ -240,6 +252,19 @@ export interface IMessageRepository {
     overlay: Record<string, unknown>
   }): Promise<{ id: string } | null>
 
+  /**
+   * Atomically clears a failed outgoing message's `sendError` so it can be sent
+   * again, only while it is still a failed send that never reached the channel
+   * (`sendError IS NOT NULL AND sourceId IS NULL`). Of two concurrent callers
+   * exactly one gets the row; the other (and a message that is not resendable)
+   * gets `null`, and must not enqueue anything.
+   */
+  claimForResend(params: {
+    id: string
+    workspaceId: string
+    createdAt: Date
+  }): Promise<{ id: string } | null>
+
   create(message: CreateMessageInput): Promise<MessageModel>
 
   createOrUpdate(message: CreateMessageInput): Promise<CreateMessageResult>
@@ -276,7 +301,7 @@ export interface IMessageRepository {
     sourceId: string,
     workspaceId: string,
     createdAt: Date,
-  ): Promise<{ id: string }[]>
+  ): Promise<{ conversationId: string; id: string }[]>
 
   findAIContextMessages(
     options: FindAIContextMessagesOptions,
@@ -312,7 +337,7 @@ export interface IMessageRepository {
     contactInboxId: string,
     sinceTime?: Date,
     workspaceId?: string,
-  ): Promise<Pick<MessageModel, "id" | "text">[]>
+  ): Promise<MessageTextWithFileTypes[]>
 
   findManyBySourceIds(
     params: FindManyBySourceIdsParams,
@@ -329,6 +354,18 @@ export interface IMessageRepository {
   hardDeleteAllByContactInbox(
     params: HardDeleteAllByContactInboxParams,
   ): Promise<HardDeleteAllByContactInboxResult>
+
+  /**
+   * Permanently removes one message and its attachment rows (no `deletedAt`
+   * tombstone — the inbox would render a soft-deleted row as "The message has
+   * been deleted."). Returns the ids of the message rows removed. Throws when a
+   * shard fails, so the caller never reports a delete that did not happen.
+   */
+  hardDeleteById(
+    id: string,
+    workspaceId: string,
+    createdAt: Date,
+  ): Promise<{ id: string }[]>
 
   /** Whether a message already carries an attachment of this type — lets a
    * retryable pipeline re-run its attach step without duplicating the file. */
@@ -360,7 +397,11 @@ export interface IMessageRepository {
     contentAttributes: Record<string, unknown> | null
   } | null>
 
-  updateAttachment(params: UpdateAttachmentParams): Promise<void>
+  /**
+   * Returns how many rows were updated: 0 means no row matched, so callers
+   * that just wrote an object for this row must treat it as a failure.
+   */
+  updateAttachment(params: UpdateAttachmentParams): Promise<number>
 
   /**
    * Replaces `contentAttributes` wholesale — it is NOT a merge. Callers hold
@@ -395,7 +436,7 @@ export interface IMessageRepository {
     workspaceId: string,
     newText: string,
     createdAt: Date,
-  ): Promise<{ id: string } | null>
+  ): Promise<{ conversationId: string; id: string } | null>
 
   updateSendError(
     id: string,
@@ -415,5 +456,5 @@ export interface IMessageRepository {
     sourceId: string,
     workspaceId: string,
     newText: string,
-  ): Promise<{ id: string } | null>
+  ): Promise<{ conversationId: string; id: string } | null>
 }

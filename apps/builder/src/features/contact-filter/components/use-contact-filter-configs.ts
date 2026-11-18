@@ -8,21 +8,29 @@ import {
   useBotFields,
   useCustomFields,
 } from "@/features/custom-fields/provider/custom-field-hook"
-import { useFlowSelectOptions } from "@/features/flows/provider/flow-hook"
+import {
+  useFlowNodeReferenceOptions,
+  useFlowSelectOptions,
+} from "@/features/flows/provider/flow-hook"
 import { useInboxOptionsByChannel } from "@/features/inboxes/provider/inbox-hook"
 import { useLeaderboardOptions } from "@/features/leaderboards/lib/use-leaderboard-options"
+import { usePipelineOptions } from "@/features/pipelines/lib/use-pipeline-options"
 import { useSequenceOptions } from "@/features/sequences/provider/sequence-hook"
 import { useTagSelectOptions } from "@/features/tags/provider/tag-hook"
 import { useContactAssigneeOptions } from "@/features/users/provider/user-hook"
+import { useWorkingHoursOptions } from "@/features/working-hours/provider/working-hours-hook"
 import { useWorkspaceId } from "@/hooks/routing"
 import type { FilterValueCondition } from "../lib/filter-value-labels"
+import type { ContactFilterSurface } from "../schema"
 import {
   type ConditionOption,
   type FieldConfig,
   getConditionOptions,
   getFieldConfigs,
 } from "./contact-filter-config"
+import { useActivityFiltersEnabled } from "./use-activity-filters-enabled"
 import { useFilterValueLabels } from "./use-filter-value-labels"
+import { useProductFilterOptions } from "./use-product-filter-options"
 import {
   useBroadcastSelectOptions,
   useChannelPostSelectOptions,
@@ -66,6 +74,8 @@ export const useContactFilterConfigs = (
   includeBotFields = false,
   /** The filter being shown, so id-backed values can be labelled by lookup. */
   conditions: readonly FilterValueCondition[] = [],
+  /** Fields limited to another surface are left out of the picker. */
+  surface: ContactFilterSurface = "contacts",
 ): UseContactFilterConfigsResult => {
   const t = useTranslations()
 
@@ -76,6 +86,8 @@ export const useContactFilterConfigs = (
   const botFields =
     useBotFields(workspaceId, { enabled: includeBotFields }).data ?? []
   const flowVersionOptions = useFlowSelectOptions()
+  const flowNodeOptions = useFlowNodeReferenceOptions()
+  const activityFiltersEnabled = useActivityFiltersEnabled()
   // `omnichannel` here means "all inboxes", not the broadcast channel, so it
   // falls back to the hook's default like an unknown channel does.
   const parsedChannel = channelTypes.safeParse(inboxChannel)
@@ -104,9 +116,14 @@ export const useContactFilterConfigs = (
   const assigneeOptions = useContactAssigneeOptions({
     includeUnassigned: true,
   })
+  const workingHourOptions = useWorkingHoursOptions({
+    enabled: surface === "flowCondition",
+  })
   const { options: couponTopicOptions } = useCouponTopicOptions()
   const { options: leaderboardOptions } = useLeaderboardOptions()
+  const { pipelines: pipelineOptions } = usePipelineOptions()
   const filterValueLabels = useFilterValueLabels(conditions)
+  const productOptions = useProductFilterOptions(workspaceId)
 
   const configs = useMemo(
     () =>
@@ -116,6 +133,8 @@ export const useContactFilterConfigs = (
         inboxOptions,
         customFields,
         flowVersionOptions,
+        flowNodeOptions,
+        activityFiltersEnabled,
         broadcastOptions,
         sequenceOptions,
         reflinkOptions,
@@ -123,8 +142,12 @@ export const useContactFilterConfigs = (
         assigneeOptions,
         couponTopicOptions,
         leaderboardOptions,
+        pipelineOptions,
+        productOptions,
         botFields,
         includeBotFields,
+        surface,
+        workingHourOptions,
         filterValueLabels,
       }),
     [
@@ -133,6 +156,8 @@ export const useContactFilterConfigs = (
       inboxOptions,
       customFields,
       flowVersionOptions,
+      flowNodeOptions,
+      activityFiltersEnabled,
       broadcastOptions,
       sequenceOptions,
       reflinkOptions,
@@ -140,8 +165,12 @@ export const useContactFilterConfigs = (
       assigneeOptions,
       couponTopicOptions,
       leaderboardOptions,
+      pipelineOptions,
+      productOptions,
       botFields,
       includeBotFields,
+      surface,
+      workingHourOptions,
       filterValueLabels,
     ],
   )

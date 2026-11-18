@@ -41,7 +41,7 @@ vi.mock("@chatbotx.io/redis", () => ({
   },
 }))
 vi.mock("ai", () => ({
-  stepCountIs: () => () => true,
+  isStepCount: () => () => true,
   streamText: mocks.streamText,
   tool: (input: unknown) => input,
 }))
@@ -59,6 +59,7 @@ vi.mock("../src/lib/db", () => ({
     contactInbox: {
       id: "contact-inbox-1",
       channel: "webchat",
+      inboxId: "inbox-9",
       createdAt: new Date("2026-09-01T00:00:00.000Z"),
       lastMessageAt: new Date("2026-09-28T00:00:00.000Z"),
     },
@@ -129,7 +130,7 @@ describe("processHandoffReentry", () => {
             },
           ],
         },
-        { experimental_context: undefined, messages: [], toolCallId: "tool-1" },
+        { context: undefined, messages: [], toolCallId: "tool-1" },
       )
       return { text: Promise.resolve("") }
     })
@@ -203,6 +204,8 @@ describe("processHandoffReentry", () => {
         eventType: "message:bot_received",
         hasResponse: false,
         messageId: "message-1",
+        channel: "webchat",
+        inboxId: "inbox-9",
       }),
     )
   })
@@ -224,7 +227,7 @@ describe("processHandoffReentry", () => {
             },
           ],
         },
-        { experimental_context: undefined, messages: [], toolCallId: "tool-1" },
+        { context: undefined, messages: [], toolCallId: "tool-1" },
       )
       return { text: Promise.resolve("") }
     })
@@ -255,7 +258,7 @@ describe("processHandoffReentry", () => {
             },
           ],
         },
-        { experimental_context: undefined, messages: [], toolCallId: "tool-1" },
+        { context: undefined, messages: [], toolCallId: "tool-1" },
       )
       return { text: Promise.resolve("") }
     })

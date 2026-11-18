@@ -22,6 +22,14 @@ import {
   parseThreadControlEvent,
   type ThreadControlSnapshotPatch,
 } from "@/features/conversations/utils/thread-control"
+import {
+  createSendQueue,
+  isSendQueueIdle,
+  type SendQueue,
+  type SendResultSignal,
+  settleSend,
+} from "@/features/messages/lib/send-queue"
+import type { CreateMessageWithRoutingBypassRequest } from "@/features/messages/schema/mutation"
 import type {
   MessageResource,
   MessageResourceWithRelations,
@@ -39,6 +47,12 @@ const CONVERSATION_HEAD_REFRESH_THROTTLE_MS = 5000
 const latestDate = (current: Date | string | null, next: Date): Date =>
   current && new Date(current) > next ? new Date(current) : next
 
+/** A reply typed by a person in the inbox or sent through the API (never a bot). */
+const isAgentReplyMessage = (message: MessageResourceWithRelations): boolean =>
+  message.messageType === "outgoing" &&
+  ((message.senderType === "user" && message.senderId !== null) ||
+    message.senderType === "api")
+
 /**
  * What a newly arrived message changes on its conversation, or null for
  * nothing: a contact's own message marks them as replied, and any message that
@@ -55,6 +69,31 @@ const conversationPatchForMessage = (
       ? {
           contactRepliedAt: message.createdAt,
           contactLastReadAt: message.createdAt,
+        }
+      : {}
+
+  // A human/API reply closes the waiting window on the server, which clears
+  // the response-SLA snapshot; mirror it (same rules) so the pill and SLA
+  // filters update without a refetch.
+  // An older reply arriving late must not clear a newer customer window.
+  const repliesToLatestCustomerMessage =
+    !conversation?.contactRepliedAt ||
+    new Date(message.createdAt) >= new Date(conversation.contactRepliedAt)
+  const isHumanReply = isAgentReplyMessage(message)
+  // A bot send also closes the window, but only while the bot is enabled.
+  // A WhatsApp template is proactive: the server keeps the window open for it.
+  const isEnabledBotReply =
+    message.messageType === "outgoing" &&
+    message.senderType === "bot" &&
+    conversation?.botEnabled === true &&
+    (message.contentAttributes as { type?: string } | null)?.type !==
+      "whatsapp_template"
+  const slaClearedPatch =
+    repliesToLatestCustomerMessage && (isHumanReply || isEnabledBotReply)
+      ? {
+          responseDueAt: null,
+          responseSlaBreachingAt: null,
+          responseSlaTargetSeconds: null,
         }
       : {}
 
@@ -76,7 +115,7 @@ const conversationPatchForMessage = (
         }
       : {}
 
-  const patch = { ...repliedPatch, ...windowPatch }
+  const patch = { ...repliedPatch, ...slaClearedPatch, ...windowPatch }
   return Object.keys(patch).length > 0 ? patch : null
 }
 
@@ -84,11 +123,7 @@ const readStatePatchForMessage = (
   conversation: ListConversationsResponse["data"][number],
   message: MessageResourceWithRelations,
 ): Partial<ConversationResource> => {
-  const isAgentReply =
-    message.messageType === "outgoing" &&
-    ((message.senderType === "user" && message.senderId !== null) ||
-      message.senderType === "api")
-  if (!isAgentReply) {
+  if (!isAgentReplyMessage(message)) {
     return {}
   }
   const readAt = latestDate(
@@ -108,7 +143,7 @@ export type ConversationFilters = {
   status?: ConversationStatus[]
   keyword?: string
   source?: string
-  tags?: ("noAdminReply" | "unread" | "followUp" | "archived" | "blocked")[]
+  tags?: ConversationStatus[]
   contactFilter?: ContactFilterRequest["contactFilter"]
 }
 
@@ -140,6 +175,10 @@ export type ChatState = {
   nextCursorMessage: string | null
   isLoadMoreMessage: boolean
   hasNextMessagePage: boolean
+  // Exact row count added by the latest accepted older-page response.
+  lastPrependedCount: number
+  // Bumped with lastPrependedCount so equal-sized prepends remain observable.
+  prependSeq: number
   // Which conversation the loaded message page belongs to, so loadInitialMessages can skip a server-seeded page.
   messagesConversationId: string | null
   // The initially active conversation's server-resolved contact, used as initialData to skip a client fetch.
@@ -153,6 +192,10 @@ export type ChatState = {
 
   // active facebook post (for comment conversations)
   activePost: PostDetails | null
+
+  // Per-conversation composer send queue. Deliberately outside the message
+  // thread state: switching conversations must not lose queued messages.
+  sendQueues: Record<string, SendQueue<CreateMessageWithRoutingBypassRequest>>
 }
 // `messages`/`nextCursorMessage`/`hasNextMessagePage`/`messagesConversationId`
 // must be seeded together or not at all: a `messages` seed without its
@@ -263,12 +306,33 @@ export type ChatActions = {
   // Message actions
   appendMessage: (message: MessageResourceWithRelations) => void
   markMessagesDeleted: (messageIds: string[]) => void
+  // Drops messages the server removed for good (a failed automated or API
+  // send) — unlike `markMessagesDeleted`, no "deleted" placeholder is left.
+  removeMessages: (messageIds: string[]) => void
   markMessagesRestored: (messageIds: string[]) => void
   markMessageFailed: (
     messageId: string,
     clientId: string | undefined,
     error: string | null,
   ) => void
+  // Applies a change to one conversation's composer send queue.
+  updateSendQueue: (
+    conversationId: string,
+    update: (
+      queue: SendQueue<CreateMessageWithRoutingBypassRequest>,
+    ) => SendQueue<CreateMessageWithRoutingBypassRequest>,
+  ) => void
+  // Applies a change to every conversation's queue. A private reply is queued
+  // under the comment's conversation but stored (and resent) under the DM's, so
+  // the queue a resend must unlock is not always the message's own.
+  updateAllSendQueues: (
+    update: (
+      queue: SendQueue<CreateMessageWithRoutingBypassRequest>,
+      conversationId: string,
+    ) => SendQueue<CreateMessageWithRoutingBypassRequest>,
+  ) => void
+  // Feeds the channel's answer for a message into every send queue.
+  settleSendResult: (signal: SendResultSignal) => void
   assignMessageCommentId: (messageId: string, commentId: string) => void
   updateMessageContentAttributes: (
     messageId: string,
@@ -371,6 +435,105 @@ const replaceMessageById = (
   return { messages: nextMessages }
 }
 
+// The message the conversation list shows as a conversation's latest.
+type ConversationPreviewMessage =
+  ListConversationsResponse["data"][number]["messages"][number]
+
+// Returns a `set` patch with `patch` applied to every conversation whose list
+// preview is one of `messageIds`, or `null` when none is so the caller can hand
+// back the untouched state. The open timeline (`state.messages`) is a separate
+// copy of the same message, so an edit or an unsend has to reach both.
+const patchConversationPreviews = (
+  conversations: ListConversationsResponse["data"],
+  messageIds: ReadonlySet<string>,
+  patch: (preview: ConversationPreviewMessage) => ConversationPreviewMessage,
+): { conversations: ListConversationsResponse["data"] } | null => {
+  let changed = false
+  const nextConversations = conversations.map((conversation) => {
+    const [preview] = conversation.messages
+    if (!(preview && messageIds.has(preview.id))) {
+      return conversation
+    }
+    changed = true
+    return { ...conversation, messages: [patch(preview)] }
+  })
+  return changed ? { conversations: nextConversations } : null
+}
+
+// After messages are removed for good, a conversation whose list preview was
+// one of them shows the last message still in the open timeline instead. Only
+// the open conversation has its timeline loaded; any other keeps its preview
+// until the list is next fetched.
+const replaceRemovedConversationPreviews = (props: {
+  conversations: ListConversationsResponse["data"]
+  activeConversationId: string | null | undefined
+  messages: MessageResourceWithRelations[]
+  removedIds: ReadonlySet<string>
+}): { conversations: ListConversationsResponse["data"] } | null => {
+  const { conversations, activeConversationId, messages, removedIds } = props
+  let changed = false
+  const nextConversations = conversations.map((conversation) => {
+    const [preview] = conversation.messages
+    if (
+      !(
+        preview &&
+        removedIds.has(preview.id) &&
+        conversation.id === activeConversationId
+      )
+    ) {
+      return conversation
+    }
+    const replacement = messages.findLast(
+      (message) => message.conversationId === conversation.id,
+    )
+    if (!replacement) {
+      return conversation
+    }
+    changed = true
+    return { ...conversation, messages: [replacement] }
+  })
+  return changed ? { conversations: nextConversations } : null
+}
+
+const prependOlderMessages = (
+  currentMessages: MessageResourceWithRelations[],
+  olderPage: MessageResourceWithRelations[],
+): {
+  messages: MessageResourceWithRelations[]
+  prependedCount: number
+} => {
+  const messageIds = new Set<string>()
+  const clientIds = new Set<string>()
+  for (const message of currentMessages) {
+    messageIds.add(message.id)
+    if (message.clientId) {
+      clientIds.add(message.clientId)
+    }
+  }
+  const prependedMessages: MessageResourceWithRelations[] = []
+
+  for (const message of olderPage) {
+    if (
+      messageIds.has(message.id) ||
+      (message.clientId !== null &&
+        message.clientId !== undefined &&
+        clientIds.has(message.clientId))
+    ) {
+      continue
+    }
+    prependedMessages.push(message)
+    messageIds.add(message.id)
+    if (message.clientId) {
+      clientIds.add(message.clientId)
+    }
+  }
+
+  return {
+    messages: [...prependedMessages, ...currentMessages],
+    prependedCount: prependedMessages.length,
+  }
+}
+
 /**
  * Shared core of initActiveConversationFromUrl and openConversation: selects
  * conversationId if already loaded, otherwise fetches and prepends it. Callers
@@ -449,6 +612,8 @@ type MessageThreadState = Pick<
   | "nextCursorMessage"
   | "isLoadMoreMessage"
   | "hasNextMessagePage"
+  | "lastPrependedCount"
+  | "prependSeq"
   | "messagesConversationId"
   | "seededContact"
   | "replyToMessage"
@@ -465,6 +630,8 @@ const messageThreadDefaults = (): MessageThreadState => ({
   nextCursorMessage: null,
   isLoadMoreMessage: false,
   hasNextMessagePage: true,
+  lastPrependedCount: 0,
+  prependSeq: 0,
   messagesConversationId: null,
   seededContact: null,
   replyToMessage: null,
@@ -499,6 +666,15 @@ const warnIfActiveConversationUnlisted = (
   }
 }
 
+/** Drops queues with nothing left to do, so the map holds only live conversations. */
+const pruneIdleSendQueues = (
+  queues: ChatState["sendQueues"],
+  now: number,
+): ChatState["sendQueues"] =>
+  Object.fromEntries(
+    Object.entries(queues).filter(([, queue]) => !isSendQueueIdle(queue, now)),
+  )
+
 export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
   warnIfActiveConversationUnlisted(initialState)
 
@@ -506,6 +682,9 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
   // a call that just finished waiting tell whether a newer call superseded it.
   // A closure variable rather than store state since it's only read/written
   // inside openConversation and never rendered.
+  // A request can outlive a conversation switch. Only the most recently
+  // started one may commit its result or release the shared loading guard.
+  let latestLoadMoreRequestId = 0
   let pendingOpenConversationId: string | null = null
   let lastConversationHeadRefreshAt = Number.NEGATIVE_INFINITY
   let conversationHeadRefreshInFlight: Promise<void> | null = null
@@ -531,6 +710,7 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
       ...conversationListDefaults(),
       filters: {},
       ...messageThreadDefaults(),
+      sendQueues: {},
 
       ...restInitialState,
       ...messagesSeed,
@@ -618,11 +798,37 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
                   return true
                 },
               )
-              if (newConversations.length === 0) {
+              // Rows already loaded only take the SLA snapshot from the head:
+              // a window opened (or cleared) elsewhere never reached them.
+              const headById = new Map(
+                headConversations.map((conversation) => [
+                  conversation.id,
+                  conversation,
+                ]),
+              )
+              let refreshedSla = false
+              const conversations = state.conversations.map((conversation) => {
+                const head = headById.get(conversation.id)
+                if (
+                  !head ||
+                  (head.responseDueAt?.getTime() ?? null) ===
+                    (conversation.responseDueAt?.getTime() ?? null)
+                ) {
+                  return conversation
+                }
+                refreshedSla = true
+                return {
+                  ...conversation,
+                  responseDueAt: head.responseDueAt,
+                  responseSlaBreachingAt: head.responseSlaBreachingAt,
+                  responseSlaTargetSeconds: head.responseSlaTargetSeconds,
+                }
+              })
+              if (newConversations.length === 0 && !refreshedSla) {
                 return state
               }
               return {
-                conversations: [...newConversations, ...state.conversations],
+                conversations: [...newConversations, ...conversations],
               }
             })
           } catch (error) {
@@ -1010,6 +1216,37 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
           })
           return changed ? { messages } : state
         })
+        set(
+          (state) =>
+            patchConversationPreviews(
+              state.conversations,
+              idSet,
+              (preview) => ({ ...preview, deletedAt: now }),
+            ) ?? state,
+        )
+      },
+
+      removeMessages: (messageIds: string[]) => {
+        const idSet = new Set(messageIds)
+        set((state) => {
+          const messages = state.messages.filter(
+            (message) => !idSet.has(message.id),
+          )
+          const messagesChanged = messages.length !== state.messages.length
+          const previewPatch = replaceRemovedConversationPreviews({
+            conversations: state.conversations,
+            activeConversationId: state.activeConversationId,
+            messages,
+            removedIds: idSet,
+          })
+          if (!(messagesChanged || previewPatch)) {
+            return state
+          }
+          return {
+            ...(messagesChanged ? { messages } : {}),
+            ...(previewPatch ?? {}),
+          }
+        })
       },
 
       markMessagesRestored: (messageIds: string[]) => {
@@ -1019,6 +1256,14 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
             idSet.has(message.id) ? { ...message, deletedAt: null } : message,
           ),
         }))
+        set(
+          (state) =>
+            patchConversationPreviews(
+              state.conversations,
+              idSet,
+              (preview) => ({ ...preview, deletedAt: null }),
+            ) ?? state,
+        )
       },
 
       markMessageFailed: (
@@ -1041,6 +1286,56 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
             return { ...message, sendError: error }
           })
           return changed ? { messages } : state
+        })
+      },
+
+      updateSendQueue: (conversationId, update) => {
+        set((state) => ({
+          sendQueues: pruneIdleSendQueues(
+            {
+              ...state.sendQueues,
+              [conversationId]: update(
+                state.sendQueues[conversationId] ??
+                  createSendQueue<CreateMessageWithRoutingBypassRequest>(),
+              ),
+            },
+            Date.now(),
+          ),
+        }))
+      },
+
+      updateAllSendQueues: (update) => {
+        set((state) => {
+          let changed = false
+          const sendQueues: ChatState["sendQueues"] = {}
+          for (const [conversationId, queue] of Object.entries(
+            state.sendQueues,
+          )) {
+            const next = update(queue, conversationId)
+            changed ||= next !== queue
+            sendQueues[conversationId] = next
+          }
+          return changed
+            ? { sendQueues: pruneIdleSendQueues(sendQueues, Date.now()) }
+            : state
+        })
+      },
+
+      settleSendResult: (signal) => {
+        const now = Date.now()
+        set((state) => {
+          let changed = false
+          const sendQueues: ChatState["sendQueues"] = {}
+          for (const [conversationId, queue] of Object.entries(
+            state.sendQueues,
+          )) {
+            const settled = settleSend(queue, signal, now)
+            changed ||= settled !== queue
+            sendQueues[conversationId] = settled
+          }
+          return changed
+            ? { sendQueues: pruneIdleSendQueues(sendQueues, now) }
+            : state
         })
       },
 
@@ -1098,12 +1393,22 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
                     height: attachmentUpdate.newAttachmentHeight ?? null,
                     sourceId: null,
                     thumbnailPath: null,
+                    // An agent-edited attachment is a photo for storage purposes.
+                    keepOriginal: null,
                     createdAt: new Date(),
                     updatedAt: new Date(),
                   },
                 ],
               }
             }) ?? state,
+        )
+        set(
+          (state) =>
+            patchConversationPreviews(
+              state.conversations,
+              new Set([messageId]),
+              (preview) => ({ ...preview, text: newText }),
+            ) ?? state,
         )
       },
 
@@ -1113,7 +1418,12 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
           return
         }
 
-        const { nextCursorMessage, messages, activeConversationId } = get()
+        const {
+          nextCursorMessage,
+          activeConversationId: requestedConversationId,
+        } = get()
+        const requestId = latestLoadMoreRequestId + 1
+        latestLoadMoreRequestId = requestId
         set({ isLoadMoreMessage: true })
 
         try {
@@ -1122,23 +1432,40 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
               workspaceId,
               perPage,
               cursor: nextCursorMessage ?? "",
-              conversationId: activeConversationId ?? undefined,
+              conversationId: requestedConversationId ?? undefined,
             })
-          set({
-            messages: [...data.reverse(), ...messages],
-            nextCursorMessage: nextCursor,
-            hasNextMessagePage: nextCursor !== null,
-            isLoadMoreMessage: false,
-            messagesConversationId: activeConversationId,
+          const olderPage = [...data].reverse()
+          set((state) => {
+            if (requestId !== latestLoadMoreRequestId) {
+              return state
+            }
+            if (state.activeConversationId !== requestedConversationId) {
+              return { isLoadMoreMessage: false }
+            }
+
+            const { messages, prependedCount } = prependOlderMessages(
+              state.messages,
+              olderPage,
+            )
+            return {
+              messages,
+              nextCursorMessage: nextCursor,
+              hasNextMessagePage: nextCursor !== null,
+              isLoadMoreMessage: false,
+              lastPrependedCount: prependedCount,
+              prependSeq: state.prependSeq + 1,
+              messagesConversationId: requestedConversationId,
+            }
           })
         } catch (error) {
-          // Reset the in-flight flag or the `isLoadMoreMessage` guard above
-          // would block every later scroll-up load for this store instance.
-          set({ isLoadMoreMessage: false })
+          // A request superseded by another conversation's load cannot release
+          // that request's loading guard.
+          if (requestId === latestLoadMoreRequestId) {
+            set({ isLoadMoreMessage: false })
+          }
           throw error
         }
       },
-
       loadInitialMessages: async (workspaceId: string, perPage: number) => {
         const {
           activeConversationId,
@@ -1333,7 +1660,10 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
               messageIndexByClientId = new Map()
               for (const [index, currentMessage] of messages.entries()) {
                 messageIndexById.set(currentMessage.id, index)
-                if (currentMessage.clientId) {
+                if (
+                  currentMessage.clientId &&
+                  currentMessage.contactInboxId === ""
+                ) {
                   messageIndexByClientId.set(currentMessage.clientId, index)
                 }
               }
@@ -1351,6 +1681,7 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
               }
               messageIndexById.delete(currentMessage.id)
               messageIndexById.set(message.id, matchingClientMessageIndex)
+              messageIndexByClientId.delete(message.clientId ?? "")
               continue
             }
             if (messageIndexById.has(message.id)) {
@@ -1368,7 +1699,10 @@ export const createChatStore = (initialState: ChatStoreInitialState = {}) => {
             for (let index = targetIndex; index < messages.length; index += 1) {
               const currentMessage = messages[index]
               messageIndexById.set(currentMessage.id, index)
-              if (currentMessage.clientId) {
+              if (
+                currentMessage.clientId &&
+                currentMessage.contactInboxId === ""
+              ) {
                 messageIndexByClientId.set(currentMessage.clientId, index)
               }
             }

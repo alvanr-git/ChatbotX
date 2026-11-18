@@ -1,7 +1,11 @@
 "use client"
 
 import {
+  CONTACT_ACTIVITY_TRACKED_FIELDS,
+  type ContactActivityValueSource,
   type FormFieldType,
+  getContactActivityTrackingStartedAt,
+  isContactActivityValueSource,
   type PostTrackingChannel,
   supportsPostTracking,
 } from "@chatbotx.io/database/partials"
@@ -30,15 +34,16 @@ import {
   operatorTypes,
 } from "@chatbotx.io/utils/custom-field"
 import { SiInstagram, SiMessenger } from "@icons-pack/react-simple-icons"
-import { useTranslations } from "next-intl"
+import { useFormatter, useTranslations } from "next-intl"
 import { type ReactNode, useCallback, useMemo } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { PlainTextEditorField } from "@/components/tiptap/plain-text-editor-field"
 import { FieldValuePickerPopover } from "@/features/custom-fields/components/field-value-picker-popover"
 import {
   type ContactFilterCondition,
-  singleContactFilterConditionSchema,
+  singleFlowConditionFilterConditionSchema,
 } from "../schema"
+import { ActivityReferenceValueField } from "./activity-reference-value-field"
 import {
   type ConditionOption,
   type ContactFilterConditionFormDraft,
@@ -64,6 +69,11 @@ import {
   getLeaderboardScoreValueInputConfig,
 } from "./leaderboard-score-filter-config"
 import {
+  getDefaultPipelineItemValue,
+  getPipelineItemConditionOptions,
+  pipelineItemConfigName,
+} from "./pipeline-item-filter-config"
+import {
   getDefaultStaticFieldValue,
   getStaticFieldConditionOptions,
   getStaticFieldValueInputConfig,
@@ -88,7 +98,7 @@ const getFirstEnabledOperator = (
 
 /**
  * Maps a raw form draft to the condition shape validated by
- * `singleContactFilterConditionSchema`. Static fields pass through unchanged;
+ * `singleFlowConditionFilterConditionSchema`. Static fields pass through unchanged;
  * a custom-field config (`customField:<id>`) becomes the dynamic
  * `{ field: "customField", customFieldId, valueType }` branch; a bot-field
  * config (`botField:<id>`) becomes `{ field: "botField", botFieldId, valueType }`;
@@ -136,6 +146,17 @@ export const buildConditionDraft = (
     return shouldOmitValue ? draft : { ...draft, value: values.value }
   }
 
+  if (config?.pipelineItem) {
+    // `exists` uses isEmpty/isNotEmpty but still carries the status to look for.
+    return {
+      field: "pipelineItem" as const,
+      attribute: config.pipelineItem.attribute,
+      pipelineId: config.pipelineItem.pipelineId,
+      operator,
+      value: values.value,
+    }
+  }
+
   if (config?.leaderboardId) {
     return {
       field: "leaderboardScore" as const,
@@ -165,6 +186,9 @@ const resolveDraftFieldName = (condition: ContactFilterCondition): string => {
   }
   if (condition.field === "leaderboardScore" && "leaderboardId" in condition) {
     return `leaderboardScore:${condition.leaderboardId}`
+  }
+  if (condition.field === "pipelineItem" && "attribute" in condition) {
+    return pipelineItemConfigName(condition)
   }
   return condition.field
 }
@@ -205,6 +229,9 @@ export const getConditionOptionsForConfig = (
   if (config.leaderboardId) {
     return getLeaderboardScoreConditionOptions(conditionOptions)
   }
+  if (config.pipelineItem) {
+    return getPipelineItemConditionOptions(config, conditionOptions)
+  }
   return getStaticFieldConditionOptions(config, conditionOptions)
 }
 
@@ -220,6 +247,9 @@ export const getDefaultConditionValue = (
   }
   if (config?.leaderboardId) {
     return ""
+  }
+  if (config?.pipelineItem) {
+    return getDefaultPipelineItemValue(config)
   }
   return getDefaultStaticFieldValue(config, operator)
 }
@@ -245,6 +275,10 @@ type ContactFilterValueFieldsProps = {
   /** True when the active field is a custom field or bot field (not static). */
   isDynamicField?: boolean
   isChannelPost?: boolean
+  /** Set for fields whose values are searched on the server. */
+  activityValueSource?: ContactActivityValueSource
+  /** Names of the values already chosen (from `FieldConfig.valueLabels`). */
+  selectedValueOptions?: SelectOption[]
   enableVariables: boolean
 }
 
@@ -452,7 +486,7 @@ const parseSaveableCondition = ({
   config: FieldConfig | undefined
   valueInputKind: ValueInputKind
 }): ContactFilterCondition | null => {
-  const parsed = singleContactFilterConditionSchema.safeParse(
+  const parsed = singleFlowConditionFilterConditionSchema.safeParse(
     buildConditionDraft(draft, config),
   )
   if (!parsed.success) {
@@ -495,6 +529,8 @@ const ContactFilterValueFields = ({
   customFieldInput,
   isDynamicField,
   isChannelPost = false,
+  activityValueSource,
+  selectedValueOptions,
   enableVariables,
 }: ContactFilterValueFieldsProps) => {
   const kind = resolveValueInputKind(customFieldInput, valueType)
@@ -515,6 +551,16 @@ const ContactFilterValueFields = ({
 
   if (kind === "multiSelect" && isChannelPost) {
     return <ChannelPostValueField />
+  }
+
+  if (kind === "multiSelect" && activityValueSource) {
+    return (
+      <ActivityReferenceValueField
+        fixedOptions={valueOptions}
+        selectedOptions={selectedValueOptions}
+        source={activityValueSource}
+      />
+    )
   }
 
   return VALUE_INPUT_RENDERERS[kind]({ enableVariables, valueOptions })
@@ -600,7 +646,12 @@ export const ContactFilterConditionDialog = ({
   })
   const { control, setValue, getValues, handleSubmit } = form
 
+  const format = useFormatter()
   const watchField = useWatch({ control, name: "field" })
+  // No backfill: these filters only know activity since tracking began.
+  const isTrackedField = CONTACT_ACTIVITY_TRACKED_FIELDS.some(
+    (field) => field === watchField,
+  )
   const watchOperator = useWatch({ control, name: "operator" })
   const watchValue = useWatch({ control, name: "value" })
 
@@ -626,7 +677,12 @@ export const ContactFilterConditionDialog = ({
     if (!activeConfig) {
       return { valueType: null, valueOptions: [] }
     }
-    if (watchOperator && OPERATORS_WITHOUT_VALUE.includes(watchOperator)) {
+    // Pipeline conditions always carry a value, even `isEmpty`/`isNotEmpty`.
+    if (
+      !activeConfig.pipelineItem &&
+      watchOperator &&
+      OPERATORS_WITHOUT_VALUE.includes(watchOperator)
+    ) {
       return { valueType: null, valueOptions: [] }
     }
     return {
@@ -694,6 +750,10 @@ export const ContactFilterConditionDialog = ({
   const triggerOperatorChange = useCallback(
     (nextOperator?: string) => {
       const currentValue = getValues("value")
+      if (activeConfig?.pipelineItem) {
+        // Every operator of an attribute takes the same value shape.
+        return
+      }
       if (nextOperator && OPERATORS_WITHOUT_VALUE.includes(nextOperator)) {
         setValue("value", "")
         return
@@ -788,17 +848,34 @@ export const ContactFilterConditionDialog = ({
               />
               <div className="overflow-hidden truncate">
                 <ContactFilterValueFields
+                  activityValueSource={
+                    isContactActivityValueSource(activeConfig?.optionSource)
+                      ? activeConfig.optionSource
+                      : undefined
+                  }
                   customFieldInput={resolvedFieldInput}
                   enableVariables={enableVariables}
                   isChannelPost={activeConfig?.optionSource === "channelPosts"}
                   isDynamicField={Boolean(
                     activeConfig?.customFieldId || activeConfig?.botFieldId,
                   )}
+                  selectedValueOptions={activeConfig?.valueLabels}
                   valueOptions={valueOptions}
                   valueType={valueType}
                 />
               </div>
             </div>
+
+            {isTrackedField ? (
+              <p className="text-muted-foreground text-xs">
+                {t("condition.trackingSince", {
+                  date: format.dateTime(
+                    new Date(getContactActivityTrackingStartedAt(watchField)),
+                    { dateStyle: "medium" },
+                  ),
+                })}
+              </p>
+            ) : null}
 
             <div className="flex justify-end gap-2">
               <Button

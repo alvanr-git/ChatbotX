@@ -18,6 +18,10 @@ export type ContactFilterConditionInput = {
   topicId?: string
   /** Present for "Gamification scores" conditions (`field === "leaderboardScore"`). */
   leaderboardId?: string
+  /** Present for `field === "pipelineItem"` conditions: exists | status | stage | priority. */
+  attribute?: string
+  /** Present for `field === "pipelineItem"` conditions; `null` = any pipeline. */
+  pipelineId?: string | null
   /** Present for `field === "ctwaRetarget"` conditions. */
   segment?: string
   /** Present for `field === "ctwaRetarget"` conditions. */
@@ -52,6 +56,11 @@ export type ContactFilterCriteriaInput = {
    * absent or unrecognized. See {@link ./timezone.resolveFilterTimezone}.
    */
   timezone?: string
+  /**
+   * IANA zone `isWithinWorkingHours` is evaluated in (the workspace timezone,
+   * resolved by the caller). Defaults to UTC.
+   */
+  workingHoursTimezone?: string
 }
 
 export type ContactWhere = Record<string, unknown>

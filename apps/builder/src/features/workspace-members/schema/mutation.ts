@@ -1,22 +1,23 @@
+import { workspaceMemberPermissionsSchema } from "@chatbotx.io/database/partials"
 import { z } from "zod"
+
+/**
+ * Shared with the admin console's create-workspace-for-an-owner dialog
+ * (`@/enterprise/features/admin-workspaces/schema`), which reuses this same
+ * permission set for the members it attaches.
+ */
+export const workspaceMemberPermissionsRequest =
+  workspaceMemberPermissionsSchema.refine(
+    (val) => Object.values(val).some(Boolean),
+    {
+      message: "At least one permission must be selected.",
+      path: ["permissions"],
+    },
+  )
 
 export const inviteWorkspaceMemberRequest = z.object({
   email: z.string().email().optional(),
-  permissions: z
-    .object({
-      superAdmin: z.boolean(),
-      analytics: z.boolean(),
-      flows: z.boolean(),
-      contacts: z.boolean(),
-      onlyAssignedContacts: z.boolean(),
-      emailAndPhone: z.boolean(),
-      broadcast: z.boolean(),
-      ecommerce: z.boolean(),
-    })
-    .refine((val) => Object.values(val).some(Boolean), {
-      message: "At least one permission must be selected.",
-      path: ["permissions"],
-    }),
+  permissions: workspaceMemberPermissionsRequest,
 })
 export type InviteWorkspaceMemberRequest = z.infer<
   typeof inviteWorkspaceMemberRequest

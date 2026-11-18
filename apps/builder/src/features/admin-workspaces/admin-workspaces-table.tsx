@@ -12,13 +12,13 @@ import { format } from "date-fns"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { use, useMemo } from "react"
-import type {
-  ListAdminWorkspacesResponse,
-  listAdminWorkspaces,
-} from "./queries"
+import { CreateAdminWorkspaceDialog } from "@/enterprise/features/admin-workspaces/create-admin-workspace-dialog"
+import type { ListAdminWorkspacesResponse } from "./queries"
 
 type AdminWorkspacesTableProps = {
-  promises: Promise<[Awaited<ReturnType<typeof listAdminWorkspaces>>]>
+  canCreateWorkspace: boolean
+  consentRequired: boolean
+  promises: Promise<[ListAdminWorkspacesResponse]>
 }
 
 function activeSupportUntil(
@@ -35,15 +35,23 @@ function OwnerCell({
 }: {
   row: ListAdminWorkspacesResponse["data"][number]
 }) {
+  const t = useTranslations()
+
   return (
     <div className="flex flex-col">
-      <span className="font-medium">{row.ownerName ?? "—"}</span>
+      <span className="font-medium">
+        {row.ownerName ?? t("platformAdmin.workspaces.notAvailable")}
+      </span>
       <span className="text-muted-foreground text-xs">{row.ownerEmail}</span>
     </div>
   )
 }
 
-export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
+export function AdminWorkspacesTable({
+  canCreateWorkspace,
+  consentRequired,
+  promises,
+}: AdminWorkspacesTableProps) {
   const [{ data, pageCount }] = use(promises)
   const t = useTranslations()
 
@@ -90,7 +98,8 @@ export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
             title={t("platformAdmin.workspaces.tenant")}
           />
         ),
-        cell: ({ row }) => row.original.tenantName ?? "—",
+        cell: ({ row }) =>
+          row.original.tenantName ?? t("platformAdmin.workspaces.notAvailable"),
         enableSorting: false,
       },
       {
@@ -113,6 +122,14 @@ export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
           />
         ),
         cell: ({ row }) => {
+          if (!consentRequired) {
+            return (
+              <Badge variant="secondary">
+                {t("platformAdmin.workspaces.supportAccessible")}
+              </Badge>
+            )
+          }
+
           const activeUntil = activeSupportUntil(row.original)
           if (activeUntil) {
             return (
@@ -135,7 +152,7 @@ export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
       {
         id: "actions",
         cell: ({ row }) => {
-          if (!activeSupportUntil(row.original)) {
+          if (consentRequired && !activeSupportUntil(row.original)) {
             return null
           }
 
@@ -152,7 +169,7 @@ export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
         enableHiding: false,
       },
     ],
-    [t],
+    [consentRequired, t],
   )
 
   const { table } = useDataTable({
@@ -169,7 +186,9 @@ export function AdminWorkspacesTable({ promises }: AdminWorkspacesTableProps) {
 
   return (
     <DataTable table={table}>
-      <DataTableToolbar table={table} />
+      <DataTableToolbar table={table}>
+        {canCreateWorkspace && <CreateAdminWorkspaceDialog />}
+      </DataTableToolbar>
     </DataTable>
   )
 }

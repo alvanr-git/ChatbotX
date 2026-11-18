@@ -26,6 +26,9 @@ export const flowValidationCodes = {
   waTemplateMpmTooManyProducts: "waTemplateMpmTooManyProducts",
   waTemplateLtoExpirationRequired: "waTemplateLtoExpirationRequired",
   waTemplateMpmIncompleteProducts: "waTemplateMpmIncompleteProducts",
+  waTemplatePaymentRequestIncomplete: "waTemplatePaymentRequestIncomplete",
+  waTemplatePaymentRequestInvalid: "waTemplatePaymentRequestInvalid",
+  waTemplatePaymentRequestMisplaced: "waTemplatePaymentRequestMisplaced",
   quickReplyNextStepRequired: "quickReplyNextStepRequired",
   quickReplyRetryMessageRequired: "quickReplyRetryMessageRequired",
   quickReplyRetryWithGetUserData: "quickReplyRetryWithGetUserData",
@@ -37,6 +40,10 @@ export const flowValidationCodes = {
   sendProductsProductCountOutOfRange: "sendProductsProductCountOutOfRange",
   sendProductsSectionCountOutOfRange: "sendProductsSectionCountOutOfRange",
   sendProductsDuplicateProduct: "sendProductsDuplicateProduct",
+  templateButtonOpenMiniAppUnsupported: "templateButtonOpenMiniAppUnsupported",
+  buttonCallPhoneNumberUnsupported: "buttonCallPhoneNumberUnsupported",
+  buttonCopyTextUnsupported: "buttonCopyTextUnsupported",
+  invalidPhoneNumber: "invalidPhoneNumber",
 } as const
 
 export type FlowValidationCode =

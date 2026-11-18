@@ -80,7 +80,7 @@ const userQuotaService = {
   isLimitReached: vi.fn(async () => false),
   isTeamMemberLimitReached: vi.fn(async () => false),
   countDistinctTeamMembersForOwner: vi.fn(async () => 0),
-  countDistinctTeamMembersForTenant: vi.fn(async () => 0),
+  countDistinctTeamMembersForPool: vi.fn(async () => 0),
   getRemainingSlots: vi.fn(async () => null as number | null),
   increment: vi.fn(async () => undefined),
   incrementBy: vi.fn(async () => undefined),
@@ -708,8 +708,8 @@ describe("quotaEnforcementService.getUsageSummary", () => {
     expect(userQuotaService.getLiveUsage).toHaveBeenCalledWith(RESELLER)
     expect(userQuotaService.getForUser).toHaveBeenCalledWith(RESELLER)
     expect(
-      userQuotaService.countDistinctTeamMembersForTenant,
-    ).toHaveBeenCalledWith(TENANT)
+      userQuotaService.countDistinctTeamMembersForPool,
+    ).toHaveBeenCalledWith(RESELLER, TENANT)
   })
 
   test("sub-account reports its own live allocation, not the pool", async () => {
@@ -810,8 +810,74 @@ describe("quotaEnforcementService.hasReachedLimit", () => {
     )
     expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenNthCalledWith(
       2,
-      { tenantId: TENANT },
+      { pool: { ownerId: RESELLER, tenantId: TENANT } },
       RESELLER,
+    )
+  })
+})
+
+describe("quotaEnforcementService.hasRoomForTeamMembers", () => {
+  test("non-pooled: room is governed by the user's own row alone", async () => {
+    asRootUser()
+    userQuotaService.isTeamMemberLimitReached.mockResolvedValue(false)
+
+    await expect(
+      quotaEnforcementService.hasRoomForTeamMembers({
+        userId: ROOT_USER,
+        additionalCount: 3,
+      }),
+    ).resolves.toBe(true)
+
+    expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenCalledWith(
+      { ownerId: ROOT_USER },
+      ROOT_USER,
+      3,
+    )
+  })
+
+  test("pooled sub-account with room of its own is still blocked by a full pool", async () => {
+    asCustomer()
+    userQuotaService.isTeamMemberLimitReached.mockImplementation(
+      async (_scope: unknown, limitUserId: string) => limitUserId === RESELLER,
+    )
+
+    await expect(
+      quotaEnforcementService.hasRoomForTeamMembers({
+        userId: CUSTOMER,
+        additionalCount: 1,
+      }),
+    ).resolves.toBe(false)
+
+    expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenNthCalledWith(
+      1,
+      { ownerId: CUSTOMER },
+      CUSTOMER,
+      1,
+    )
+    expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenNthCalledWith(
+      2,
+      { pool: { ownerId: RESELLER, tenantId: TENANT } },
+      RESELLER,
+      1,
+    )
+  })
+
+  test("reseller acting directly: only the pool row governs", async () => {
+    asReseller()
+    userQuotaService.isTeamMemberLimitReached.mockResolvedValue(false)
+
+    await expect(
+      quotaEnforcementService.hasRoomForTeamMembers({
+        userId: RESELLER,
+        additionalCount: 5,
+      }),
+    ).resolves.toBe(true)
+
+    expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenCalledTimes(1)
+    expect(userQuotaService.isTeamMemberLimitReached).toHaveBeenCalledWith(
+      { pool: { ownerId: RESELLER, tenantId: TENANT } },
+      RESELLER,
+      5,
     )
   })
 })

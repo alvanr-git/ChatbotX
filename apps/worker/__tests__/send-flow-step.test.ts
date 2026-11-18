@@ -143,6 +143,10 @@ const {
   }
 })
 
+const { mockResolveCollectionStep } = vi.hoisted(() => ({
+  mockResolveCollectionStep: vi.fn(),
+}))
+
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
@@ -179,19 +183,49 @@ vi.mock("@chatbotx.io/analytics", () => ({
   },
 }))
 
-vi.mock("@chatbotx.io/database/schema", () => ({
-  messageModel: { id: "id", sourceId: "sourceId" },
-  contactInboxModel: { id: "id" },
-  conversationModel: { id: "id", lastActivityAt: "lastActivityAt" },
-}))
+vi.mock("@chatbotx.io/database/schema", () => {
+  const schema = { pick: vi.fn(() => schema) }
+  return {
+    createSelectSchema: vi.fn(() => schema),
+    integrationWebchatModel: {},
+    messageModel: { id: "id", sourceId: "sourceId" },
+    contactInboxModel: { id: "id" },
+    conversationModel: { id: "id", lastActivityAt: "lastActivityAt" },
+  }
+})
 
 vi.mock("@chatbotx.io/business", () => ({
   appointmentCalendarService: {
     findByPublicLinkSlug: mockFindAppointmentCalendarBySlug,
   },
-  broadcastToWorkspaceParty: mockBroadcast,
-  publishToWorkspaceParty: mockBroadcast,
-  broadcastToGuestParty: vi.fn().mockResolvedValue(undefined),
+  publishWorkspaceRealtimeEvent: mockBroadcast,
+  queueWorkspaceRealtimeEvent: mockBroadcast,
+  queueMessageCreatedEvent: (
+    workspaceId: string,
+    data: unknown,
+    conversation: {
+      assignedInboxTeamId?: string | null
+      assignedUserId?: string | null
+      inboxId?: string | null
+    },
+    inboxId?: string,
+  ) => {
+    const resolvedInboxId = inboxId ?? conversation.inboxId
+    return mockBroadcast(workspaceId, {
+      eventType: "messageCreated",
+      data,
+      route: {
+        assignedTeamIds: conversation.assignedInboxTeamId
+          ? [conversation.assignedInboxTeamId]
+          : [],
+        assignedUserIds: conversation.assignedUserId
+          ? [conversation.assignedUserId]
+          : [],
+        ...(resolvedInboxId ? { inboxId: resolvedInboxId } : {}),
+      },
+    })
+  },
+  publishGuestRealtimeEvent: vi.fn().mockResolvedValue(undefined),
   contactInboxService: {
     findByUncached: mockFindContactInbox,
     findRecentByContactId: mockFindContactInbox,
@@ -206,7 +240,15 @@ vi.mock("@chatbotx.io/business", () => ({
     markReadByOutbound: mockMarkReadByOutbound,
   },
   productMessageService: { prepareOutgoing: mockPrepareProductMessage },
+  resolveCollectionStep: mockResolveCollectionStep,
   resolveTenantSettings: mockresolveTenantSettings,
+  messageService: {
+    create: mockRepositoryCreate,
+    createWithAttachments: (input: {
+      attachments: unknown[]
+      message: unknown
+    }) => mockRepositoryCreateWithAttachments(input.message, input.attachments),
+  },
   resolveMediaUrl: mockResolveMediaUrl,
 }))
 
@@ -232,6 +274,11 @@ vi.mock("@chatbotx.io/encryption/open-link-token", () => ({
   verifyOpenLinkUrl: vi.fn(() => true),
 }))
 
+// No step here carries an Open Mini App button, so the Mini App lookup is
+// never reached; mocked only to keep its DB-backed module out of the import.
+vi.mock("@chatbotx.io/business/mini-app", () => ({
+  miniAppService: { findUnscoped: vi.fn() },
+}))
 vi.mock("@chatbotx.io/business/utils", () => ({
   getPublicFileUrl: vi.fn((path: string, base: string) => `${base}/${path}`),
 }))
@@ -240,8 +287,26 @@ vi.mock("@chatbotx.io/event-bus", () => ({
   emit: mockEmit,
 }))
 
-vi.mock("@chatbotx.io/partysocket-config", () => ({
+vi.mock("@chatbotx.io/realtime-protocol", () => ({
   RealtimeEventType: { messageCreated: "messageCreated" },
+  routeForConversation: vi.fn(
+    (
+      conversation: {
+        assignedInboxTeamId?: string | null
+        assignedUserId?: string | null
+        inboxId?: string | null
+      },
+      inboxId?: string | null,
+    ) => ({
+      assignedTeamIds: conversation.assignedInboxTeamId
+        ? [conversation.assignedInboxTeamId]
+        : [],
+      assignedUserIds: conversation.assignedUserId
+        ? [conversation.assignedUserId]
+        : [],
+      inboxId: inboxId ?? conversation.inboxId,
+    }),
+  ),
 }))
 
 vi.mock("@chatbotx.io/sdk", async (importOriginal) => {
@@ -281,6 +346,10 @@ vi.mock("../src/services/integrations", () => ({
   resolveIntegrationContextFromContactInbox: vi.fn(),
 }))
 
+const mockSettleFailedOutgoingMessage = vi.hoisted(() =>
+  vi.fn().mockResolvedValue("removed"),
+)
+
 vi.mock("../src/chat/handlers/send-message", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../src/chat/handlers/send-message")>()
@@ -288,7 +357,7 @@ vi.mock("../src/chat/handlers/send-message", async (importOriginal) => {
     ...actual,
     sendFlowStepToChannel: mockSendFlowStepToChannel,
     sendMessageToChannel: mockSendMessageToChannel,
-    recordMessageSendError: vi.fn().mockResolvedValue(undefined),
+    settleFailedOutgoingMessage: mockSettleFailedOutgoingMessage,
     markConversationReadAfterDelivery: mockMarkReadByOutbound,
   }
 })
@@ -310,6 +379,7 @@ import {
   SEQUENCE_SCHEDULE_PAYLOAD_TYPE,
 } from "@chatbotx.io/flow-config"
 import type { ChatJobSendFlowStep } from "@chatbotx.io/worker-config"
+import { logger } from "../src/lib/logger"
 
 const { sendChatMessage, sendFlowStep } = await import(
   "../src/chat/handlers/send-flow-step"
@@ -463,6 +533,30 @@ describe("sendFlowStep", () => {
       }),
       expect.anything(),
     )
+  })
+
+  test("forwards sentByUserId when resolving contact variables", async () => {
+    await sendFlowStep({
+      ...baseParams,
+      sentByUserId: "user-1",
+    })
+
+    expect(mockResolveContactVariables).toHaveBeenCalledWith(
+      "contact-1",
+      sendTextStep,
+      expect.objectContaining({ sentByUserId: "user-1" }),
+      expect.anything(),
+    )
+  })
+
+  test("does not set sentByUserId when the flow was not sent by an inbox user", async () => {
+    await sendFlowStep(baseParams)
+
+    const source = mockResolveContactVariables.mock.calls[0]?.[2] as Record<
+      string,
+      unknown
+    >
+    expect(source).not.toHaveProperty("sentByUserId")
   })
 
   // Only deliverable steps reach this resolve, so every string in them is
@@ -631,6 +725,85 @@ describe("sendFlowStep", () => {
     expect(mockSendFlowStepToChannel).not.toHaveBeenCalled()
   })
 
+  describe("card button limit of the resolved channel", () => {
+    const fiveButtons = Array.from({ length: 5 }, (_, index) => ({
+      id: `b${index + 1}`,
+      label: `Option ${index + 1}`,
+      buttonType: null,
+      beforeStep: null,
+      steps: [],
+    }))
+    const lineTextStep = {
+      id: "step-line",
+      nodeId: "node-line",
+      stepType: "sendText",
+      text: "Pick one",
+      buttons: fiveButtons,
+    } as unknown as SendFlowStepData["step"]
+    const lineCarouselStep = {
+      id: "step-line-carousel",
+      nodeId: "node-line",
+      stepType: "sendCarousel",
+      layout: "horizontal",
+      cards: [
+        { id: "c1", stepType: "sendCard", title: "A", buttons: fiveButtons },
+      ],
+    } as unknown as SendFlowStepData["step"]
+    const DROPPED =
+      "Dropping card buttons over the resolved channel's card button limit"
+    const sentStep = () =>
+      mockSendFlowStepToChannel.mock.calls.at(-1)?.[0]?.step as {
+        buttons?: { id: string }[]
+        cards?: { buttons: { id: string }[] }[]
+      }
+
+    test("a 5-button text step is passed to a 3-button channel unchanged", async () => {
+      await sendFlowStep({
+        ...baseParams,
+        contactInboxId: "ci-1",
+        step: lineTextStep,
+      })
+
+      expect(sentStep().buttons).toHaveLength(5)
+      expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), DROPPED)
+    })
+
+    test("each carousel card is cut to the channel's card limit and logged", async () => {
+      await sendFlowStep({
+        ...baseParams,
+        contactInboxId: "ci-1",
+        step: lineCarouselStep,
+      })
+
+      expect(sentStep().cards?.[0]?.buttons.map((button) => button.id)).toEqual(
+        ["b1", "b2", "b3"],
+      )
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: "messenger",
+          dropped: [{ group: "cards.0", kept: 3, dropped: 2 }],
+        }),
+        DROPPED,
+      )
+    })
+
+    test("LINE keeps all 5 card buttons and logs nothing", async () => {
+      mockFindContactInbox.mockResolvedValue({
+        ...fakeContactInbox,
+        channel: "line",
+      })
+
+      await sendFlowStep({
+        ...baseParams,
+        contactInboxId: "ci-1",
+        step: lineCarouselStep,
+      })
+
+      expect(sentStep().cards?.[0]?.buttons).toHaveLength(5)
+      expect(logger.warn).not.toHaveBeenCalledWith(expect.anything(), DROPPED)
+    })
+  })
+
   describe("whatsappLocation step", () => {
     const locationStep = {
       id: "step-location",
@@ -776,10 +949,113 @@ describe("sendFlowStep", () => {
       expect.objectContaining({ eventType: "messageCreated" }),
     )
     expect(mockRecordOutboundFlowStep).toHaveBeenCalledWith(
-      expect.objectContaining({ bumpActivity: true }),
+      expect.objectContaining({
+        bumpActivity: true,
+        // Proactive broadcast sends never close the waiting window.
+        closeHumanReplyWindow: false,
+      }),
     )
     expect(mockMarkReadByOutbound).toHaveBeenCalledWith(
       expect.objectContaining({ silent: false }),
+    )
+  })
+
+  test("a plain bot flow step closes the human reply window", async () => {
+    await sendFlowStep(baseParams)
+
+    expect(mockRecordOutboundFlowStep).toHaveBeenCalledWith(
+      expect.objectContaining({ closeHumanReplyWindow: true }),
+    )
+  })
+
+  describe("a failed send", () => {
+    beforeEach(() => {
+      mockSendFlowStepToChannel.mockRejectedValueOnce(new Error("rejected"))
+    })
+
+    test("of an automated flow step settles its message without the inbox rule", async () => {
+      await sendFlowStep(baseParams)
+
+      expect(mockEmit).toHaveBeenCalledWith(
+        "message:failed",
+        expect.objectContaining({ willRetry: false }),
+      )
+      expect(mockSettleFailedOutgoingMessage).toHaveBeenCalledWith({
+        message: expect.objectContaining({ id: "msg-created" }),
+        conversationId: "conv-1",
+        workspaceId: "ws-1",
+        errorMessage: expect.any(String),
+        sendFrom: undefined,
+        silent: false,
+      })
+    })
+
+    test("of a flow sent from the inbox passes sendFrom so the message is kept", async () => {
+      await sendFlowStep({ ...baseParams, sendFrom: "inbox" })
+
+      expect(mockSettleFailedOutgoingMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ sendFrom: "inbox" }),
+      )
+    })
+
+    test("of a bulk broadcast step settles silently", async () => {
+      await sendFlowStep({
+        ...baseParams,
+        isBulkBroadcast: true,
+        metadata: { type: BROADCAST_PAYLOAD_TYPE } as never,
+      })
+
+      expect(mockSettleFailedOutgoingMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ silent: true }),
+      )
+    })
+  })
+
+  test("stamps a flow step sent from the inbox as sentFromInbox", async () => {
+    await sendFlowStep({ ...baseParams, sendFrom: "inbox" })
+
+    expect(mockRepositoryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentAttributes: expect.objectContaining({ sentFromInbox: true }),
+      }),
+    )
+  })
+
+  test("does not stamp an automated or API flow step", async () => {
+    await sendFlowStep({ ...baseParams, sendFrom: "api" })
+
+    const [created] = mockRepositoryCreate.mock.calls[0] as [
+      { contentAttributes: Record<string, unknown> },
+    ]
+    expect(created.contentAttributes).not.toHaveProperty("sentFromInbox")
+  })
+
+  test("an inbox-originated flow step leaves the window to the producer claim", async () => {
+    await sendFlowStep({ ...baseParams, sendFrom: "inbox" })
+
+    expect(mockRecordOutboundFlowStep).toHaveBeenCalledWith(
+      expect.objectContaining({ closeHumanReplyWindow: false }),
+    )
+  })
+
+  test("sequence schedule and bulk broadcast steps keep the window open", async () => {
+    await sendFlowStep({
+      ...baseParams,
+      metadata: { type: "sequenceSchedule" },
+    })
+    await sendFlowStep({
+      ...baseParams,
+      isBulkBroadcast: true,
+      metadata: { type: "broadcast", broadcastId: "b", contactInboxId: "ci-1" },
+    })
+
+    expect(mockRecordOutboundFlowStep).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ closeHumanReplyWindow: false }),
+    )
+    expect(mockRecordOutboundFlowStep).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ closeHumanReplyWindow: false }),
     )
   })
 
@@ -837,6 +1113,7 @@ describe("sendFlowStep", () => {
       publicLinkSlug: "public-slug",
     })
     expect(mockSignAppointmentWebviewToken).toHaveBeenCalledWith({
+      source: "flow",
       mode: "book",
       workspaceId: "ws-1",
       calendarId: "calendar-1",
@@ -974,6 +1251,105 @@ describe("sendFlowStep", () => {
     // both.
     expect(sentButtonUrl()).toContain(GO_PREFIX)
     expect(persistedButtonUrl()).toBe(sentButtonUrl())
+  })
+
+  // -------------------------------------------------------------------------
+  // Call Phone Number buttons
+  // -------------------------------------------------------------------------
+
+  const callPhoneStep = (phoneNumber: string, label = "Call") =>
+    ({
+      ...sendTextStep,
+      buttons: [
+        {
+          id: "button-1",
+          label,
+          buttonType: "callPhoneNumber",
+          beforeStep: {
+            id: "before-1",
+            stepType: "callPhoneNumber",
+            phoneNumber,
+          },
+          steps: [],
+        },
+      ],
+    }) as unknown as SendFlowStepData["step"]
+
+  const sentCallButton = () =>
+    mockSendFlowStepToChannel.mock.calls.at(-1)?.[0]?.step?.buttons?.[0]
+
+  const persistedCallButton = () =>
+    mockRepositoryCreate.mock.calls.at(-1)?.[0]?.contentAttributes?.payload
+      ?.buttons?.[0]
+
+  test("normalises a resolved call number and keeps the label on a native channel", async () => {
+    mockResolveContactVariables.mockImplementation(
+      (_contactId: string, step: unknown) =>
+        Promise.resolve(
+          JSON.parse(
+            JSON.stringify(step).replace(
+              "{{contact.phone}}",
+              "+1 415 555 2671",
+            ),
+          ),
+        ),
+    )
+
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: callPhoneStep("{{contact.phone}}"),
+    })
+
+    expect(sentCallButton()).toMatchObject({
+      label: "Call",
+      buttonType: "callPhoneNumber",
+      beforeStep: { phoneNumber: "+14155552671" },
+    })
+    expect(persistedCallButton()).toMatchObject({
+      buttonType: "phoneNumber",
+      label: "Call",
+      phoneNumber: "+14155552671",
+    })
+  })
+
+  test("shows the number in the title on a channel that cannot dial", async () => {
+    mockFindContactInbox.mockResolvedValue({
+      ...fakeContactInbox,
+      channel: "telegram",
+    })
+
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: callPhoneStep("+14155552671"),
+    })
+
+    expect(sentCallButton()?.label).toBe("Call +14155552671")
+    // Stored as the reply button the contact actually got, not a dial link.
+    expect(persistedCallButton()).toMatchObject({
+      buttonType: "postback",
+      label: "Call +14155552671",
+    })
+    expect(persistedCallButton()).not.toHaveProperty("phoneNumber")
+  })
+
+  test("degrades an unresolved number to an inert reply button", async () => {
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: callPhoneStep("{{contact.phone}}"),
+    })
+
+    expect(sentCallButton()).toMatchObject({
+      buttonType: null,
+      beforeStep: null,
+      label: "Call",
+    })
+    expect(persistedCallButton()).toMatchObject({
+      buttonType: "postback",
+      label: "Call",
+    })
   })
 
   test("leaves every link outside the deep-link table untouched", async () => {
@@ -1141,6 +1517,7 @@ describe("sendFlowStep", () => {
     })
 
     expect(mockSignAppointmentWebviewToken).toHaveBeenCalledWith({
+      source: "flow",
       mode: "book",
       workspaceId: "ws-1",
       calendarId: "calendar-1",
@@ -1447,6 +1824,79 @@ describe("sendFlowStep", () => {
     )
   })
 
+  describe("presetQuickReplies (caller-encoded quick replies, e.g. Get User Data's Skip)", () => {
+    const skip = {
+      id: "skip-1",
+      label: "Skip",
+      buttonType: "postback" as const,
+      postback: "STEP_INPUT_SKIP|11612473309626368",
+    }
+
+    test("reaches the channel untouched and is stored as a button of the message", async () => {
+      await sendFlowStep({
+        ...baseParams,
+        step: sendTextStep,
+        presetQuickReplies: [skip],
+      })
+
+      expect(mockSendFlowStepToChannel).toHaveBeenCalledWith(
+        expect.objectContaining({ quickReplies: [skip] }),
+      )
+      expect(mockRepositoryCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentAttributes: expect.objectContaining({
+            payload: expect.objectContaining({
+              buttons: expect.arrayContaining([skip]),
+            }),
+          }),
+        }),
+      )
+    })
+
+    test("goes after the step's own quick replies", async () => {
+      const quickReplies = [
+        {
+          id: "qr-1",
+          label: "Yes",
+          buttonType: null,
+          beforeStep: null,
+          steps: [],
+        },
+      ]
+
+      await sendFlowStep({
+        ...baseParams,
+        step: sendTextStep,
+        quickReplies,
+        presetQuickReplies: [skip],
+      } as SendFlowStepData & { quickReplies: typeof quickReplies })
+
+      const call = mockSendFlowStepToChannel.mock.calls[0]?.[0] as {
+        quickReplies: { id: string }[]
+      }
+      expect(call.quickReplies.map((reply) => reply.id)).toEqual([
+        "qr-1",
+        "skip-1",
+      ])
+    })
+
+    test.each([
+      ["omitted", undefined],
+      ["empty", []],
+    ])("adds nothing when %s", async (_label, presetQuickReplies) => {
+      await sendFlowStep({
+        ...baseParams,
+        step: sendTextStep,
+        presetQuickReplies,
+      })
+
+      const call = mockSendFlowStepToChannel.mock.calls[0]?.[0] as {
+        quickReplies?: unknown
+      }
+      expect(call.quickReplies).toBeUndefined()
+    })
+  })
+
   test("calls repository.createWithAttachments() for step with url (sendImage)", async () => {
     await sendFlowStep({ ...baseParams, step: sendImageStep })
 
@@ -1607,6 +2057,7 @@ describe("sendFlowStep", () => {
       contactId: "contact-1",
       at: createdMessage.createdAt,
       bumpActivity: true,
+      closeHumanReplyWindow: true,
       lastStep: undefined,
       currentStep: "step-1",
     })
@@ -1675,6 +2126,26 @@ describe("sendFlowStep", () => {
     expect(mockCreateMessageRepository).not.toHaveBeenCalled()
   })
 
+  test("hands the inbox sender to processWhatsappTemplate for a template step", async () => {
+    const waStep = {
+      id: "step-wa",
+      nodeId: "node-wa",
+      stepType: "sendWaTemplateMessage",
+      template: { id: "tmpl-1", name: "template", language: "en", params: {} },
+      buttons: [],
+    } as unknown as SendFlowStepData["step"]
+    mockFindContactInbox.mockResolvedValue({
+      ...fakeContactInbox,
+      channel: "whatsapp",
+    } as unknown as typeof fakeContactInbox)
+
+    await sendFlowStep({ ...baseParams, step: waStep, sentByUserId: "user-1" })
+
+    expect(mockProcessWhatsappTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ sentByUserId: "user-1" }),
+    )
+  })
+
   test("delegates to processMessengerTemplate for sendMessengerTemplateMessage step — does not call createMessageRepository directly", async () => {
     const msStep = {
       id: "step-ms",
@@ -1700,6 +2171,32 @@ describe("sendFlowStep", () => {
 
     expect(mockProcessMessengerTemplate).toHaveBeenCalled()
     expect(mockCreateMessageRepository).not.toHaveBeenCalled()
+  })
+
+  test("hands the inbox sender to processMessengerTemplate for a template step", async () => {
+    const msStep = {
+      id: "step-ms",
+      nodeId: "node-ms",
+      stepType: "sendMessengerTemplateMessage",
+      template: {
+        id: "tmpl-2",
+        name: "ms-template",
+        language: "en",
+        parameterFormat: "POSITIONAL",
+        params: {},
+      },
+      buttons: [],
+    } as unknown as SendFlowStepData["step"]
+    mockFindContactInbox.mockResolvedValue({
+      ...fakeContactInbox,
+      channel: "messenger",
+    } as unknown as typeof fakeContactInbox)
+
+    await sendFlowStep({ ...baseParams, step: msStep, sentByUserId: "user-1" })
+
+    expect(mockProcessMessengerTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ sentByUserId: "user-1" }),
+    )
   })
 
   test("forwards a private commentAnchor to sendFlowStepToChannel when the resolved contactInbox is messenger", async () => {
@@ -1872,10 +2369,41 @@ describe("sendChatMessage", () => {
       contactId: "contact-1",
       at: createdMessage.createdAt,
       bumpActivity: true,
+      closeHumanReplyWindow: true,
     })
     expect(mockInvalidateTracking).toHaveBeenCalledWith({
       cacheTags: ["contacts:contact-1:contact-inboxes"],
     })
+  })
+
+  test("never tells the send it will be retried: sendChatMessage swallows failures, so the send error must be recorded at once", async () => {
+    await sendChatMessage({
+      conversation: fakeConversation as never,
+      contactInbox: fakeContactInbox as never,
+      text: "hello from chat",
+    })
+
+    expect(mockSendMessageToChannel).toHaveBeenCalledWith(
+      expect.anything(),
+      0,
+      false,
+    )
+  })
+
+  test("uses the resolved fallback inbox when routing the realtime message", async () => {
+    mockFindContactInbox.mockResolvedValue(fakeContactInbox)
+
+    await sendChatMessage({
+      conversation: fakeConversation as never,
+      text: "hello from chat",
+    })
+
+    expect(mockBroadcast).toHaveBeenCalledWith(
+      "ws-1",
+      expect.objectContaining({
+        route: expect.objectContaining({ inboxId: fakeContactInbox.inboxId }),
+      }),
+    )
   })
 
   test("keeps a broadcast continuation visible in realtime and the inbox sort", async () => {
@@ -2202,5 +2730,155 @@ describe("sendFlowStep — sendProducts", () => {
     expect(mockSendFlowStepToChannel).toHaveBeenCalledWith(
       expect.not.objectContaining({ productMessage: expect.anything() }),
     )
+  })
+})
+
+describe("sendFlowStep — product collection", () => {
+  const collectionStep = {
+    id: "collection-step",
+    nodeId: "node-1",
+    stepType: "sendCollection",
+    dataType: "products",
+    collectionType: "automated",
+    conditions: {
+      name: "",
+      categoryId: null,
+      subcategoryId: null,
+      vendorId: null,
+    },
+    productIds: [],
+  } as unknown as SendFlowStepData["step"]
+
+  const productCard = {
+    id: "card-p1",
+    stepType: "sendCard",
+    title: "Shirt",
+    subtitle: "$15.00 · Acme",
+    image: {
+      id: "img-p1",
+      stepType: "sendImage",
+      mode: "url",
+      url: "https://img.example/p1.jpg",
+      buttons: [],
+    },
+    buttons: [
+      {
+        id: "view-p1",
+        label: "View",
+        buttonType: "openWebsite",
+        beforeStep: {
+          id: "open-p1",
+          stepType: "openWebsite",
+          url: "https://app.example.test/shop/ws-1/products/p1?token=signed",
+          browserSize: 100,
+        },
+        steps: [],
+      },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFindConversation.mockResolvedValue(fakeConversation)
+    mockFindContactInbox.mockResolvedValue(fakeContactInbox)
+    mockresolveTenantSettings.mockResolvedValue({
+      storageUrl: "https://storage.example.com",
+      appUrl: "https://app.example.test",
+    })
+    mockResolveContactVariables.mockImplementation(
+      (_contactId: string, step: unknown) => Promise.resolve(step),
+    )
+    mockRepositoryCreate.mockResolvedValue({
+      id: "msg-created",
+      contactInboxId: "ci-1",
+      workspaceId: "ws-1",
+      conversationId: "conv-1",
+      messageType: "outgoing",
+      contentType: "text",
+      senderType: "bot",
+      sourceId: null,
+      text: null,
+      contentAttributes: {},
+      createdAt: new Date("2026-01-01T00:00:00Z"),
+      updatedAt: new Date("2026-01-01T00:00:00Z"),
+    })
+    mockSendFlowStepToChannel.mockResolvedValue({
+      messageIds: ["provider-1"],
+      sentCount: 1,
+    })
+  })
+
+  test("on Messenger: resolved after the variables, stored as a carousel and sent with its cards", async () => {
+    mockResolveCollectionStep.mockImplementation(
+      async ({ step }: { step: object }) => ({ ...step, cards: [productCard] }),
+    )
+
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: collectionStep,
+    })
+
+    expect(mockResolveCollectionStep).toHaveBeenCalledWith({
+      workspaceId: "ws-1",
+      contactId: "contact-1",
+      contactInboxId: "ci-1",
+      step: expect.objectContaining({ id: "collection-step" }),
+    })
+    // Product names are store data: the variable pass runs on the authored
+    // step, before the cards exist.
+    const [variablesAt] = mockResolveContactVariables.mock.invocationCallOrder
+    const [collectionAt] = mockResolveCollectionStep.mock.invocationCallOrder
+    expect(variablesAt).toBeLessThan(collectionAt as number)
+
+    expect(mockRepositoryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentAttributes: expect.objectContaining({
+          type: "template",
+          payload: expect.objectContaining({
+            templateType: "carousel",
+            cards: [expect.objectContaining({ title: "Shirt" })],
+          }),
+        }),
+      }),
+    )
+    expect(mockSendFlowStepToChannel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: expect.objectContaining({
+          stepType: "sendCollection",
+          cards: [expect.objectContaining({ title: "Shirt" })],
+        }),
+      }),
+    )
+  })
+
+  test("a collection that matches no product sends and stores nothing", async () => {
+    mockResolveCollectionStep.mockResolvedValue(null)
+
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: collectionStep,
+    })
+
+    expect(mockRepositoryCreate).not.toHaveBeenCalled()
+    expect(mockSendFlowStepToChannel).not.toHaveBeenCalled()
+  })
+
+  test("a contact on a channel without collections is skipped before any lookup", async () => {
+    mockFindContactInbox.mockResolvedValue({
+      ...fakeContactInbox,
+      channel: "whatsapp",
+      source: "whatsapp",
+    })
+
+    await sendFlowStep({
+      ...baseParams,
+      contactInboxId: "ci-1",
+      step: collectionStep,
+    })
+
+    expect(mockResolveCollectionStep).not.toHaveBeenCalled()
+    expect(mockSendFlowStepToChannel).not.toHaveBeenCalled()
   })
 })

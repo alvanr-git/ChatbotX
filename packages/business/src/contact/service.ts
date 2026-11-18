@@ -19,7 +19,11 @@ import {
   type ContactFilterCriteriaInput,
   contactFilterHasPredicate,
 } from "@chatbotx.io/database/queries"
-import { contactRepository } from "@chatbotx.io/database/repositories"
+import {
+  contactInboxRepository,
+  contactRepository,
+  pipelineActivityRepository,
+} from "@chatbotx.io/database/repositories"
 import {
   contactInboxModel,
   contactModel,
@@ -29,14 +33,17 @@ import {
 import type {
   ContactInboxModel,
   ContactModel,
+  ConversationModel,
 } from "@chatbotx.io/database/types"
 import { emit } from "@chatbotx.io/event-bus"
 import { emitContactCreated } from "@chatbotx.io/events"
 import { uploadFileFromUrl } from "@chatbotx.io/filesystem"
 import { invalidateCacheByTags, withCache } from "@chatbotx.io/redis"
 import { createId } from "@chatbotx.io/utils"
+import { enqueueStoredImageOptimizations } from "@chatbotx.io/worker-config"
 import { dispatchAuditRecord } from "../audit/dispatcher"
 import { BaseService } from "../base.service"
+import { contactActivityService } from "../contact-activity/service"
 import { getContactInboxSinceTime } from "../contact-inbox/service"
 import { contactInboxPostService } from "../contact-inbox-post/service"
 import { ChatbotXException, notFoundException } from "../errors"
@@ -45,6 +52,7 @@ import { NO_AVATAR_SENTINEL_KEY } from "../media/no-avatar-sentinel"
 import { messageCleanupService } from "../message-cleanup/service"
 import { quotaEnforcementService } from "../quota-enforcement/service"
 import { userQuotaService } from "../user-quota/service"
+import { resolveWorkingHoursTimezone } from "../working-hours/timezone"
 import { workspaceService } from "../workspace/service"
 import { workspaceUsageService } from "../workspace-usage/service"
 import { emitContactInfoChangeEvents } from "./contact-info-changes"
@@ -124,6 +132,7 @@ type ContactWithInboxes = ContactModel & { contactInboxes: ContactInboxModel[] }
 
 export type ContactAccessScope = {
   restrictToAssignedUserId?: string
+  restrictToTeamIds?: string[]
 }
 
 export type ContactListScope = ContactListScopeType
@@ -193,6 +202,7 @@ class ContactService extends BaseService {
           occurredAt,
           source: contactInbox.source,
           channel: contactInbox.channel,
+          inboxId: contactInbox.inboxId,
           sourceId: contactInbox.sourceId,
           metadata: {
             triggerContext: {
@@ -219,21 +229,49 @@ class ContactService extends BaseService {
   }) {
     const contact = await contactService.block(ctx)
 
-    emit("analytics:dashboard", {
-      eventType: "contact:blocked",
-      workspaceId: ctx.workspaceId,
-      contactId: contact.id,
-      occurredAt: contact.blockedAt ?? new Date(),
-      country: contact.country,
-      metadata: {
-        triggerContext: {
-          triggerSource: "api",
-          triggerHandler: "blockContactAction",
-          triggerType: "contact_blocked",
-          origin: "manual",
+    // One event per inbox, like delete, so a channel/inbox filter attributes the
+    // block; a contact without inboxes still records one unattributed event.
+    // The block is already committed: a failed lookup must not fail it, only
+    // leave the event unattributed.
+    const contactInboxes = await contactInboxRepository
+      .listAnalyticsAttributionByContact({
+        workspaceId: ctx.workspaceId,
+        contactId: contact.id,
+      })
+      .catch((err: unknown) => {
+        logger.warn(
+          { err, contactId: contact.id },
+          "Block analytics attribution lookup failed; event stays unattributed",
+        )
+        return []
+      })
+    const occurredAt = contact.blockedAt ?? new Date()
+    const attributions =
+      contactInboxes.length > 0
+        ? contactInboxes
+        : [{ inboxId: null, channel: null, source: null, sourceId: null }]
+
+    for (const attribution of attributions) {
+      emit("analytics:dashboard", {
+        eventType: "contact:blocked",
+        workspaceId: ctx.workspaceId,
+        contactId: contact.id,
+        occurredAt,
+        country: contact.country,
+        channel: attribution.channel,
+        inboxId: attribution.inboxId,
+        source: attribution.source,
+        sourceId: attribution.sourceId,
+        metadata: {
+          triggerContext: {
+            triggerSource: "api",
+            triggerHandler: "blockContactAction",
+            triggerType: "contact_blocked",
+            origin: "manual",
+          },
         },
-      },
-    })
+      })
+    }
   }
 
   async unblockAndRecord(ctx: {
@@ -319,11 +357,7 @@ class ContactService extends BaseService {
       throw notFoundException("Contact not found")
     }
 
-    if (
-      accessScope?.restrictToAssignedUserId &&
-      contact.conversation?.assignedUserId !==
-        accessScope.restrictToAssignedUserId
-    ) {
+    if (!isContactWithinAccessScope(accessScope, contact.conversation)) {
       throw notFoundException("Contact not found")
     }
 
@@ -343,13 +377,46 @@ class ContactService extends BaseService {
       return false
     }
 
-    const where = buildContactWhere({ workspaceId, contactFilter })
+    const where = buildContactWhere({
+      workspaceId,
+      contactFilter: await this.withWorkingHoursTimezone(
+        workspaceId,
+        contactFilter,
+      ),
+    })
     const match = await db.query.contactModel.findFirst({
       columns: { id: true },
       where: { ...where, id: contactId },
     })
 
     return Boolean(match)
+  }
+
+  /**
+   * `isWithinWorkingHours` reads `now()` in the workspace timezone; resolve it
+   * here (cached workspace row, same rule as routing) instead of looking the
+   * zone up in SQL. Only paid when the filter actually uses the field.
+   */
+  private async withWorkingHoursTimezone(
+    workspaceId: string,
+    contactFilter: ContactFilterCriteriaInput,
+  ): Promise<ContactFilterCriteriaInput> {
+    const usesWorkingHours = contactFilter.conditions.some(
+      (condition) =>
+        (condition as { field?: string }).field === "isWithinWorkingHours",
+    )
+    if (!usesWorkingHours) {
+      return contactFilter
+    }
+    const workspace = await workspaceService.find({
+      where: { id: workspaceId },
+    })
+    return {
+      ...contactFilter,
+      workingHoursTimezone: resolveWorkingHoursTimezone(
+        workspace ?? { id: workspaceId },
+      ),
+    }
   }
 
   // ─── Reads (NO cache — write-path only) ─────────────────────────────────
@@ -412,6 +479,13 @@ class ContactService extends BaseService {
       .where(eq(contactModel.id, ctx.id))
       .returning()
     await this.invalidate({ workspaceId: ctx.workspaceId, ids: [ctx.id] })
+    if (data.avatar && data.avatar !== existing.avatar) {
+      await scheduleAvatarOptimization({
+        workspaceId: ctx.workspaceId,
+        contactId: ctx.id,
+        avatar: data.avatar,
+      })
+    }
     if (ownsTransaction) {
       await emitContactInfoChangeEvents(
         ctx.workspaceId,
@@ -472,6 +546,13 @@ class ContactService extends BaseService {
     }
 
     await this.invalidate({ workspaceId: ctx.workspaceId, ids: [ctx.id] })
+    if (data.avatar && data.avatar !== existing.avatar) {
+      await scheduleAvatarOptimization({
+        workspaceId: ctx.workspaceId,
+        contactId: ctx.id,
+        avatar: data.avatar,
+      })
+    }
     if (ownsTransaction) {
       await emitContactInfoChangeEvents(
         ctx.workspaceId,
@@ -740,12 +821,25 @@ class ContactService extends BaseService {
           tx,
           workspaceId,
         })
+        await contactActivityService.deleteForContacts({
+          contactIds: chunk.map((contact) => contact.id),
+          tx,
+          workspaceId,
+        })
         await messageCleanupService.record({ workspaceId, entries, tx })
         await tx.delete(contactModel).where(
           inArray(
             contactModel.id,
             chunk.map((c) => c.id),
           ),
+        )
+        // Pipeline history outlives the contact (it has no FK) for analytics;
+        // only the item titles that may name the contact are cleared. After
+        // the delete: its item cascade waited for any writer holding an item
+        // lock, so history that writer added is cleared too.
+        await pipelineActivityRepository.scrubContactTitles(
+          { workspaceId, contactIds: chunk.map((contact) => contact.id) },
+          tx,
         )
       })
     }
@@ -981,6 +1075,7 @@ class ContactService extends BaseService {
       source: contactInbox.source,
       sourceId: contactInbox.sourceId,
       channel: inbox.channel,
+      inboxId: inbox.id,
       metadata: {
         triggerContext: {
           triggerSource: "api",
@@ -1163,6 +1258,7 @@ class ContactService extends BaseService {
       .returning({ id: contactModel.id })
     if (updated) {
       await this.invalidate({ workspaceId, ids: [contactId] })
+      await scheduleAvatarOptimization({ workspaceId, contactId, avatar })
     }
   }
 
@@ -1191,6 +1287,7 @@ class ContactService extends BaseService {
       .returning({ id: contactModel.id })
     if (updated) {
       await this.invalidate({ workspaceId, ids: [contactId] })
+      await scheduleAvatarOptimization({ workspaceId, contactId, avatar })
     }
   }
 
@@ -1246,11 +1343,39 @@ export function mergeRichSystemFields(
   )
 }
 
+function isContactWithinAccessScope(
+  accessScope: ContactAccessScope | undefined,
+  conversation:
+    | Pick<ConversationModel, "assignedUserId" | "assignedInboxTeamId">
+    | null
+    | undefined,
+): boolean {
+  if (
+    accessScope?.restrictToAssignedUserId === undefined &&
+    accessScope?.restrictToTeamIds === undefined
+  ) {
+    return true
+  }
+  if (
+    accessScope.restrictToAssignedUserId !== undefined &&
+    conversation?.assignedUserId === accessScope.restrictToAssignedUserId
+  ) {
+    return true
+  }
+  return Boolean(
+    conversation?.assignedInboxTeamId &&
+      accessScope.restrictToTeamIds?.includes(conversation.assignedInboxTeamId),
+  )
+}
+
 function withContactAccessScope<TWhere extends Record<string, unknown>>(
   where: TWhere,
   accessScope?: ContactAccessScope,
 ) {
-  if (!accessScope?.restrictToAssignedUserId) {
+  if (
+    accessScope?.restrictToAssignedUserId === undefined &&
+    accessScope?.restrictToTeamIds === undefined
+  ) {
     return where
   }
 
@@ -1260,14 +1385,40 @@ function withContactAccessScope<TWhere extends Record<string, unknown>>(
     !Array.isArray(where.conversation)
       ? where.conversation
       : {}
+  const assignmentScopes = [
+    ...(accessScope.restrictToAssignedUserId === undefined
+      ? []
+      : [{ assignedUserId: accessScope.restrictToAssignedUserId }]),
+    ...(accessScope.restrictToTeamIds === undefined
+      ? []
+      : [{ assignedInboxTeamId: { in: accessScope.restrictToTeamIds } }]),
+  ]
 
   return {
     ...where,
     conversation: {
       ...conversation,
-      assignedUserId: accessScope.restrictToAssignedUserId,
+      OR: assignmentScopes,
     },
   }
 }
+
+/**
+ * A freshly stored avatar is re-encoded in the background (heavy queue, low
+ * priority) and overwritten under the same key, so the stored value never
+ * changes. External URLs and sentinels are filtered out by the enqueue.
+ */
+const scheduleAvatarOptimization = ({
+  workspaceId,
+  contactId,
+  avatar,
+}: {
+  workspaceId: string
+  contactId: string
+  avatar: string
+}) =>
+  enqueueStoredImageOptimizations([
+    { kind: "avatar", workspaceId, contactId, objectKey: avatar },
+  ])
 
 export const contactService = new ContactService()

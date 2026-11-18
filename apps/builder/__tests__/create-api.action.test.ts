@@ -3,17 +3,14 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  assertPublicUrl: vi.fn(),
-  connect: vi.fn(),
+  createWithToken: vi.fn(),
   findWorkspaceOrFail: vi.fn(),
   createWorkspace: vi.fn(),
   hasWorkspaceAccess: vi.fn(async () => true),
-  generateApiChannelToken: vi.fn(async () => ({
-    token: "plain-token",
-    tokenHash: "token-hash",
-    tokenPrefix: "tok_",
-  })),
-  generateSigningSecret: vi.fn(() => "signing-secret"),
+}))
+
+vi.mock("@/lib/tenant/request-tenant", () => ({
+  resolveRequestTenantId: vi.fn(async () => "1"),
 }))
 
 vi.mock("@/lib/safe-action", () => {
@@ -23,20 +20,21 @@ vi.mock("@/lib/safe-action", () => {
   return { authActionClient: chain }
 })
 
-vi.mock("@chatbotx.io/business", () => ({
-  assertPublicUrl: mocks.assertPublicUrl,
-  hasWorkspaceAccess: mocks.hasWorkspaceAccess,
-  integrationApiService: { connect: mocks.connect },
-  workspaceService: {
-    findOrFail: mocks.findWorkspaceOrFail,
-    create: mocks.createWorkspace,
-  },
-}))
-
-vi.mock("@chatbotx.io/business/workspace-api-token/credentials", () => ({
-  generateApiChannelToken: mocks.generateApiChannelToken,
-  generateSigningSecret: mocks.generateSigningSecret,
-}))
+vi.mock("@chatbotx.io/business", async () => {
+  const { z } = await import("zod")
+  return {
+    apiConnectConfigSchema: z.object({
+      callbackUrl: z.url().nullish(),
+      name: z.string().min(1).max(40),
+    }),
+    hasWorkspaceAccess: mocks.hasWorkspaceAccess,
+    integrationApiService: { createWithToken: mocks.createWithToken },
+    workspaceService: {
+      findOrFail: mocks.findWorkspaceOrFail,
+      create: mocks.createWorkspace,
+    },
+  }
+})
 
 const { createApiAction } = await import(
   "../src/features/integration-api/actions/create-api.action"
@@ -59,7 +57,10 @@ describe("createApiAction", () => {
       id: "workspace-1",
       ownerId: "owner-1",
     })
-    mocks.connect.mockResolvedValue({ workspaceId: "workspace-1" })
+    mocks.createWithToken.mockResolvedValue({
+      token: "plain-token",
+      workspaceId: "workspace-1",
+    })
   })
 
   test("passes the workspace owner for ownership and acting admin for audit", async () => {
@@ -72,21 +73,12 @@ describe("createApiAction", () => {
       ctx: { user: { id: "admin-1" } },
     })
 
-    expect(mocks.assertPublicUrl).toHaveBeenCalledWith(
-      "https://example.com/api/webhook",
-      "API channel callback URL",
-    )
-    expect(mocks.findWorkspaceOrFail).toHaveBeenCalledWith({
-      where: { id: "workspace-1" },
-    })
-    expect(mocks.connect).toHaveBeenCalledWith(
+    expect(mocks.createWithToken).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerId: "owner-1",
         actorUserId: "admin-1",
         workspaceId: "workspace-1",
         name: "Support API",
-        tokenHash: "token-hash",
-        tokenPrefix: "tok_",
         callbackUrl: "https://example.com/api/webhook",
       }),
     )
@@ -109,6 +101,6 @@ describe("createApiAction", () => {
       }),
     ).rejects.toThrow()
 
-    expect(mocks.connect).not.toHaveBeenCalled()
+    expect(mocks.createWithToken).not.toHaveBeenCalled()
   })
 })

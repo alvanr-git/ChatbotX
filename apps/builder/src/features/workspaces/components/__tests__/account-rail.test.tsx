@@ -47,10 +47,6 @@ vi.mock("@/features/auth/sign-out", () => ({
   SignOut: () => <button type="button">Sign out</button>,
 }))
 
-vi.mock("../edit-profile-dialog", () => ({
-  EditProfileDialog: () => null,
-}))
-
 // Severs the server-action import chain (refresh action → @/lib/safe-action →
 // @chatbotx.io/business → database/client), which otherwise touches a
 // server-only env var at import time and crashes the whole file before any
@@ -92,7 +88,7 @@ describe("account rail", () => {
   async function render(
     props: Partial<{
       isSuperAdmin: boolean
-      isPlatformAdmin: boolean
+      canAccessManage: boolean
       isPlatformContext: boolean
       cloud: boolean
       planName: string | null
@@ -102,7 +98,7 @@ describe("account rail", () => {
     const element = await AccountRail({
       user: BASE_USER,
       isSuperAdmin: props.isSuperAdmin,
-      isPlatformAdmin: props.isPlatformAdmin,
+      canAccessManage: props.canAccessManage,
       isPlatformContext: props.isPlatformContext,
       planName: props.planName,
     })
@@ -147,15 +143,29 @@ describe("account rail", () => {
   })
 
   it("renders admin but hides manage on community edition", async () => {
-    await render({ isSuperAdmin: true, isPlatformAdmin: true, cloud: false })
+    await render({ canAccessManage: true, cloud: false, isSuperAdmin: true })
     expect(findLink("/admin")?.textContent).toContain("Admin")
     expect(findLink("/manage")).toBeUndefined()
   })
 
-  it("renders admin and manage on cloud edition", async () => {
-    await render({ isSuperAdmin: true, isPlatformAdmin: true, cloud: true })
-    expect(findLink("/admin")?.textContent).toContain("Admin")
+  it("renders manage for a credentials-only user on cloud edition", async () => {
+    await render({ canAccessManage: true, cloud: true })
     expect(findLink("/manage")?.textContent).toContain("Manage")
+  })
+
+  it("renders admin for a credentials-only super admin on cloud edition", async () => {
+    await render({
+      canAccessManage: true,
+      cloud: true,
+      isSuperAdmin: true,
+    })
+
+    expect(findLink("/admin")?.textContent).toContain("Admin")
+  })
+
+  it("hides manage on cloud edition without credential access", async () => {
+    await render({ cloud: true })
+    expect(findLink("/manage")).toBeUndefined()
   })
 
   it("still renders the menu block on community edition", async () => {
@@ -203,5 +213,14 @@ describe("account rail", () => {
     const text = planNameText()
     expect(text).toContain("Current plan")
     expect(text).toContain("Free")
+  })
+
+  it("links the profile summary to account settings without an edit button", async () => {
+    await render()
+
+    expect(findLink("/account")?.textContent).toContain("Jane Doe")
+    expect(
+      container.querySelector('button[aria-label="actions.edit"]'),
+    ).toBeNull()
   })
 })

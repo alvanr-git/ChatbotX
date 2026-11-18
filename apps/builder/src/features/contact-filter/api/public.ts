@@ -1,11 +1,15 @@
 import { resolveContactFilterValueLabels } from "@chatbotx.io/business"
 import { FILTER_VALUE_LABELS_TOKEN_PATH } from "@/features/contact-filter/lib/api-paths"
 import { listContactFilterFieldsForAPI } from "@/features/contact-filter/lib/list-contact-filter-fields"
-import { listContactFilterFieldsPublicResponse } from "@/features/contact-filter/schema/public"
+import {
+  listContactFilterFieldsPublicRequest,
+  listContactFilterFieldsPublicResponse,
+} from "@/features/contact-filter/schema/public"
 import {
   resolveFilterValueLabelsPublicRequest,
   resolveFilterValueLabelsPublicResponse,
 } from "@/features/contact-filter/schema/value-labels"
+import { PIPELINE_TOKEN_SCOPE } from "@/features/pipelines/lib/access"
 import {
   possibleErrorsOnListingResource,
   possibleIdempotencyErrors,
@@ -21,15 +25,17 @@ export const contactsFilterFieldsPublicRouter = {
       path: "/v1/contacts/filter-fields",
       summary: "List contact filter fields",
       description:
-        "Returns the static fields available for `contactFilter` conditions (with each field's supported operators), plus the workspace's actual custom fields, bot fields, and tags so a filter condition can reference a real id/name instead of guessing one. Each custom/bot field also carries `valueType`, the value to copy into a `customField`/`botField` condition's `valueType`. Use this before building a `contactFilter` for `contacts.list` or `contacts.count` — including to look up a contact by email or phone number, which are the `email`/`phone` static fields here, not a `customField` condition.",
+        "Returns the static fields available for `contactFilter` conditions (with each field's supported operators), plus the workspace's actual custom fields, bot fields, and tags (and `pipelineItems` (empty for `surface=flowCondition`, whose Condition step cannot store pipeline conditions): the pipelines with their stages and the shapes of `pipelineItem` conditions, e.g. contacts with an open item in a stage) so a filter condition can reference a real id/name instead of guessing one. Each custom/bot field also carries `valueType`, the value to copy into a `customField`/`botField` condition's `valueType`. Pass `surface=flowCondition` when building a flow Condition step; it additionally lists runtime-only fields (e.g. `isWithinWorkingHours`, whose values are `workingHours.list` ids and `assignedAgent`). Use this before building a `contactFilter` for `contacts.list` or `contacts.count` — including to look up a contact by email or phone number, which are the `email`/`phone` static fields here, not a `customField` condition.",
       tags: ["Contacts"],
     })
+    .input(listContactFilterFieldsPublicRequest)
     .output(listContactFilterFieldsPublicResponse)
     .errors(possibleErrorsOnListingResource)
     .handler(
-      async ({ context }) =>
+      async ({ context, input }) =>
         await listContactFilterFieldsForAPI({
           workspaceId: context.workspace.id,
+          surface: input.surface,
         }),
     ),
 
@@ -54,6 +60,7 @@ export const contactsFilterFieldsPublicRouter = {
         await resolveContactFilterValueLabels({
           workspaceId: context.workspace.id,
           ids: input,
+          pipelineScope: PIPELINE_TOKEN_SCOPE,
         }),
     ),
 }
