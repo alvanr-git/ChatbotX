@@ -18,9 +18,13 @@ vi.mock("@chatbotx.io/database/repositories", () => ({
   },
 }))
 
-vi.mock("@chatbotx.io/utils", () => ({
-  createId: () => "invitation-1",
-}))
+vi.mock("@chatbotx.io/utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@chatbotx.io/utils")>()
+  return {
+    ...actual,
+    createId: () => "invitation-1",
+  }
+})
 
 vi.mock("@chatbotx.io/utils/web-url", () => ({
   joinAppUrl: (appUrl: string, path: string) =>

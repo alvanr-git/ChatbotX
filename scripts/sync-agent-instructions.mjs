@@ -16,7 +16,7 @@ const read = (relativePath) => readFile(path.join(root, relativePath), "utf8")
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-const FRONTMATTER_BLOCK = /^---\n[\s\S]*?\n---\n/
+const FRONTMATTER_BLOCK = /^---\r?\n[\s\S]*?\r?\n---\r?\n/
 const stripFrontmatter = (content) => content.replace(FRONTMATTER_BLOCK, "")
 
 const markerPair = (name) => ({
